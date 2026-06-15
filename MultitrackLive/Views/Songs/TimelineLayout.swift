@@ -45,7 +45,7 @@ enum TimelineLayout {
         return max(floorZoom, 1)
     }
 
-    static let laneHeight: CGFloat = 94
+    static let laneHeight: CGFloat = 104
     static let laneSpacing: CGFloat = 4
     static let sectionMarkerHeight: CGFloat = 22
     static let rulerHeight: CGFloat = 28

@@ -44,6 +44,16 @@
 		AA0000010000000000000023 /* TimelinePlayheadOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000024 /* TimelinePlayheadOverlay.swift */; };
 		AA0000010000000000000028 /* LiveSongWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000028 /* LiveSongWaveformView.swift */; };
 		AA0000010000000000000029 /* SetlistTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000029 /* SetlistTransition.swift */; };
+		AA000001000000000000002A /* TrackGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000002A /* TrackGroup.swift */; };
+		AA000001000000000000002B /* TrackGroupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000002B /* TrackGroupStore.swift */; };
+		AA000001000000000000002C /* TrackGroupEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000002C /* TrackGroupEditorView.swift */; };
+		AA000001000000000000002D /* OutputDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000002D /* OutputDestination.swift */; };
+		AA000001000000000000002E /* OutputRoutingConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000002E /* OutputRoutingConfig.swift */; };
+		AA000001000000000000002F /* GroupOutputRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000002F /* GroupOutputRoute.swift */; };
+		AA0000010000000000000030 /* OutputRoutingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000030 /* OutputRoutingStore.swift */; };
+		AA0000010000000000000031 /* AudioOutputDeviceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000031 /* AudioOutputDeviceService.swift */; };
+		AA0000010000000000000032 /* OutputRoutingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000032 /* OutputRoutingManager.swift */; };
+		AA0000010000000000000033 /* ManageOutputsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000033 /* ManageOutputsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -85,6 +95,16 @@
 		AA0000020000000000000027 /* TrackMemoryPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackMemoryPlayer.swift; sourceTree = "<group>"; };
 		AA0000020000000000000028 /* LiveSongWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSongWaveformView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000029 /* SetlistTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistTransition.swift; sourceTree = "<group>"; };
+		AA000002000000000000002A /* TrackGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackGroup.swift; sourceTree = "<group>"; };
+		AA000002000000000000002B /* TrackGroupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackGroupStore.swift; sourceTree = "<group>"; };
+		AA000002000000000000002C /* TrackGroupEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackGroupEditorView.swift; sourceTree = "<group>"; };
+		AA000002000000000000002D /* OutputDestination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputDestination.swift; sourceTree = "<group>"; };
+		AA000002000000000000002E /* OutputRoutingConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputRoutingConfig.swift; sourceTree = "<group>"; };
+		AA000002000000000000002F /* GroupOutputRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupOutputRoute.swift; sourceTree = "<group>"; };
+		AA0000020000000000000030 /* OutputRoutingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputRoutingStore.swift; sourceTree = "<group>"; };
+		AA0000020000000000000031 /* AudioOutputDeviceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioOutputDeviceService.swift; sourceTree = "<group>"; };
+		AA0000020000000000000032 /* OutputRoutingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputRoutingManager.swift; sourceTree = "<group>"; };
+		AA0000020000000000000033 /* ManageOutputsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageOutputsView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000024 /* TimelinePlayheadOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelinePlayheadOverlay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -134,6 +154,10 @@
 			children = (
 				AA0000020000000000000002 /* Song.swift */,
 				AA0000020000000000000003 /* AudioTrack.swift */,
+				AA000002000000000000002A /* TrackGroup.swift */,
+				AA000002000000000000002D /* OutputDestination.swift */,
+				AA000002000000000000002E /* OutputRoutingConfig.swift */,
+				AA000002000000000000002F /* GroupOutputRoute.swift */,
 				AA0000020000000000000019 /* ArrangementMarker.swift */,
 				AA000002000000000000001E /* ArrangementSlot.swift */,
 				AA0000020000000000000004 /* Setlist.swift */,
@@ -149,6 +173,10 @@
 				AA0000020000000000000006 /* FileStore.swift */,
 				AA000002000000000000001A /* AbletonProjectImporter.swift */,
 				AA000002000000000000001B /* PersistenceController.swift */,
+				AA000002000000000000002B /* TrackGroupStore.swift */,
+				AA0000020000000000000030 /* OutputRoutingStore.swift */,
+				AA0000020000000000000031 /* AudioOutputDeviceService.swift */,
+				AA0000020000000000000032 /* OutputRoutingManager.swift */,
 				AA000002000000000000001C /* ArrangementMarkerStore.swift */,
 				AA000002000000000000001F /* SongArrangementStore.swift */,
 				AA0000020000000000000016 /* WaveformLoader.swift */,
@@ -189,6 +217,8 @@
 				AA000002000000000000000E /* MixView.swift */,
 				AA000002000000000000000F /* EditView.swift */,
 				AA0000020000000000000020 /* ArrangementEditorMenu.swift */,
+				AA000002000000000000002C /* TrackGroupEditorView.swift */,
+				AA0000020000000000000033 /* ManageOutputsView.swift */,
 				AA000002000000000000001D /* TimelineLayout.swift */,
 				AA0000020000000000000017 /* WaveformLaneView.swift */,
 				AA0000020000000000000024 /* TimelinePlayheadOverlay.swift */,
@@ -313,6 +343,16 @@
 				AA0000010000000000000023 /* TimelinePlayheadOverlay.swift in Sources */,
 				AA0000010000000000000028 /* LiveSongWaveformView.swift in Sources */,
 				AA0000010000000000000029 /* SetlistTransition.swift in Sources */,
+				AA000001000000000000002A /* TrackGroup.swift in Sources */,
+				AA000001000000000000002B /* TrackGroupStore.swift in Sources */,
+				AA000001000000000000002C /* TrackGroupEditorView.swift in Sources */,
+				AA000001000000000000002D /* OutputDestination.swift in Sources */,
+				AA000001000000000000002E /* OutputRoutingConfig.swift in Sources */,
+				AA000001000000000000002F /* GroupOutputRoute.swift in Sources */,
+				AA0000010000000000000030 /* OutputRoutingStore.swift in Sources */,
+				AA0000010000000000000031 /* AudioOutputDeviceService.swift in Sources */,
+				AA0000010000000000000032 /* OutputRoutingManager.swift in Sources */,
+				AA0000010000000000000033 /* ManageOutputsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

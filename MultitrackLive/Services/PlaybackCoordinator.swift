@@ -30,6 +30,8 @@ final class PlaybackCoordinator {
     private(set) var currentWaveformSnapshot: LiveSongWaveformSnapshot?
     private(set) var nextWaveformSnapshot: LiveSongWaveformSnapshot?
 
+    var routingProvider: (() -> OutputRoutingSnapshot)?
+
     var currentSong: Song? {
         guard songs.indices.contains(currentIndex) else { return nil }
         return songs[currentIndex]
@@ -178,17 +180,31 @@ final class PlaybackCoordinator {
         }
     }
 
+    func applyOutputRouting() {
+        guard routingProvider != nil else { return }
+        let wasPlaying = audioEngine.isPlaying
+        let preservedTime = audioEngine.currentTime
+        audioEngine.cancelScheduledTransition()
+        audioEngine.pause()
+        loadCurrentSong()
+        if wasPlaying, isLoaded {
+            audioEngine.seek(to: preservedTime)
+            audioEngine.play()
+        }
+    }
+
     private func loadSong(_ song: Song) throws {
-        let trackPayload = song.sortedTracks.map { track -> (id: UUID, url: URL, settings: AudioEngineManager.TrackSettings) in
+        let trackPayload = song.sortedTracks.map { track -> (id: UUID, url: URL, settings: AudioEngineManager.TrackSettings, groupID: UUID?) in
             let url = FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath)
-            return (track.id, url, AudioEngineManager.TrackSettings(track: track))
+            return (track.id, url, AudioEngineManager.TrackSettings(track: track), track.group?.id)
         }
 
         guard !trackPayload.isEmpty else {
             throw PlaybackCoordinatorError.noTracks
         }
 
-        try audioEngine.loadTracks(trackPayload)
+        let routing = routingProvider?()
+        try audioEngine.loadTracks(trackPayload, routing: routing)
 
         let markers = ArrangementMarkerStore.load(for: song.id).sortedByTime
         let arrangement = SongArrangementStore.load(for: song.id, markers: markers)

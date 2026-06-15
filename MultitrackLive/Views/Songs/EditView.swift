@@ -23,10 +23,14 @@ struct EditView: View {
     @State private var cueFireTime: TimeInterval?
     @State private var cueFlashPhase = false
     @State private var showingArrangementEditor = false
+    @State private var showingGroupEditor = false
     @State private var selectedClip: SelectedArrangementClip?
     @FocusState private var isTimelineFocused: Bool
     @State private var cachedRulerSections: [ArrangementDisplaySection] = []
     @State private var cachedTrackSections: [UUID: [ArrangementDisplaySection]] = [:]
+
+    @Query(sort: [SortDescriptor(\TrackGroup.sortOrder), SortDescriptor(\TrackGroup.name)])
+    private var trackGroups: [TrackGroup]
 
     private var markers: [ArrangementMarker] {
         arrangementMarkers.sortedByTime
@@ -202,6 +206,9 @@ struct EditView: View {
         .onDeleteCommand {
             removeSelectedClip()
         }
+        .sheet(isPresented: $showingGroupEditor) {
+            TrackGroupEditorView()
+        }
     }
 
     private func removeSelectedClip() {
@@ -305,11 +312,15 @@ struct EditView: View {
             trackSections: trackSections(for:),
             formatClipDuration: formatClipDuration,
             showingArrangementEditor: $showingArrangementEditor,
+            showingGroupEditor: $showingGroupEditor,
             arrangementSlots: $arrangementSlots,
             clipTrims: $clipTrims,
             removedClips: $removedClips,
             loopSlotIDs: $loopSlotIDs,
-            onClearMarkerCue: { clearMarkerCue() }
+            onClearMarkerCue: { clearMarkerCue() },
+            onAutoGroup: {
+                viewModel.autoAssignGroups(groups: trackGroups, context: modelContext)
+            }
         )
     }
 
@@ -422,8 +433,15 @@ struct EditView: View {
                         track: track,
                         fileDuration: viewModel.fileDuration(for: track),
                         laneHeight: TimelineLayout.laneHeight,
+                        groups: trackGroups,
                         onMixChange: {
                             viewModel.updateMix(for: track, context: modelContext)
+                        },
+                        onGroupChange: {
+                            viewModel.updateGroup(for: track, context: modelContext)
+                        },
+                        onManageGroups: {
+                            showingGroupEditor = true
                         }
                     )
                 }
@@ -487,11 +505,13 @@ private struct EditTransportBar: View {
     let trackSections: (AudioTrack) -> [ArrangementDisplaySection]
     let formatClipDuration: (TimeInterval) -> String
     @Binding var showingArrangementEditor: Bool
+    @Binding var showingGroupEditor: Bool
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
     @Binding var removedClips: [ArrangementRemovedClip]
     @Binding var loopSlotIDs: Set<UUID>
     let onClearMarkerCue: () -> Void
+    let onAutoGroup: () -> Void
 
     @Bindable private var audioEngine = AudioEngineManager.shared
 
@@ -512,6 +532,8 @@ private struct EditTransportBar: View {
             if !markers.isEmpty {
                 arrangementEditorButton
             }
+
+            groupsEditorButton
 
             if let loadError = viewModel.loadError {
                 Text(loadError)
@@ -542,6 +564,27 @@ private struct EditTransportBar: View {
         }
         .padding(.vertical, 12)
         .background(.bar)
+    }
+
+    private var groupsEditorButton: some View {
+        HStack(spacing: 8) {
+            Button {
+                onAutoGroup()
+            } label: {
+                Label("Auto Group", systemImage: "wand.and.stars")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.bordered)
+            .disabled(song.sortedTracks.isEmpty)
+
+            Button {
+                showingGroupEditor = true
+            } label: {
+                Label("Groups", systemImage: "square.grid.2x2")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.bordered)
+        }
     }
 
     private var arrangementEditorButton: some View {

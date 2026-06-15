@@ -25,7 +25,8 @@ final class SongEditorViewModel {
                 return (
                     id: track.id,
                     url: url,
-                    settings: AudioEngineManager.TrackSettings(track: track)
+                    settings: AudioEngineManager.TrackSettings(track: track),
+                    groupID: track.group?.id
                 )
             }
 
@@ -88,6 +89,15 @@ final class SongEditorViewModel {
     func updateTrim(for track: AudioTrack, context: ModelContext) {
         audioEngine.updateTrackSettings(id: track.id, settings: AudioEngineManager.TrackSettings(track: track))
         try? context.save()
+    }
+
+    func updateGroup(for track: AudioTrack, context: ModelContext) {
+        try? context.save()
+    }
+
+    @discardableResult
+    func autoAssignGroups(groups: [TrackGroup], context: ModelContext) -> Int {
+        TrackGroupStore.autoAssignGroups(for: song.sortedTracks, groups: groups, in: context)
     }
 
     func previewTrim(for track: AudioTrack) {

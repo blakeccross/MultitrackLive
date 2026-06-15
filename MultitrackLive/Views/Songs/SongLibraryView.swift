@@ -199,6 +199,7 @@ struct SongLibraryView: View {
                 newTrack.isSolo = track.isSolo
                 newTrack.trimStartSeconds = track.trimStartSeconds
                 newTrack.trimEndSeconds = track.trimEndSeconds
+                newTrack.group = track.group
                 newTrack.song = copy
             }
 

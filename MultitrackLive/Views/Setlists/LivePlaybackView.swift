@@ -16,6 +16,7 @@ struct LivePlaybackView: View {
     @State private var activeLoopSectionID: UUID?
     @State private var suppressedLoopSectionIDs: Set<UUID> = []
     @State private var showingSongPicker = false
+    @State private var showingManageOutputs = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,6 +46,11 @@ struct LivePlaybackView: View {
                     showingSongPicker = true
                 }
             }
+            ToolbarItem(placement: .automatic) {
+                Button("Manage Outputs") {
+                    showingManageOutputs = true
+                }
+            }
             #if os(iOS)
             ToolbarItem(placement: .automatic) {
                 EditButton()
@@ -55,6 +61,11 @@ struct LivePlaybackView: View {
             SetlistSongPickerView { song in
                 viewModel.addSong(song, to: setlist, context: modelContext)
                 coordinator.syncSetlist(setlist)
+            }
+        }
+        .sheet(isPresented: $showingManageOutputs) {
+            ManageOutputsView {
+                coordinator.applyOutputRouting()
             }
         }
         .background {
@@ -89,6 +100,12 @@ struct LivePlaybackView: View {
             activateLoopIfNeeded(at: time)
         }
         .onAppear {
+            coordinator.routingProvider = {
+                let channelCount = AudioOutputDeviceService.channelCount(
+                    for: OutputRoutingStore.config(in: modelContext).selectedDeviceUID
+                )
+                return OutputRoutingStore.snapshot(in: modelContext, channelCount: channelCount)
+            }
             coordinator.configure(setlist: setlist)
         }
         .onDisappear {

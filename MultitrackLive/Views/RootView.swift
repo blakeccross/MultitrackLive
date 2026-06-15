@@ -23,6 +23,7 @@ enum AppSection: String, CaseIterable, Identifiable {
 }
 
 struct RootView: View {
+    @Environment(\.modelContext) private var modelContext
     @State private var selection: AppSection? = .songs
 
     var body: some View {
@@ -42,10 +43,14 @@ struct RootView: View {
                 ContentUnavailableView("Choose a Section", systemImage: "sidebar.left")
             }
         }
+        .onAppear {
+            TrackGroupStore.ensureDefaults(in: modelContext)
+            OutputRoutingStore.ensureConfig(in: modelContext)
+        }
     }
 }
 
 #Preview {
     RootView()
-        .modelContainer(for: [Song.self, AudioTrack.self, Setlist.self, SetlistEntry.self], inMemory: true)
+        .modelContainer(for: [Song.self, AudioTrack.self, TrackGroup.self, OutputRoutingConfig.self, GroupOutputRoute.self, Setlist.self, SetlistEntry.self], inMemory: true)
 }

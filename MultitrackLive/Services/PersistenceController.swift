@@ -3,12 +3,15 @@ import SwiftData
 
 enum PersistenceController {
     /// Bump when arrangement marker storage changes so stale rows are discarded.
-    private static let storeVersion = 7
+    private static let storeVersion = 9
     private static let storeVersionKey = "SwiftDataStoreVersion"
 
     static let modelTypes: [any PersistentModel.Type] = [
         Song.self,
         AudioTrack.self,
+        TrackGroup.self,
+        OutputRoutingConfig.self,
+        GroupOutputRoute.self,
         Setlist.self,
         SetlistEntry.self,
     ]

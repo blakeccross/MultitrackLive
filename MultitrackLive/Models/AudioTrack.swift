@@ -15,6 +15,7 @@ final class AudioTrack {
     var trimEndSeconds: Double?
 
     var song: Song?
+    var group: TrackGroup?
 
     init(displayName: String, relativeFilePath: String, sortOrder: Int) {
         id = UUID()

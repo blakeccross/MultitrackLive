@@ -7,7 +7,10 @@ struct TrackLaneHeaderView: View {
     @Bindable var track: AudioTrack
     let fileDuration: TimeInterval
     let laneHeight: CGFloat
+    let groups: [TrackGroup]
     let onMixChange: () -> Void
+    let onGroupChange: () -> Void
+    let onManageGroups: () -> Void
 
     private var effectiveEnd: TimeInterval {
         track.trimEndSeconds ?? fileDuration
@@ -25,6 +28,8 @@ struct TrackLaneHeaderView: View {
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
+
+            groupPicker
 
             HStack(spacing: 6) {
                 TrackMixButton(
@@ -74,6 +79,44 @@ struct TrackLaneHeaderView: View {
         if track.pan < -0.05 { return "L\(Int(abs(track.pan * 100)))" }
         if track.pan > 0.05 { return "R\(Int(track.pan * 100))" }
         return "C"
+    }
+
+    private var groupPicker: some View {
+        Menu {
+            Button("No Group") {
+                track.group = nil
+                onGroupChange()
+            }
+
+            ForEach(groups) { group in
+                Button(group.name) {
+                    track.group = group
+                    onGroupChange()
+                }
+            }
+
+            Divider()
+
+            Button("Manage Groups…") {
+                onManageGroups()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(track.group?.name ?? "No Group")
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+            }
+            .font(.caption2)
+            .foregroundStyle(track.group == nil ? .secondary : .primary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.dawMixButtonBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 3))
+        }
+        .menuStyle(.borderlessButton)
+        .controlSize(.small)
     }
 
     private func formatTime(_ value: TimeInterval) -> String {
