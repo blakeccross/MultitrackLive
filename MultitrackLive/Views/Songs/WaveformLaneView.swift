@@ -151,6 +151,8 @@ struct WaveformLaneView: View {
     let laneHeight: CGFloat
     let onTrimChange: () -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
+    let loopSlotIDs: Set<UUID>
+    let onToggleLoopSection: (ArrangementDisplaySection) -> Void
     let onClipTrimCommitted: () -> Void
 
     @State private var sourcePeaks: [Float] = []
@@ -391,6 +393,15 @@ struct WaveformLaneView: View {
                 .contextMenu {
                     Button("Cue Section") {
                         onCueSection(section)
+                    }
+                    if loopSlotIDs.contains(section.id) {
+                        Button("Remove Loop") {
+                            onToggleLoopSection(section)
+                        }
+                    } else {
+                        Button("Loop Section") {
+                            onToggleLoopSection(section)
+                        }
                     }
                 }
 

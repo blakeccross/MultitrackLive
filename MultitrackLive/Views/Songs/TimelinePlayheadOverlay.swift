@@ -43,6 +43,23 @@ struct TimelinePlayheadOverlay: View {
     }
 }
 
+/// Fires a callback when playback reaches the end of an actively looping section.
+struct SectionLoopMonitor: View {
+    @Bindable private var audioEngine = AudioEngineManager.shared
+    let activeLoopSection: ArrangementDisplaySection?
+    let onLoop: () -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: audioEngine.currentTime) { _, time in
+                guard let section = activeLoopSection else { return }
+                guard time >= section.timelineEndSeconds else { return }
+                onLoop()
+            }
+    }
+}
+
 /// Fires a callback when playback reaches a scheduled section-cue time.
 struct SectionCueMonitor: View {
     @Bindable private var audioEngine = AudioEngineManager.shared

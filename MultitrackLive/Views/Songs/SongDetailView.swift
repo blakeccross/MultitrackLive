@@ -29,6 +29,7 @@ struct SongDetailView: View {
     @State private var arrangementSlots: [ArrangementSlot] = []
     @State private var clipTrims: [ArrangementClipTrim] = []
     @State private var removedClips: [ArrangementRemovedClip] = []
+    @State private var loopSlotIDs: Set<UUID> = []
 
     var body: some View {
         songDetailContent
@@ -70,6 +71,7 @@ struct SongDetailView: View {
                     slots: arrangementSlots,
                     clipTrims: clipTrims,
                     removedClips: removedClips,
+                    loopSlotIDs: loopSlotIDs,
                     for: song.id
                 )
             }
@@ -114,7 +116,8 @@ struct SongDetailView: View {
                         arrangementMarkers: arrangementMarkers,
                         arrangementSlots: $arrangementSlots,
                         clipTrims: $clipTrims,
-                        removedClips: $removedClips
+                        removedClips: $removedClips,
+                        loopSlotIDs: $loopSlotIDs
                     )
                 }
             } else {
@@ -140,6 +143,7 @@ struct SongDetailView: View {
         arrangementSlots = arrangement.slots
         clipTrims = arrangement.clipTrims
         removedClips = arrangement.removedClips
+        loopSlotIDs = arrangement.loopSlotIDs
     }
 
     private func syncArrangementPlayback() {
@@ -171,10 +175,12 @@ struct SongDetailView: View {
                 arrangementSlots = SongArrangementStore.defaultSlots(from: markers)
                 clipTrims = []
                 removedClips = []
+                loopSlotIDs = []
                 try SongArrangementStore.save(
                     slots: arrangementSlots,
                     clipTrims: clipTrims,
                     removedClips: removedClips,
+                    loopSlotIDs: loopSlotIDs,
                     for: song.id
                 )
                 abletonImportSummary = importSummary(for: importResult)

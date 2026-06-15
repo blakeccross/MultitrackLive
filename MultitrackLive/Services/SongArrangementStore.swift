@@ -32,18 +32,33 @@ enum SongArrangementStore {
         slots: [ArrangementSlot],
         clipTrims: [ArrangementClipTrim],
         removedClips: [ArrangementRemovedClip],
+        loopSlotIDs: Set<UUID> = [],
         for songID: UUID
     ) throws {
-        try save(SongArrangement(slots: slots, clipTrims: clipTrims, removedClips: removedClips), for: songID)
+        try save(
+            SongArrangement(
+                slots: slots,
+                clipTrims: clipTrims,
+                removedClips: removedClips,
+                loopSlotIDs: loopSlotIDs
+            ),
+            for: songID
+        )
     }
 
     static func saveAsync(
         slots: [ArrangementSlot],
         clipTrims: [ArrangementClipTrim],
         removedClips: [ArrangementRemovedClip],
+        loopSlotIDs: Set<UUID> = [],
         for songID: UUID
     ) {
-        let arrangement = SongArrangement(slots: slots, clipTrims: clipTrims, removedClips: removedClips)
+        let arrangement = SongArrangement(
+            slots: slots,
+            clipTrims: clipTrims,
+            removedClips: removedClips,
+            loopSlotIDs: loopSlotIDs
+        )
         Task.detached(priority: .utility) {
             try? save(arrangement, for: songID)
         }
@@ -536,6 +551,7 @@ enum SongArrangementStore {
         var validSlots = validatedSlots(arrangement.slots, markers: markers)
         var clipTrims = arrangement.clipTrims
         var removedClips = arrangement.removedClips
+        var loopSlotIDs = arrangement.loopSlotIDs
 
         if validSlots.isEmpty,
            !markers.isEmpty,
@@ -558,12 +574,19 @@ enum SongArrangementStore {
                 guard let newSlotID = slotIDMap[removed.slotID] else { return nil }
                 return ArrangementRemovedClip(slotID: newSlotID, trackID: removed.trackID)
             }
+            loopSlotIDs = Set(arrangement.loopSlotIDs.compactMap { slotIDMap[$0] })
         }
 
         let validSlotIDs = Set(validSlots.map(\.id))
         let validTrims = clipTrims.filter { validSlotIDs.contains($0.slotID) }
         let validRemoved = removedClips.filter { validSlotIDs.contains($0.slotID) }
-        return SongArrangement(slots: validSlots, clipTrims: validTrims, removedClips: validRemoved)
+        loopSlotIDs = loopSlotIDs.intersection(validSlotIDs)
+        return SongArrangement(
+            slots: validSlots,
+            clipTrims: validTrims,
+            removedClips: validRemoved,
+            loopSlotIDs: loopSlotIDs
+        )
     }
 
     private static func validatedSlots(_ slots: [ArrangementSlot], markers: [ArrangementMarker]) -> [ArrangementSlot] {

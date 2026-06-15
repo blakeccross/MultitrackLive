@@ -21,6 +21,7 @@ struct LiveSongWaveformView: View {
     let fileDuration: TimeInterval
     let timelineDuration: TimeInterval
     let sections: [ArrangementDisplaySection]
+    let loopSlotIDs: Set<UUID>
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
     var showsPlayhead = true
@@ -128,21 +129,29 @@ struct LiveSongWaveformView: View {
                     let segmentWidth = max(0, endX - startX)
                     let palette = ArrangementSectionPalette.colors(for: index)
                     let isCued = cuedSectionID == section.id
+                    let isLoopSection = loopSlotIDs.contains(section.id)
 
                     ZStack(alignment: .topLeading) {
                         Rectangle()
                             .fill(palette.background.opacity(isCued && cueFlashPhase ? 1 : 0.85))
 
-                        Text(section.name)
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(palette.accent)
-                            .lineLimit(1)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.white.opacity(0.92))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .padding(.leading, 4)
-                            .padding(.top, 4)
+                        HStack(spacing: 3) {
+                            if isLoopSection {
+                                Image(systemName: "repeat")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(palette.accent)
+                            }
+                            Text(section.name)
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(palette.accent)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.white.opacity(0.92))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .padding(.leading, 4)
+                        .padding(.top, 4)
                     }
                     .frame(width: segmentWidth, height: waveformHeight)
                     .overlay {
@@ -341,6 +350,7 @@ struct LiveSetlistWaveformScrollView: View {
                 fileDuration: snapshot.fileDuration,
                 timelineDuration: isCurrent ? playbackDuration : snapshot.timelineDuration,
                 sections: snapshot.sections,
+                loopSlotIDs: snapshot.loopSlotIDs,
                 cuedSectionID: isCurrent ? cuedSectionID : nil,
                 cueFlashPhase: isCurrent ? cueFlashPhase : false,
                 showsPlayhead: isCurrent,

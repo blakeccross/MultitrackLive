@@ -13,6 +13,7 @@ struct EditView: View {
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
     @Binding var removedClips: [ArrangementRemovedClip]
+    @Binding var loopSlotIDs: Set<UUID>
 
     @State private var timelineZoom: CGFloat = 1
     @State private var timelineViewportWidth: CGFloat = 0
@@ -87,6 +88,7 @@ struct EditView: View {
             slots: arrangementSlots,
             clipTrims: clipTrims,
             removedClips: removedClips,
+            loopSlotIDs: loopSlotIDs,
             for: song.id
         )
     }
@@ -262,6 +264,15 @@ struct EditView: View {
         clearMarkerCue(cancellingScheduledTransition: false)
     }
 
+    private func toggleLoopSection(_ section: ArrangementDisplaySection) {
+        if loopSlotIDs.contains(section.id) {
+            loopSlotIDs.remove(section.id)
+        } else {
+            loopSlotIDs.insert(section.id)
+        }
+        persistArrangement()
+    }
+
     private func seekOnTimeline(to time: TimeInterval) {
         viewModel.seekAndPlay(to: time)
     }
@@ -297,6 +308,7 @@ struct EditView: View {
             arrangementSlots: $arrangementSlots,
             clipTrims: $clipTrims,
             removedClips: $removedClips,
+            loopSlotIDs: $loopSlotIDs,
             onClearMarkerCue: { clearMarkerCue() }
         )
     }
@@ -313,13 +325,15 @@ struct EditView: View {
                                 sections: displaySections,
                                 cuedSectionID: cuedSectionID,
                                 cueFlashPhase: cueFlashPhase,
+                                loopSlotIDs: loopSlotIDs,
                                 sectionMarkerHeight: TimelineLayout.sectionMarkerHeight,
                                 rulerHeight: TimelineLayout.rulerHeight,
                                 onSeek: { time in
                                     clearMarkerCue()
                                     seekOnTimeline(to: time)
                                 },
-                                onCueSection: cueSection
+                                onCueSection: cueSection,
+                                onToggleLoopSection: toggleLoopSection
                             )
                             .frame(height: TimelineLayout.rulerTotalHeight)
                             .id("\(displaySections.map(\.id))|\(timelineContentWidth)")
@@ -345,6 +359,8 @@ struct EditView: View {
                                             viewModel.updateTrim(for: track, context: modelContext)
                                         },
                                         onCueSection: cueSection,
+                                        loopSlotIDs: loopSlotIDs,
+                                        onToggleLoopSection: toggleLoopSection,
                                         onClipTrimCommitted: {
                                             persistArrangement()
                                             commitTrackArrangementChange(for: track.id)
@@ -474,6 +490,7 @@ private struct EditTransportBar: View {
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
     @Binding var removedClips: [ArrangementRemovedClip]
+    @Binding var loopSlotIDs: Set<UUID>
     let onClearMarkerCue: () -> Void
 
     @Bindable private var audioEngine = AudioEngineManager.shared
@@ -540,6 +557,7 @@ private struct EditTransportBar: View {
                 slots: $arrangementSlots,
                 clipTrims: $clipTrims,
                 removedClips: $removedClips,
+                loopSlotIDs: $loopSlotIDs,
                 markers: markers,
                 songID: song.id
             )
@@ -606,10 +624,12 @@ private struct TimelineRulerView: View {
     let sections: [ArrangementDisplaySection]
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
+    let loopSlotIDs: Set<UUID>
     let sectionMarkerHeight: CGFloat
     let rulerHeight: CGFloat
     let onSeek: (TimeInterval) -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
+    let onToggleLoopSection: (ArrangementDisplaySection) -> Void
 
     private var safeDuration: TimeInterval {
         max(duration, 0.001)
@@ -710,18 +730,26 @@ private struct TimelineRulerView: View {
                     )
                     let segmentWidth = max(0, endX - startX)
                     let isCued = cuedSectionID == section.id
+                    let isLoopSection = loopSlotIDs.contains(section.id)
 
                     ZStack(alignment: .leading) {
                         Rectangle()
                             .fill(sectionColor(index).opacity(isCued && cueFlashPhase ? 0.55 : 0.25))
 
-                        Text(section.name)
-                            .font(.system(size: 9, weight: .semibold))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .foregroundStyle(sectionColor(index))
-                            .padding(.horizontal, 4)
-                            .frame(width: segmentWidth, alignment: .leading)
+                        HStack(spacing: 2) {
+                            if isLoopSection {
+                                Image(systemName: "repeat")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(sectionColor(index))
+                            }
+                            Text(section.name)
+                                .font(.system(size: 9, weight: .semibold))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .foregroundStyle(sectionColor(index))
+                        }
+                        .padding(.horizontal, 4)
+                        .frame(width: segmentWidth, alignment: .leading)
                     }
                     .frame(width: segmentWidth, height: sectionMarkerHeight)
                     .overlay {
@@ -737,6 +765,15 @@ private struct TimelineRulerView: View {
                     .contextMenu {
                         Button("Cue Section") {
                             onCueSection(section)
+                        }
+                        if isLoopSection {
+                            Button("Remove Loop") {
+                                onToggleLoopSection(section)
+                            }
+                        } else {
+                            Button("Loop Section") {
+                                onToggleLoopSection(section)
+                            }
                         }
                     }
                     .offset(x: startX)
@@ -786,6 +823,7 @@ private struct TimelineRulerView: View {
         arrangementMarkers: [],
         arrangementSlots: .constant([]),
         clipTrims: .constant([]),
-        removedClips: .constant([])
+        removedClips: .constant([]),
+        loopSlotIDs: .constant([])
     )
 }

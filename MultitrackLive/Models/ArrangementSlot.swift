@@ -44,15 +44,41 @@ struct SongArrangement: Codable {
     var slots: [ArrangementSlot]
     var clipTrims: [ArrangementClipTrim]
     var removedClips: [ArrangementRemovedClip]
+    var loopSlotIDs: Set<UUID>
+
+    enum CodingKeys: String, CodingKey {
+        case slots
+        case clipTrims
+        case removedClips
+        case loopSlotIDs
+    }
 
     init(
         slots: [ArrangementSlot],
         clipTrims: [ArrangementClipTrim] = [],
-        removedClips: [ArrangementRemovedClip] = []
+        removedClips: [ArrangementRemovedClip] = [],
+        loopSlotIDs: Set<UUID> = []
     ) {
         self.slots = slots
         self.clipTrims = clipTrims
         self.removedClips = removedClips
+        self.loopSlotIDs = loopSlotIDs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        slots = try container.decode([ArrangementSlot].self, forKey: .slots)
+        clipTrims = try container.decodeIfPresent([ArrangementClipTrim].self, forKey: .clipTrims) ?? []
+        removedClips = try container.decodeIfPresent([ArrangementRemovedClip].self, forKey: .removedClips) ?? []
+        loopSlotIDs = Set(try container.decodeIfPresent([UUID].self, forKey: .loopSlotIDs) ?? [])
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(slots, forKey: .slots)
+        try container.encode(clipTrims, forKey: .clipTrims)
+        try container.encode(removedClips, forKey: .removedClips)
+        try container.encode(Array(loopSlotIDs), forKey: .loopSlotIDs)
     }
 }
 

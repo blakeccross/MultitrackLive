@@ -4,6 +4,7 @@ struct ArrangementEditorMenu: View {
     @Binding var slots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
     @Binding var removedClips: [ArrangementRemovedClip]
+    @Binding var loopSlotIDs: Set<UUID>
     let markers: [ArrangementMarker]
     let songID: UUID
 
@@ -104,6 +105,7 @@ struct ArrangementEditorMenu: View {
         slots.removeAll { $0.id == slot.id }
         clipTrims.removeAll { $0.slotID == slot.id }
         removedClips.removeAll { $0.slotID == slot.id }
+        loopSlotIDs.remove(slot.id)
         persist()
     }
 
@@ -112,6 +114,7 @@ struct ArrangementEditorMenu: View {
             slots: slots,
             clipTrims: clipTrims,
             removedClips: removedClips,
+            loopSlotIDs: loopSlotIDs,
             for: songID
         )
     }

@@ -9,6 +9,7 @@ struct LiveSongWaveformSnapshot: Identifiable {
     let fileDuration: TimeInterval
     let timelineDuration: TimeInterval
     let sections: [ArrangementDisplaySection]
+    let loopSlotIDs: Set<UUID>
 
     var id: UUID { songID }
 
@@ -259,7 +260,8 @@ final class PlaybackCoordinator {
             trackSources: trackSources,
             fileDuration: fileDuration,
             timelineDuration: timelineDuration,
-            sections: layout.rulerSections
+            sections: layout.rulerSections,
+            loopSlotIDs: arrangement.loopSlotIDs
         )
     }
 }
