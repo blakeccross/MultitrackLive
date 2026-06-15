@@ -12,9 +12,11 @@ struct LivePlaybackView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Song.name) private var allSongs: [Song]
+    @Query(sort: \Setlist.createdAt, order: .reverse) private var allSetlists: [Setlist]
 
     let setlist: Setlist
 
+    @State private var activeSetlistID: UUID
     @State private var coordinator = PlaybackCoordinator()
     @State private var viewModel = SetlistViewModel()
     @Bindable private var audioEngine = AudioEngineManager.shared
@@ -29,6 +31,17 @@ struct LivePlaybackView: View {
     @State private var clearDropTargetTask: Task<Void, Never>?
     @State private var songToEditID: UUID?
     @State private var showingManageOutputs = false
+    @State private var showingNewSetlistAlert = false
+    @State private var newSetlistName = ""
+
+    init(setlist: Setlist) {
+        self.setlist = setlist
+        _activeSetlistID = State(initialValue: setlist.id)
+    }
+
+    private var activeSetlist: Setlist {
+        allSetlists.first(where: { $0.id == activeSetlistID }) ?? setlist
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,11 +52,14 @@ struct LivePlaybackView: View {
 
             setlistSection
         }
-        .navigationTitle(setlist.name)
+        .navigationTitle(activeSetlist.name)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                setlistSwitcherMenu
+            }
             ToolbarItem(placement: .cancellationAction) {
                 Button("Stop") {
                     clearMarkerCue()
@@ -75,6 +91,15 @@ struct LivePlaybackView: View {
             ManageOutputsView {
                 coordinator.applyOutputRouting()
             }
+        }
+        .alert("New Setlist", isPresented: $showingNewSetlistAlert) {
+            TextField("Setlist name", text: $newSetlistName)
+            Button("Create") {
+                createSetlist()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Enter a name for your live setlist.")
         }
         .background {
             SectionCueMonitor(
@@ -114,7 +139,13 @@ struct LivePlaybackView: View {
                 )
                 return OutputRoutingStore.snapshot(in: modelContext, channelCount: channelCount)
             }
-            coordinator.configure(setlist: setlist)
+            coordinator.configure(setlist: activeSetlist)
+        }
+        .onChange(of: activeSetlistID) { _, _ in
+            songSearchText = ""
+            showingSongLibrary = false
+            songDropInsertionIndex = nil
+            clearDropTargetTask?.cancel()
         }
         .onDisappear {
             clearMarkerCue()
@@ -130,6 +161,64 @@ struct LivePlaybackView: View {
                 SongDetailView(song: song, initialTab: .edit)
             }
         }
+    }
+
+    private var setlistSwitcherMenu: some View {
+        Menu {
+            ForEach(allSetlists) { candidate in
+                Button {
+                    switchToSetlist(candidate)
+                } label: {
+                    if candidate.id == activeSetlistID {
+                        Label {
+                            Text("\(candidate.name) · \(candidate.entries.count) songs")
+                        } icon: {
+                            Image(systemName: "checkmark")
+                        }
+                    } else {
+                        Text("\(candidate.name) · \(candidate.entries.count) songs")
+                    }
+                }
+            }
+
+            Divider()
+
+            Button {
+                newSetlistName = ""
+                showingNewSetlistAlert = true
+            } label: {
+                Label("New Setlist", systemImage: "plus")
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(activeSetlist.name)
+                    .fontWeight(.semibold)
+                Image(systemName: "chevron.down.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func switchToSetlist(_ setlist: Setlist) {
+        guard setlist.id != activeSetlistID else { return }
+
+        clearMarkerCue()
+        activeLoopSectionID = nil
+        suppressedLoopSectionIDs.removeAll()
+        coordinator.stop()
+        activeSetlistID = setlist.id
+        coordinator.configure(setlist: setlist)
+    }
+
+    private func createSetlist() {
+        let trimmed = newSetlistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let newSetlist = Setlist(name: trimmed)
+        modelContext.insert(newSetlist)
+        try? modelContext.save()
+        switchToSetlist(newSetlist)
     }
 
     private var currentSongSection: some View {
@@ -220,7 +309,7 @@ struct LivePlaybackView: View {
     private var setlistList: some View {
         List {
             Section("Setlist") {
-                if setlist.sortedEntries.isEmpty {
+                if activeSetlist.sortedEntries.isEmpty {
                     SetlistSongDropSlot(
                         index: 0,
                         insertionIndex: $songDropInsertionIndex,
@@ -237,7 +326,7 @@ struct LivePlaybackView: View {
                     )
                     .listRowSeparator(.hidden)
                 } else {
-                    ForEach(Array(setlist.sortedEntries.enumerated()), id: \.element.id) { index, entry in
+                    ForEach(Array(activeSetlist.sortedEntries.enumerated()), id: \.element.id) { index, entry in
                         if let song = entry.song {
                             setlistEntryRow(
                                 song: song,
@@ -247,22 +336,22 @@ struct LivePlaybackView: View {
                         }
                     }
                     .onMove { source, destination in
-                        viewModel.moveEntries(in: setlist, from: source, to: destination, context: modelContext)
-                        coordinator.syncSetlist(setlist)
+                        viewModel.moveEntries(in: activeSetlist, from: source, to: destination, context: modelContext)
+                        coordinator.syncSetlist(activeSetlist)
                     }
                     .onDelete { indexSet in
-                        let entries = setlist.sortedEntries
+                        let entries = activeSetlist.sortedEntries
                         for index in indexSet {
-                            viewModel.removeEntry(entries[index], from: setlist, context: modelContext)
+                            viewModel.removeEntry(entries[index], from: activeSetlist, context: modelContext)
                         }
-                        coordinator.syncSetlist(setlist)
+                        coordinator.syncSetlist(activeSetlist)
                     }
 
                     SetlistSongDropSlot(
-                        index: setlist.sortedEntries.count,
+                        index: activeSetlist.sortedEntries.count,
                         insertionIndex: $songDropInsertionIndex,
                         listRowStyled: true,
-                        onDrop: { addSongFromDrag($0, at: setlist.sortedEntries.count) },
+                        onDrop: { addSongFromDrag($0, at: activeSetlist.sortedEntries.count) },
                         onTargetChanged: updateDropTarget
                     )
                 }
@@ -291,10 +380,10 @@ struct LivePlaybackView: View {
                 index: index,
                 currentIndex: coordinator.currentIndex,
                 isPlaying: audioEngine.isPlaying,
-                transition: index < setlist.sortedEntries.count - 1 ? entry.transition : nil,
+                transition: index < activeSetlist.sortedEntries.count - 1 ? entry.transition : nil,
                 onTransitionChange: { transition in
                     viewModel.setTransition(transition, for: entry, context: modelContext)
-                    coordinator.updateTransitions(from: setlist)
+                    coordinator.updateTransitions(from: activeSetlist)
                 }
             )
             .contentShape(Rectangle())
@@ -323,12 +412,12 @@ struct LivePlaybackView: View {
     }
 
     private func removeFromSetlist(_ entry: SetlistEntry) {
-        viewModel.removeEntry(entry, from: setlist, context: modelContext)
-        coordinator.syncSetlist(setlist)
+        viewModel.removeEntry(entry, from: activeSetlist, context: modelContext)
+        coordinator.syncSetlist(activeSetlist)
     }
 
     private func songForEditing(id: UUID) -> Song? {
-        setlist.sortedEntries.compactMap(\.song).first(where: { $0.id == id })
+        activeSetlist.sortedEntries.compactMap(\.song).first(where: { $0.id == id })
             ?? allSongs.first(where: { $0.id == id })
     }
 
@@ -406,8 +495,8 @@ struct LivePlaybackView: View {
         withAnimation(SetlistDropMetrics.spring) {
             songDropInsertionIndex = nil
         }
-        viewModel.insertSong(song, at: index, to: setlist, context: modelContext)
-        coordinator.syncSetlist(setlist)
+        viewModel.insertSong(song, at: index, to: activeSetlist, context: modelContext)
+        coordinator.syncSetlist(activeSetlist)
         return true
     }
 
