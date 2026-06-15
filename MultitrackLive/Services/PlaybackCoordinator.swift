@@ -22,6 +22,7 @@ final class PlaybackCoordinator {
     private let audioEngine = AudioEngineManager.shared
 
     private(set) var songs: [Song] = []
+    private(set) var transitions: [SetlistTransition] = []
     private(set) var currentIndex = 0
     private(set) var isLoaded = false
     private(set) var loadError: String?
@@ -45,16 +46,49 @@ final class PlaybackCoordinator {
         return songs[previousIndex]
     }
 
+    var transitionAfterCurrentSong: SetlistTransition? {
+        guard transitions.indices.contains(currentIndex) else { return nil }
+        return transitions[currentIndex]
+    }
+
     init() {
         audioEngine.onPlaybackFinished = { [weak self] in
-            self?.advanceToNextSong(autoPlay: true)
+            guard let self else { return }
+            let shouldAutoPlay = self.transitionAfterCurrentSong == .continue
+            self.advanceToNextSong(autoPlay: shouldAutoPlay)
         }
     }
 
     func configure(setlist: Setlist) {
-        songs = setlist.sortedEntries.compactMap(\.song)
+        let entries = setlist.sortedEntries
+        songs = entries.compactMap(\.song)
+        transitions = entries.map(\.transition)
         currentIndex = 0
         loadCurrentSong()
+    }
+
+    func syncSetlist(_ setlist: Setlist) {
+        let entries = setlist.sortedEntries
+        let newSongs = entries.compactMap(\.song)
+        let newTransitions = entries.map(\.transition)
+        let currentSongID = currentSong?.id
+
+        songs = newSongs
+        transitions = newTransitions
+
+        if let currentSongID, let newIndex = songs.firstIndex(where: { $0.id == currentSongID }) {
+            currentIndex = newIndex
+        } else if songs.isEmpty {
+            currentIndex = 0
+        } else {
+            currentIndex = min(currentIndex, songs.count - 1)
+        }
+
+        loadCurrentSong()
+    }
+
+    func updateTransitions(from setlist: Setlist) {
+        transitions = setlist.sortedEntries.map(\.transition)
     }
 
     func loadCurrentSong() {

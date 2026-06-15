@@ -1,15 +1,19 @@
+import SwiftData
 import SwiftUI
 
 struct LivePlaybackView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     let setlist: Setlist
 
     @State private var coordinator = PlaybackCoordinator()
+    @State private var viewModel = SetlistViewModel()
     @Bindable private var audioEngine = AudioEngineManager.shared
     @State private var cuedSectionID: UUID?
     @State private var cueFireTime: TimeInterval?
     @State private var cueFlashPhase = false
+    @State private var showingSongPicker = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,6 +35,22 @@ struct LivePlaybackView: View {
                     coordinator.stop()
                     dismiss()
                 }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button("Add Song") {
+                    showingSongPicker = true
+                }
+            }
+            #if os(iOS)
+            ToolbarItem(placement: .automatic) {
+                EditButton()
+            }
+            #endif
+        }
+        .sheet(isPresented: $showingSongPicker) {
+            SetlistSongPickerView { song in
+                viewModel.addSong(song, to: setlist, context: modelContext)
+                coordinator.syncSetlist(setlist)
             }
         }
         .background {
@@ -73,6 +93,7 @@ struct LivePlaybackView: View {
                 LiveSetlistWaveformScrollView(
                     currentSnapshot: snapshot,
                     nextSnapshot: coordinator.nextWaveformSnapshot,
+                    transitionToNext: coordinator.transitionAfterCurrentSong,
                     playbackDuration: audioEngine.duration,
                     cuedSectionID: cuedSectionID,
                     cueFlashPhase: cueFlashPhase,
@@ -116,23 +137,53 @@ struct LivePlaybackView: View {
     }
 
     private var setlistSection: some View {
-        List {
-            Section("Setlist") {
-                ForEach(Array(coordinator.songs.enumerated()), id: \.element.id) { index, song in
-                    SetlistPlaybackRow(
-                        song: song,
-                        index: index,
-                        currentIndex: coordinator.currentIndex,
-                        isPlaying: audioEngine.isPlaying
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        coordinator.goToSong(at: index, autoPlay: audioEngine.isPlaying)
+        Group {
+            if setlist.sortedEntries.isEmpty {
+                ContentUnavailableView(
+                    "No Songs in Setlist",
+                    systemImage: "music.note.list",
+                    description: Text("Add songs in the order you want to perform them.")
+                )
+            } else {
+                List {
+                    Section("Setlist") {
+                        ForEach(Array(setlist.sortedEntries.enumerated()), id: \.element.id) { index, entry in
+                            if let song = entry.song {
+                                SetlistPlaybackRow(
+                                    song: song,
+                                    index: index,
+                                    currentIndex: coordinator.currentIndex,
+                                    isPlaying: audioEngine.isPlaying,
+                                    transition: index < setlist.sortedEntries.count - 1 ? entry.transition : nil,
+                                    onTransitionChange: { transition in
+                                        viewModel.setTransition(transition, for: entry, context: modelContext)
+                                        coordinator.updateTransitions(from: setlist)
+                                    }
+                                )
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if let songIndex = coordinator.songs.firstIndex(where: { $0.id == song.id }) {
+                                        coordinator.goToSong(at: songIndex, autoPlay: audioEngine.isPlaying)
+                                    }
+                                }
+                            }
+                        }
+                        .onMove { source, destination in
+                            viewModel.moveEntries(in: setlist, from: source, to: destination, context: modelContext)
+                            coordinator.syncSetlist(setlist)
+                        }
+                        .onDelete { indexSet in
+                            let entries = setlist.sortedEntries
+                            for index in indexSet {
+                                viewModel.removeEntry(entries[index], from: setlist, context: modelContext)
+                            }
+                            coordinator.syncSetlist(setlist)
+                        }
                     }
                 }
+                .listStyle(.plain)
             }
         }
-        .listStyle(.plain)
     }
 
     private func clearMarkerCue(cancellingScheduledTransition: Bool = true) {
@@ -195,6 +246,8 @@ private struct SetlistPlaybackRow: View {
     let index: Int
     let currentIndex: Int
     let isPlaying: Bool
+    let transition: SetlistTransition?
+    let onTransitionChange: (SetlistTransition) -> Void
 
     private var isFinished: Bool {
         index < currentIndex
@@ -217,6 +270,21 @@ private struct SetlistPlaybackRow: View {
                 .lineLimit(2)
 
             Spacer()
+
+            if let transition {
+                Menu {
+                    ForEach(SetlistTransition.allCases) { option in
+                        Button {
+                            onTransitionChange(option)
+                        } label: {
+                            Label(option.label, systemImage: option.systemImage)
+                        }
+                    }
+                } label: {
+                    SetlistTransitionBadge(transition: transition, size: 24)
+                }
+                .menuStyle(.borderlessButton)
+            }
 
             if isCurrent {
                 PlayingBadge(isPlaying: isPlaying)
@@ -249,8 +317,56 @@ private struct PlayingBadge: View {
     }
 }
 
+private struct SetlistSongPickerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \Song.createdAt, order: .reverse) private var songs: [Song]
+
+    let onSelect: (Song) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if songs.isEmpty {
+                    ContentUnavailableView(
+                        "No Songs Available",
+                        systemImage: "music.note",
+                        description: Text("Create songs in the Songs tab before adding them to a setlist.")
+                    )
+                } else {
+                    List(songs) { song in
+                        Button {
+                            onSelect(song)
+                            dismiss()
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(song.name)
+                                    .font(.headline)
+                                Text("\(song.tracks.count) tracks")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .navigationTitle("Add Song")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .frame(minWidth: 420, minHeight: 320)
+    }
+}
+
 #Preview {
     NavigationStack {
         LivePlaybackView(setlist: Setlist(name: "Sunday"))
     }
+    .modelContainer(for: [Setlist.self, SetlistEntry.self, Song.self], inMemory: true)
 }

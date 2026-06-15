@@ -3,7 +3,7 @@ import SwiftData
 
 enum PersistenceController {
     /// Bump when arrangement marker storage changes so stale rows are discarded.
-    private static let storeVersion = 6
+    private static let storeVersion = 7
     private static let storeVersionKey = "SwiftDataStoreVersion"
 
     static let modelTypes: [any PersistentModel.Type] = [

@@ -20,7 +20,7 @@ struct SetlistLibraryView: View {
                 } else {
                     List(setlists) { setlist in
                         NavigationLink {
-                            SetlistDetailView(setlist: setlist)
+                            LivePlaybackView(setlist: setlist)
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(setlist.name)

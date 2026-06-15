@@ -24,7 +24,6 @@
 		AA000001000000000000000F /* EditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000000F /* EditView.swift */; };
 		AA0000010000000000000010 /* TrackImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000010 /* TrackImportView.swift */; };
 		AA0000010000000000000011 /* SetlistLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000011 /* SetlistLibraryView.swift */; };
-		AA0000010000000000000012 /* SetlistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000012 /* SetlistDetailView.swift */; };
 		AA0000010000000000000013 /* LivePlaybackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000013 /* LivePlaybackView.swift */; };
 		AA0000010000000000000014 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000014 /* Assets.xcassets */; };
 		AA0000010000000000000015 /* WaveformLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000016 /* WaveformLoader.swift */; };
@@ -44,6 +43,7 @@
 		AA0000010000000000000027 /* TrackMemoryPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000027 /* TrackMemoryPlayer.swift */; };
 		AA0000010000000000000023 /* TimelinePlayheadOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000024 /* TimelinePlayheadOverlay.swift */; };
 		AA0000010000000000000028 /* LiveSongWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000028 /* LiveSongWaveformView.swift */; };
+		AA0000010000000000000029 /* SetlistTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000029 /* SetlistTransition.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -65,7 +65,6 @@
 		AA000002000000000000000F /* EditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000010 /* TrackImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackImportView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000011 /* SetlistLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistLibraryView.swift; sourceTree = "<group>"; };
-		AA0000020000000000000012 /* SetlistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistDetailView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000013 /* LivePlaybackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePlaybackView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000014 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA0000020000000000000015 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -85,6 +84,7 @@
 		AA0000020000000000000026 /* DecodedStemBuffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecodedStemBuffer.swift; sourceTree = "<group>"; };
 		AA0000020000000000000027 /* TrackMemoryPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackMemoryPlayer.swift; sourceTree = "<group>"; };
 		AA0000020000000000000028 /* LiveSongWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSongWaveformView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000029 /* SetlistTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistTransition.swift; sourceTree = "<group>"; };
 		AA0000020000000000000024 /* TimelinePlayheadOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelinePlayheadOverlay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -138,6 +138,7 @@
 				AA000002000000000000001E /* ArrangementSlot.swift */,
 				AA0000020000000000000004 /* Setlist.swift */,
 				AA0000020000000000000005 /* SetlistEntry.swift */,
+				AA0000020000000000000029 /* SetlistTransition.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -201,7 +202,6 @@
 			isa = PBXGroup;
 			children = (
 				AA0000020000000000000011 /* SetlistLibraryView.swift */,
-				AA0000020000000000000012 /* SetlistDetailView.swift */,
 				AA0000020000000000000013 /* LivePlaybackView.swift */,
 				AA0000020000000000000028 /* LiveSongWaveformView.swift */,
 			);
@@ -294,7 +294,6 @@
 				AA000001000000000000000F /* EditView.swift in Sources */,
 				AA0000010000000000000010 /* TrackImportView.swift in Sources */,
 				AA0000010000000000000011 /* SetlistLibraryView.swift in Sources */,
-				AA0000010000000000000012 /* SetlistDetailView.swift in Sources */,
 				AA0000010000000000000013 /* LivePlaybackView.swift in Sources */,
 				AA0000010000000000000015 /* WaveformLoader.swift in Sources */,
 				AA0000010000000000000016 /* WaveformLaneView.swift in Sources */,
@@ -313,6 +312,7 @@
 				AA0000010000000000000027 /* TrackMemoryPlayer.swift in Sources */,
 				AA0000010000000000000023 /* TimelinePlayheadOverlay.swift in Sources */,
 				AA0000010000000000000028 /* LiveSongWaveformView.swift in Sources */,
+				AA0000010000000000000029 /* SetlistTransition.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

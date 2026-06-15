@@ -269,6 +269,7 @@ struct LiveSongWaveformView: View {
 struct LiveSetlistWaveformScrollView: View {
     let currentSnapshot: LiveSongWaveformSnapshot
     let nextSnapshot: LiveSongWaveformSnapshot?
+    let transitionToNext: SetlistTransition?
     let playbackDuration: TimeInterval
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
@@ -293,6 +294,15 @@ struct LiveSetlistWaveformScrollView: View {
                     )
 
                     if let nextSnapshot {
+                        if let transitionToNext {
+                            VStack {
+                                Spacer()
+                                SetlistTransitionBadge(transition: transitionToNext)
+                                Spacer()
+                            }
+                            .frame(height: laneHeight)
+                        }
+
                         waveformLane(
                             snapshot: nextSnapshot,
                             isCurrent: false,

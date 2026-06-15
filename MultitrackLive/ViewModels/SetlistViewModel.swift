@@ -27,6 +27,11 @@ final class SetlistViewModel {
         try? context.save()
     }
 
+    func setTransition(_ transition: SetlistTransition, for entry: SetlistEntry, context: ModelContext) {
+        entry.transition = transition
+        try? context.save()
+    }
+
     private func normalizeSortOrder(for setlist: Setlist) {
         for (index, entry) in setlist.sortedEntries.enumerated() {
             entry.sortOrder = index
