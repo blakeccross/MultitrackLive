@@ -20,7 +20,7 @@ struct SongDetailView: View {
 
     @Bindable var song: Song
 
-    @State private var selectedTab: SongDetailTab = .mix
+    @State private var selectedTab: SongDetailTab
     @State private var viewModel: SongEditorViewModel?
     @State private var showingAbletonImporter = false
     @State private var abletonImportError: String?
@@ -30,6 +30,11 @@ struct SongDetailView: View {
     @State private var clipTrims: [ArrangementClipTrim] = []
     @State private var removedClips: [ArrangementRemovedClip] = []
     @State private var loopSlotIDs: Set<UUID> = []
+
+    init(song: Song, initialTab: SongDetailTab = .mix) {
+        self.song = song
+        _selectedTab = State(initialValue: initialTab)
+    }
 
     var body: some View {
         songDetailContent

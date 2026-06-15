@@ -5,9 +5,22 @@ import SwiftData
 @Observable
 final class SetlistViewModel {
     func addSong(_ song: Song, to setlist: Setlist, context: ModelContext) {
-        let entry = SetlistEntry(sortOrder: setlist.entries.count, song: song)
+        insertSong(song, at: setlist.entries.count, to: setlist, context: context)
+    }
+
+    func insertSong(_ song: Song, at index: Int, to setlist: Setlist, context: ModelContext) {
+        let entry = SetlistEntry(sortOrder: 0, song: song)
         entry.setlist = setlist
         setlist.entries.append(entry)
+
+        var sorted = setlist.sortedEntries
+        guard let entryIndex = sorted.firstIndex(where: { $0 === entry }) else { return }
+        sorted.remove(at: entryIndex)
+        let clampedIndex = min(max(0, index), sorted.count)
+        sorted.insert(entry, at: clampedIndex)
+        for (idx, item) in sorted.enumerated() {
+            item.sortOrder = idx
+        }
         try? context.save()
     }
 

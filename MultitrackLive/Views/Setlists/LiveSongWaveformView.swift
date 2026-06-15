@@ -279,7 +279,6 @@ struct LiveSetlistWaveformScrollView: View {
     let currentSnapshot: LiveSongWaveformSnapshot
     let nextSnapshot: LiveSongWaveformSnapshot?
     let transitionToNext: SetlistTransition?
-    let playbackDuration: TimeInterval
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
     let onSeek: (TimeInterval) -> Void
@@ -293,62 +292,92 @@ struct LiveSetlistWaveformScrollView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: true) {
-                HStack(alignment: .top, spacing: laneSpacing) {
-                    waveformLane(
-                        snapshot: currentSnapshot,
-                        isCurrent: true,
-                        scrollID: "current"
-                    )
-
-                    if let nextSnapshot {
-                        if let transitionToNext {
-                            VStack {
-                                Spacer()
-                                SetlistTransitionBadge(transition: transitionToNext)
-                                Spacer()
-                            }
-                            .frame(height: laneHeight)
-                        }
-
+        GeometryReader { geometry in
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: true) {
+                    HStack(alignment: .top, spacing: laneSpacing) {
                         waveformLane(
-                            snapshot: nextSnapshot,
-                            isCurrent: false,
-                            scrollID: "next"
+                            snapshot: currentSnapshot,
+                            isCurrent: true,
+                            scrollID: "current",
+                            viewportWidth: geometry.size.width
                         )
+
+                        if let nextSnapshot {
+                            if let transitionToNext {
+                                VStack {
+                                    Spacer()
+                                    SetlistTransitionBadge(transition: transitionToNext)
+                                    Spacer()
+                                }
+                                .frame(height: laneHeight)
+                            }
+
+                            waveformLane(
+                                snapshot: nextSnapshot,
+                                isCurrent: false,
+                                scrollID: "next",
+                                viewportWidth: geometry.size.width
+                            )
+                        }
                     }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(.vertical, 2)
                 }
-                .padding(.vertical, 2)
-            }
-            .onAppear {
-                proxy.scrollTo("current", anchor: .leading)
-            }
-            .onChange(of: currentSnapshot.songID) { _, _ in
-                proxy.scrollTo("current", anchor: .leading)
+                .onAppear {
+                    scrollToCurrent(proxy)
+                }
+                .onChange(of: currentSnapshot.songID) { _, _ in
+                    scrollToCurrent(proxy)
+                }
+                .onChange(of: nextSnapshot?.songID) { _, _ in
+                    scrollToCurrent(proxy)
+                }
             }
         }
         .frame(height: laneHeight)
+    }
+
+    private func contentWidth(for snapshot: LiveSongWaveformSnapshot, viewportWidth: CGFloat) -> CGFloat {
+        if nextSnapshot == nil, viewportWidth > 0 {
+            let zoom = TimelineLayout.minZoom(
+                duration: snapshot.timelineDuration,
+                viewportWidth: viewportWidth
+            )
+            return TimelineLayout.contentWidth(for: snapshot.timelineDuration, zoom: zoom)
+        }
+
+        return snapshot.contentWidth
+    }
+
+    private func scrollToCurrent(_ proxy: ScrollViewProxy) {
+        Task { @MainActor in
+            await Task.yield()
+            proxy.scrollTo("current", anchor: .leading)
+        }
     }
 
     @ViewBuilder
     private func waveformLane(
         snapshot: LiveSongWaveformSnapshot,
         isCurrent: Bool,
-        scrollID: String
+        scrollID: String,
+        viewportWidth: CGFloat
     ) -> some View {
+        let laneContentWidth = contentWidth(for: snapshot, viewportWidth: viewportWidth)
+
         VStack(alignment: .leading, spacing: 6) {
             Text(snapshot.songName)
                 .font(isCurrent ? .subheadline.weight(.semibold) : .caption.weight(.medium))
                 .foregroundStyle(isCurrent ? .primary : .secondary)
                 .lineLimit(1)
-                .frame(width: snapshot.contentWidth, alignment: .leading)
+                .frame(width: laneContentWidth, alignment: .leading)
 
             LiveSongWaveformView(
-                contentWidth: snapshot.contentWidth,
+                contentWidth: laneContentWidth,
                 trackSources: snapshot.trackSources,
                 fileDuration: snapshot.fileDuration,
-                timelineDuration: isCurrent ? playbackDuration : snapshot.timelineDuration,
+                timelineDuration: snapshot.timelineDuration,
                 sections: snapshot.sections,
                 loopSlotIDs: snapshot.loopSlotIDs,
                 cuedSectionID: isCurrent ? cuedSectionID : nil,
