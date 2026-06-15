@@ -67,6 +67,14 @@ extension Color {
         Color.blue.opacity(0.9)
     }
 
+    static var dawClipSideBorder: Color {
+        Color.blue.opacity(0.48)
+    }
+
+    static var dawMeasureGridLine: Color {
+        Color.primary.opacity(0.1)
+    }
+
     static var dawWaveformFill: Color {
         Color.blue.opacity(0.72)
     }

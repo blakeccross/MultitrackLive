@@ -15,6 +15,8 @@ struct EditView: View {
     @Binding var removedClips: [ArrangementRemovedClip]
 
     @State private var timelineZoom: CGFloat = 1
+    @State private var timelineViewportWidth: CGFloat = 0
+    @State private var hasSetInitialTimelineZoom = false
     @State private var pinchStartZoom: CGFloat?
     @State private var cuedSectionID: UUID?
     @State private var cueFireTime: TimeInterval?
@@ -124,6 +126,10 @@ struct EditView: View {
         return max(sourceDuration, AudioEngineManager.shared.duration, 1)
     }
 
+    private var timelineMinZoom: CGFloat {
+        TimelineLayout.minZoom(duration: timelineDuration, viewportWidth: timelineViewportWidth)
+    }
+
     private var timelineContentWidth: CGFloat {
         TimelineLayout.contentWidth(for: timelineDuration, zoom: timelineZoom)
     }
@@ -166,6 +172,12 @@ struct EditView: View {
         }
         .onChange(of: arrangementMarkers) { _, _ in
             refreshTimelineLayout()
+        }
+        .onChange(of: timelineDuration) { _, _ in
+            clampTimelineZoom()
+        }
+        .onChange(of: timelineViewportWidth) { _, _ in
+            clampTimelineZoom()
         }
         .background {
             SectionCueMonitor(
@@ -261,10 +273,20 @@ struct EditView: View {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
+    private func clampTimelineZoom() {
+        guard timelineViewportWidth > 0 else { return }
+        let minZoom = timelineMinZoom
+        if !hasSetInitialTimelineZoom {
+            timelineZoom = minZoom
+            hasSetInitialTimelineZoom = true
+        } else {
+            timelineZoom = min(TimelineLayout.maxZoom, max(minZoom, timelineZoom))
+        }
+    }
+
     private var transportBar: some View {
         EditTransportBar(
             viewModel: viewModel,
-            timelineZoom: $timelineZoom,
             markers: markers,
             displaySections: displaySections,
             selectedClip: selectedClip,
@@ -302,32 +324,42 @@ struct EditView: View {
                             .frame(height: TimelineLayout.rulerTotalHeight)
                             .id("\(displaySections.map(\.id))|\(timelineContentWidth)")
 
-                            ForEach(song.sortedTracks) { track in
-                                WaveformLaneView(
-                                    track: track,
-                                    fileURL: FileStore.trackURL(
-                                        songID: song.id,
-                                        relativePath: track.relativeFilePath
-                                    ),
-                                    fileDuration: viewModel.fileDuration(for: track),
-                                    timelineDuration: timelineDuration,
-                                    timelineContentWidth: timelineContentWidth,
-                                    arrangementSections: trackSections(for: track),
-                                    arrangementSlots: $arrangementSlots,
-                                    clipTrims: $clipTrims,
-                                    selectedClip: $selectedClip,
-                                    markers: markers,
-                                    laneHeight: TimelineLayout.laneHeight,
-                                    onTrimChange: {
-                                        viewModel.updateTrim(for: track, context: modelContext)
-                                    },
-                                    onCueSection: cueSection,
-                                    onClipTrimCommitted: {
-                                        persistArrangement()
-                                        commitTrackArrangementChange(for: track.id)
-                                    }
-                                )
+                            VStack(spacing: TimelineLayout.laneSpacing) {
+                                ForEach(song.sortedTracks) { track in
+                                    WaveformLaneView(
+                                        track: track,
+                                        fileURL: FileStore.trackURL(
+                                            songID: song.id,
+                                            relativePath: track.relativeFilePath
+                                        ),
+                                        fileDuration: viewModel.fileDuration(for: track),
+                                        timelineDuration: timelineDuration,
+                                        timelineContentWidth: timelineContentWidth,
+                                        arrangementSections: trackSections(for: track),
+                                        arrangementSlots: $arrangementSlots,
+                                        clipTrims: $clipTrims,
+                                        selectedClip: $selectedClip,
+                                        markers: markers,
+                                        laneHeight: TimelineLayout.laneHeight,
+                                        onTrimChange: {
+                                            viewModel.updateTrim(for: track, context: modelContext)
+                                        },
+                                        onCueSection: cueSection,
+                                        onClipTrimCommitted: {
+                                            persistArrangement()
+                                            commitTrackArrangementChange(for: track.id)
+                                        }
+                                    )
+                                }
                             }
+                        }
+                        .frame(width: timelineContentWidth, alignment: .leading)
+                        .background {
+                            TimelineMeasureGridOverlay(
+                                duration: timelineDuration,
+                                bpm: song.bpm,
+                                rulerHeight: TimelineLayout.rulerTotalHeight
+                            )
                         }
 
                         TimelinePlayheadOverlay(
@@ -338,6 +370,11 @@ struct EditView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.width
+                } action: { width in
+                    timelineViewportWidth = width
+                }
                 .simultaneousGesture(timelinePinchGesture)
                 .onTapGesture {
                     isTimelineFocused = true
@@ -348,27 +385,31 @@ struct EditView: View {
         }
     }
 
+    private var trackAreaHeight: CGFloat {
+        let count = song.sortedTracks.count
+        guard count > 0 else { return 0 }
+        return CGFloat(count) * TimelineLayout.laneHeight
+            + CGFloat(count - 1) * TimelineLayout.laneSpacing
+    }
+
     private var timelinePlayheadHeight: CGFloat {
-        TimelineLayout.rulerTotalHeight + CGFloat(song.sortedTracks.count) * TimelineLayout.laneHeight
+        TimelineLayout.rulerTotalHeight + trackAreaHeight
     }
 
     private var trackHeaderColumn: some View {
         VStack(spacing: 0) {
             trackHeaderRulerCorner
 
-            ForEach(song.sortedTracks) { track in
-                TrackLaneHeaderView(
-                    track: track,
-                    fileDuration: viewModel.fileDuration(for: track),
-                    laneHeight: TimelineLayout.laneHeight,
-                    onMixChange: {
-                        viewModel.updateMix(for: track, context: modelContext)
-                    }
-                )
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(Color.dawTimelineDivider)
-                        .frame(height: 1)
+            VStack(spacing: TimelineLayout.laneSpacing) {
+                ForEach(song.sortedTracks) { track in
+                    TrackLaneHeaderView(
+                        track: track,
+                        fileDuration: viewModel.fileDuration(for: track),
+                        laneHeight: TimelineLayout.laneHeight,
+                        onMixChange: {
+                            viewModel.updateMix(for: track, context: modelContext)
+                        }
+                    )
                 }
             }
         }
@@ -413,7 +454,7 @@ struct EditView: View {
                 }
                 guard let pinchStartZoom else { return }
                 let next = pinchStartZoom * scale
-                timelineZoom = min(TimelineLayout.maxZoom, max(TimelineLayout.minZoom, next))
+                timelineZoom = min(TimelineLayout.maxZoom, max(timelineMinZoom, next))
             }
             .onEnded { _ in
                 pinchStartZoom = nil
@@ -423,7 +464,6 @@ struct EditView: View {
 
 private struct EditTransportBar: View {
     let viewModel: SongEditorViewModel
-    @Binding var timelineZoom: CGFloat
     let markers: [ArrangementMarker]
     let displaySections: [ArrangementDisplaySection]
     let selectedClip: SelectedArrangementClip?
@@ -452,12 +492,8 @@ private struct EditTransportBar: View {
                 }
             )
 
-            HStack(spacing: 12) {
-                timelineZoomControls
-
-                if !markers.isEmpty {
-                    arrangementEditorButton
-                }
+            if !markers.isEmpty {
+                arrangementEditorButton
             }
 
             if let loadError = viewModel.loadError {
@@ -510,48 +546,57 @@ private struct EditTransportBar: View {
         }
     }
 
-    private var timelineZoomControls: some View {
-        HStack(spacing: 12) {
-            Text("Zoom")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+}
 
-            Button {
-                adjustZoom(by: 0.8)
-            } label: {
-                Image(systemName: "minus.magnifyingglass")
+private struct TimelineMeasureGridOverlay: View {
+    let duration: TimeInterval
+    let bpm: Double?
+    let rulerHeight: CGFloat
+
+    private var safeDuration: TimeInterval {
+        max(duration, 0.001)
+    }
+
+    private func measureBoundaries(for contentWidth: CGFloat) -> [TimeInterval] {
+        guard let bpm, bpm > 0, contentWidth > 0 else { return [] }
+        return MeasureTiming.visibleMeasureBoundaries(
+            duration: safeDuration,
+            bpm: bpm,
+            contentWidth: contentWidth
+        )
+    }
+
+    var body: some View {
+        Canvas { context, size in
+            guard size.width > 0, size.height > 0 else { return }
+
+            let boundaries = measureBoundaries(for: size.width)
+            let rulerLineColor = Color.dawMeasureGridLine
+            let trackLineColor = Color.dawMeasureGridLine.opacity(0.75)
+            let rulerLineEnd = min(rulerHeight, size.height)
+
+            for time in boundaries {
+                let x = TimelineLayout.xPosition(
+                    for: time,
+                    duration: safeDuration,
+                    contentWidth: size.width
+                )
+                guard x >= 0, x <= size.width else { continue }
+
+                var rulerPath = Path()
+                rulerPath.move(to: CGPoint(x: x, y: 0))
+                rulerPath.addLine(to: CGPoint(x: x, y: rulerLineEnd))
+                context.stroke(rulerPath, with: .color(rulerLineColor), lineWidth: 1)
+
+                guard size.height > rulerLineEnd else { continue }
+
+                var trackPath = Path()
+                trackPath.move(to: CGPoint(x: x, y: rulerLineEnd))
+                trackPath.addLine(to: CGPoint(x: x, y: size.height))
+                context.stroke(trackPath, with: .color(trackLineColor), lineWidth: 1)
             }
-            .buttonStyle(.borderless)
-            .disabled(timelineZoom <= TimelineLayout.minZoom)
-
-            Slider(
-                value: $timelineZoom,
-                in: TimelineLayout.minZoom...TimelineLayout.maxZoom
-            )
-
-            Button {
-                adjustZoom(by: 1.25)
-            } label: {
-                Image(systemName: "plus.magnifyingglass")
-            }
-            .buttonStyle(.borderless)
-            .disabled(timelineZoom >= TimelineLayout.maxZoom)
-
-            Text(zoomLabel)
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 44, alignment: .trailing)
         }
-        .padding(.horizontal)
-    }
-
-    private var zoomLabel: String {
-        "\(Int((timelineZoom * 100).rounded()))%"
-    }
-
-    private func adjustZoom(by factor: CGFloat) {
-        let next = timelineZoom * factor
-        timelineZoom = min(TimelineLayout.maxZoom, max(TimelineLayout.minZoom, next))
+        .allowsHitTesting(false)
     }
 }
 

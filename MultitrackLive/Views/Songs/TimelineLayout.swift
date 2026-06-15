@@ -30,11 +30,23 @@ enum AudioTimelineMath {
 
 enum TimelineLayout {
     static let basePixelsPerSecond: CGFloat = 6
-    static let minZoom: CGFloat = 0.25
     static let maxZoom: CGFloat = 8
     static let minimumContentWidth: CGFloat = 320
 
+    /// Most zoomed-out level: entire timeline fits in the visible viewport when possible.
+    static func minZoom(duration: TimeInterval, viewportWidth: CGFloat) -> CGFloat {
+        guard duration > 0, viewportWidth > 0 else { return 1 }
+        let naturalWidth = CGFloat(max(duration, 1)) * basePixelsPerSecond
+        let floorZoom = minimumContentWidth / naturalWidth
+        let fitZoom = viewportWidth / naturalWidth
+        if naturalWidth > viewportWidth {
+            return max(floorZoom, fitZoom)
+        }
+        return max(floorZoom, 1)
+    }
+
     static let laneHeight: CGFloat = 94
+    static let laneSpacing: CGFloat = 4
     static let sectionMarkerHeight: CGFloat = 22
     static let rulerHeight: CGFloat = 28
     static let trackHeaderWidth: CGFloat = 204
@@ -78,5 +90,30 @@ enum MeasureTiming {
         guard duration > 0 else { return time }
         let measureIndex = floor(max(0, time) / duration)
         return (measureIndex + 1) * duration
+    }
+
+    /// Measure boundary times for grid lines, thinning when zoomed out.
+    static func visibleMeasureBoundaries(
+        duration: TimeInterval,
+        bpm: Double,
+        contentWidth: CGFloat,
+        minimumPixelSpacing: CGFloat = 10
+    ) -> [TimeInterval] {
+        let measureDur = measureDuration(bpm: bpm)
+        guard measureDur > 0, duration > 0, contentWidth > 0 else { return [] }
+
+        let safeDuration = max(duration, 0.001)
+        let pixelsPerMeasure = CGFloat(measureDur) * contentWidth / CGFloat(safeDuration)
+        let stride = max(1, Int(ceil(minimumPixelSpacing / max(pixelsPerMeasure, 0.001))))
+
+        var times: [TimeInterval] = []
+        var measureIndex = stride
+        while true {
+            let time = Double(measureIndex) * measureDur
+            guard time < safeDuration - 0.0001 else { break }
+            times.append(time)
+            measureIndex += stride
+        }
+        return times
     }
 }

@@ -190,7 +190,7 @@ struct WaveformLaneView: View {
     }
 
     private var waveformDrawHeight: CGFloat {
-        laneHeight - 8
+        laneHeight
     }
 
     private var effectiveEnd: TimeInterval {
@@ -231,13 +231,8 @@ struct WaveformLaneView: View {
 
     var body: some View {
         waveformArea
-            .frame(height: laneHeight)
+            .frame(width: timelineContentWidth, height: laneHeight)
             .background(Color.dawLaneBackground)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(Color.dawTimelineDivider)
-                    .frame(height: 1)
-            }
             .onAppear {
                 hydratePeaksFromCache()
                 refreshCachedDisplayPeaks()
@@ -292,7 +287,6 @@ struct WaveformLaneView: View {
             clipLayer
         }
         .frame(width: timelineContentWidth, height: waveformDrawHeight)
-        .padding(.vertical, 4)
     }
 
     private var trimStartX: CGFloat {
@@ -348,23 +342,24 @@ struct WaveformLaneView: View {
         let isSelected = selectedClip == SelectedArrangementClip(slotID: track.id, trackID: track.id)
 
         return ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 4)
+            Rectangle()
                 .fill(isSelected ? Color.dawClipBackgroundSelected : Color.dawClipBackground)
-                .contentShape(RoundedRectangle(cornerRadius: 4))
+                .contentShape(Rectangle())
                 .onTapGesture {
                     selectedClip = SelectedArrangementClip(slotID: track.id, trackID: track.id)
                 }
 
             if isSelected {
-                RoundedRectangle(cornerRadius: 4)
+                Rectangle()
                     .stroke(Color.dawClipBorder, lineWidth: 2)
             }
 
             trimHandle(at: trimStartX, handle: .start)
             trimHandle(at: trimEndX, handle: .end)
         }
-        .frame(width: clipWidth, height: laneHeight - 8)
-        .offset(x: trimStartX, y: 4)
+        .frame(width: clipWidth, height: laneHeight)
+        .overlay { ClipSideBorders() }
+        .offset(x: trimStartX)
     }
 
     @ViewBuilder
@@ -387,9 +382,9 @@ struct WaveformLaneView: View {
         )
 
         ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 4)
+            Rectangle()
                 .fill(isSelected ? Color.dawClipBackgroundSelected : Color.dawClipBackground)
-                .contentShape(RoundedRectangle(cornerRadius: 4))
+                .contentShape(Rectangle())
                 .onTapGesture {
                     selectedClip = SelectedArrangementClip(slotID: section.id, trackID: track.id)
                 }
@@ -400,15 +395,16 @@ struct WaveformLaneView: View {
                 }
 
             if isSelected {
-                RoundedRectangle(cornerRadius: 4)
+                Rectangle()
                     .stroke(Color.dawClipBorder, lineWidth: 2)
             }
 
             clipTrimHandle(section: section, edge: .leading, clipWidth: clipWidth, isSelected: isSelected)
             clipTrimHandle(section: section, edge: .trailing, clipWidth: clipWidth, isSelected: isSelected)
         }
-        .frame(width: clipWidth, height: laneHeight - 8)
-        .offset(x: startX, y: 4)
+        .frame(width: clipWidth, height: laneHeight)
+        .overlay { ClipSideBorders() }
+        .offset(x: startX)
     }
 
     private func clipTrimHandle(
@@ -421,11 +417,11 @@ struct WaveformLaneView: View {
 
         return Rectangle()
             .fill(Color.white.opacity(0.001))
-            .frame(width: handleWidth, height: laneHeight - 8)
+            .frame(width: handleWidth, height: laneHeight)
             .overlay(alignment: edge == .leading ? .leading : .trailing) {
                 RoundedRectangle(cornerRadius: 1)
                     .fill(Color.dawClipBorder.opacity(isClipTrimActive(sectionID: section.id, edge: edge) ? 1 : 0.85))
-                    .frame(width: 3, height: (laneHeight - 8) * 0.55)
+                    .frame(width: 3, height: laneHeight * 0.55)
                     .padding(.horizontal, 1)
                     .opacity(isSelected || isClipTrimActive(sectionID: section.id, edge: edge) ? 1 : 0)
             }
@@ -557,13 +553,13 @@ struct WaveformLaneView: View {
     private func trimHandle(at x: CGFloat, handle: TrimHandle) -> some View {
         RoundedRectangle(cornerRadius: 2)
             .fill(handle == activeHandle ? Color.dawClipBorder : Color.dawClipBorder.opacity(0.85))
-            .frame(width: 8, height: laneHeight - 16)
+            .frame(width: 8, height: laneHeight - 8)
             .overlay {
                 RoundedRectangle(cornerRadius: 1)
                     .fill(Color.white.opacity(0.7))
-                    .frame(width: 2, height: (laneHeight - 16) * 0.35)
+                    .frame(width: 2, height: (laneHeight - 8) * 0.35)
             }
-            .offset(x: x - 4, y: 8)
+            .offset(x: x - 4, y: 4)
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
@@ -594,6 +590,21 @@ struct WaveformLaneView: View {
             let minEnd = track.trimStartSeconds + minGap
             track.trimEndSeconds = min(max(minEnd, time), fileDuration)
         }
+    }
+}
+
+private struct ClipSideBorders: View {
+    var body: some View {
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(Color.dawClipSideBorder)
+                .frame(width: 1)
+            Spacer(minLength: 0)
+            Rectangle()
+                .fill(Color.dawClipSideBorder)
+                .frame(width: 1)
+        }
+        .allowsHitTesting(false)
     }
 }
 
