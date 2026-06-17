@@ -89,6 +89,13 @@ struct SongDetailView: View {
                     Label(String(format: "%.1f BPM", bpm), systemImage: "metronome")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if let timeSignature = song.timeSignatureDisplay {
+                        Text("·")
+                            .foregroundStyle(.secondary)
+                        Label(timeSignature, systemImage: "music.quarternote.3")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     if !arrangementMarkers.isEmpty {
                         Text("·")
                             .foregroundStyle(.secondary)
@@ -202,7 +209,11 @@ struct SongDetailView: View {
             "\(section.name) at \(formatMarkerTime(section.startSeconds))"
         }
         let extraCount = max(0, result.sections.count - 4)
-        var message = "Imported \(result.sections.count) sections at \(bpmText).\n"
+        var message = "Imported \(result.sections.count) sections at \(bpmText)."
+        if let initial = result.timeSignatures.sortedByTime.first {
+            message += " Time signature: \(initial.displayName)."
+        }
+        message += "\n"
         message += sectionLines.joined(separator: "\n")
         if extraCount > 0 {
             message += "\n…and \(extraCount) more."

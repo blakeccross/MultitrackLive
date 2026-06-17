@@ -23,6 +23,7 @@ struct EditView: View {
     @State private var cueFireTime: TimeInterval?
     @State private var cueFlashPhase = false
     @State private var showingArrangementEditor = false
+    @State private var showingTimeSignatureEditor = false
     @State private var showingGroupEditor = false
     @State private var selectedClip: SelectedArrangementClip?
     @FocusState private var isTimelineFocused: Bool
@@ -312,6 +313,7 @@ struct EditView: View {
             trackSections: trackSections(for:),
             formatClipDuration: formatClipDuration,
             showingArrangementEditor: $showingArrangementEditor,
+            showingTimeSignatureEditor: $showingTimeSignatureEditor,
             showingGroupEditor: $showingGroupEditor,
             arrangementSlots: $arrangementSlots,
             clipTrims: $clipTrims,
@@ -385,6 +387,8 @@ struct EditView: View {
                             TimelineMeasureGridOverlay(
                                 duration: timelineDuration,
                                 bpm: song.bpm,
+                                timeSignatureNumerator: song.timeSignatureNumerator,
+                                timeSignatureDenominator: song.timeSignatureDenominator,
                                 rulerHeight: TimelineLayout.rulerTotalHeight
                             )
                         }
@@ -505,6 +509,7 @@ private struct EditTransportBar: View {
     let trackSections: (AudioTrack) -> [ArrangementDisplaySection]
     let formatClipDuration: (TimeInterval) -> String
     @Binding var showingArrangementEditor: Bool
+    @Binding var showingTimeSignatureEditor: Bool
     @Binding var showingGroupEditor: Bool
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
@@ -529,8 +534,12 @@ private struct EditTransportBar: View {
                 }
             )
 
-            if !markers.isEmpty {
-                arrangementEditorButton
+            HStack(spacing: 8) {
+                timeSignatureEditorButton
+
+                if !markers.isEmpty {
+                    arrangementEditorButton
+                }
             }
 
             groupsEditorButton
@@ -587,6 +596,22 @@ private struct EditTransportBar: View {
         }
     }
 
+    private var timeSignatureEditorButton: some View {
+        Button {
+            showingTimeSignatureEditor = true
+        } label: {
+            Label(
+                song.timeSignatureDisplay ?? "4/4",
+                systemImage: "music.quarternote.3"
+            )
+            .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(.bordered)
+        .popover(isPresented: $showingTimeSignatureEditor, arrowEdge: .bottom) {
+            TimeSignatureEditorMenu(song: song)
+        }
+    }
+
     private var arrangementEditorButton: some View {
         Button {
             showingArrangementEditor = true
@@ -609,13 +634,129 @@ private struct EditTransportBar: View {
 
 }
 
+private struct TimeSignatureEditorMenu: View {
+    @Environment(\.modelContext) private var modelContext
+
+    @Bindable var song: Song
+
+    @State private var numerator: Int
+    @State private var denominator: Int
+
+    private static let presets: [(numerator: Int, denominator: Int)] = [
+        (4, 4), (3, 4), (2, 4), (6, 8), (5, 4), (7, 8), (12, 8)
+    ]
+
+    private static let denominators = [2, 4, 8, 16]
+
+    init(song: Song) {
+        self.song = song
+        _numerator = State(initialValue: song.timeSignatureNumerator ?? MeasureTiming.defaultNumerator)
+        _denominator = State(initialValue: song.timeSignatureDenominator ?? MeasureTiming.defaultDenominator)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Time Signature")
+                .font(.headline)
+
+            Text("Affects measure grid spacing in the editor.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
+                ForEach(Array(Self.presets.enumerated()), id: \.offset) { _, preset in
+                    Button {
+                        applyTimeSignature(numerator: preset.numerator, denominator: preset.denominator)
+                    } label: {
+                        Text("\(preset.numerator)/\(preset.denominator)")
+                            .font(.body.monospacedDigit().weight(.medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(isSelected(numerator: preset.numerator, denominator: preset.denominator) ? .accentColor : .secondary)
+                }
+            }
+
+            Divider()
+
+            HStack(spacing: 16) {
+                Stepper(value: $numerator, in: 1...32) {
+                    Text("Beats: \(numerator)")
+                        .monospacedDigit()
+                }
+                .onChange(of: numerator) { _, newValue in
+                    applyTimeSignature(numerator: newValue, denominator: denominator)
+                }
+
+                Picker("Beat value", selection: $denominator) {
+                    ForEach(Self.denominators, id: \.self) { value in
+                        Text("1/\(value)").tag(value)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 100)
+                .onChange(of: denominator) { _, newValue in
+                    applyTimeSignature(numerator: numerator, denominator: newValue)
+                }
+            }
+        }
+        .padding()
+        .frame(minWidth: 280)
+        .onChange(of: song.timeSignatureNumerator) { _, _ in
+            syncFromSong()
+        }
+        .onChange(of: song.timeSignatureDenominator) { _, _ in
+            syncFromSong()
+        }
+    }
+
+    private func isSelected(numerator: Int, denominator: Int) -> Bool {
+        self.numerator == numerator && self.denominator == denominator
+    }
+
+    private func syncFromSong() {
+        numerator = song.timeSignatureNumerator ?? MeasureTiming.defaultNumerator
+        denominator = song.timeSignatureDenominator ?? MeasureTiming.defaultDenominator
+    }
+
+    private func applyTimeSignature(numerator: Int, denominator: Int) {
+        guard (1...32).contains(numerator), Self.denominators.contains(denominator) else { return }
+
+        song.timeSignatureNumerator = numerator
+        song.timeSignatureDenominator = denominator
+
+        let change = TimeSignatureChange(
+            numerator: numerator,
+            denominator: denominator,
+            startSeconds: 0,
+            sortOrder: 0
+        )
+        try? TimeSignatureStore.save([change], for: song.id)
+        try? modelContext.save()
+
+        self.numerator = numerator
+        self.denominator = denominator
+    }
+}
+
 private struct TimelineMeasureGridOverlay: View {
     let duration: TimeInterval
     let bpm: Double?
+    let timeSignatureNumerator: Int?
+    let timeSignatureDenominator: Int?
     let rulerHeight: CGFloat
 
     private var safeDuration: TimeInterval {
         max(duration, 0.001)
+    }
+
+    private var measureNumerator: Int {
+        timeSignatureNumerator ?? MeasureTiming.defaultNumerator
+    }
+
+    private var measureDenominator: Int {
+        timeSignatureDenominator ?? MeasureTiming.defaultDenominator
     }
 
     private func measureBoundaries(for contentWidth: CGFloat) -> [TimeInterval] {
@@ -623,7 +764,9 @@ private struct TimelineMeasureGridOverlay: View {
         return MeasureTiming.visibleMeasureBoundaries(
             duration: safeDuration,
             bpm: bpm,
-            contentWidth: contentWidth
+            contentWidth: contentWidth,
+            numerator: measureNumerator,
+            denominator: measureDenominator
         )
     }
 

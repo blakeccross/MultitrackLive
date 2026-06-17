@@ -1,11 +1,13 @@
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SongLibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Song.createdAt, order: .reverse) private var songs: [Song]
 
     @State private var showingNewSongAlert = false
+    @State private var showingFolderImporter = false
     @State private var newSongName = ""
     @State private var songPendingImport: Song?
     @State private var songPendingRename: Song?
@@ -14,6 +16,7 @@ struct SongLibraryView: View {
     @State private var importError: String?
     @State private var createSongError: String?
     @State private var songActionError: String?
+    @State private var folderImportSummary: String?
 
     var body: some View {
         NavigationStack {
@@ -22,7 +25,7 @@ struct SongLibraryView: View {
                     ContentUnavailableView(
                         "No Songs Yet",
                         systemImage: "music.note",
-                        description: Text("Create a song and import multitrack stems.")
+                        description: Text("Create a song or import a folder with multitrack stems and an Ableton file.")
                     )
                 } else {
                     List(songs) { song in
@@ -56,11 +59,30 @@ struct SongLibraryView: View {
             .navigationTitle("Songs")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button("New Song") {
-                        newSongName = ""
-                        showingNewSongAlert = true
+                    Menu {
+                        Button {
+                            newSongName = ""
+                            showingNewSongAlert = true
+                        } label: {
+                            Label("New Song", systemImage: "plus")
+                        }
+
+                        Button {
+                            showingFolderImporter = true
+                        } label: {
+                            Label("Import from Folder", systemImage: "folder")
+                        }
+                    } label: {
+                        Label("Add Song", systemImage: "plus")
                     }
                 }
+            }
+            .fileImporter(
+                isPresented: $showingFolderImporter,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false
+            ) { result in
+                handleFolderImport(result)
             }
             .alert("New Song", isPresented: $showingNewSongAlert) {
                 TextField("Song name", text: $newSongName)
@@ -69,7 +91,15 @@ struct SongLibraryView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Enter a name, then import your stem files.")
+                Text("Enter a name, then import your stem files or choose a song folder.")
+            }
+            .alert("Import Complete", isPresented: Binding(
+                get: { folderImportSummary != nil },
+                set: { if !$0 { folderImportSummary = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(folderImportSummary ?? "")
             }
             .sheet(item: $songPendingImport) { song in
                 TrackImportView(song: song) { error in
@@ -137,6 +167,36 @@ struct SongLibraryView: View {
         }
     }
 
+    private func handleFolderImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            importError = error.localizedDescription
+        case .success(let urls):
+            guard let folderURL = urls.first else { return }
+            do {
+                let importResult = try SongFolderImporter.importFromFolder(
+                    at: folderURL,
+                    context: modelContext
+                )
+                folderImportSummary = folderImportSummaryText(for: importResult)
+            } catch {
+                importError = error.localizedDescription
+            }
+        }
+    }
+
+    private func folderImportSummaryText(for result: SongFolderImporter.ImportResult) -> String {
+        var lines = ["Created \"\(result.song.name)\" with \(result.trackCount) track\(result.trackCount == 1 ? "" : "s")."]
+        if result.sectionCount > 0, let bpm = result.bpm {
+            var line = "Imported \(result.sectionCount) sections from Ableton at \(String(format: "%.1f", bpm)) BPM."
+            if let timeSignature = result.song.timeSignatureDisplay {
+                line += " Time signature: \(timeSignature)."
+            }
+            lines.append(line)
+        }
+        return lines.joined(separator: "\n")
+    }
+
     private func createSong() {
         let trimmed = newSongName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -172,6 +232,8 @@ struct SongLibraryView: View {
     private func duplicateSong(_ source: Song) {
         let copy = Song(name: duplicateName(for: source.name))
         copy.bpm = source.bpm
+        copy.timeSignatureNumerator = source.timeSignatureNumerator
+        copy.timeSignatureDenominator = source.timeSignatureDenominator
         modelContext.insert(copy)
 
         var trackIDMap: [UUID: UUID] = [:]

@@ -10,7 +10,9 @@ struct TrackImportView: View {
     let onError: (String) -> Void
 
     @State private var showingImporter = true
+    @State private var showingFolderImporter = false
     @State private var importedCount = 0
+    @State private var importedSectionCount = 0
 
     var body: some View {
         NavigationStack {
@@ -21,8 +23,12 @@ struct TrackImportView: View {
                 if importedCount > 0 {
                     Text("\(importedCount) track\(importedCount == 1 ? "" : "s") imported")
                         .foregroundStyle(.secondary)
+                    if importedSectionCount > 0 {
+                        Text("\(importedSectionCount) Ableton section\(importedSectionCount == 1 ? "" : "s") imported")
+                            .foregroundStyle(.secondary)
+                    }
                 } else {
-                    Text("Select multiple audio files (.wav, .aiff, .mp3, .m4a)")
+                    Text("Select audio files or a folder containing a Multitracks subfolder and an optional Ableton file.")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -31,6 +37,11 @@ struct TrackImportView: View {
                     showingImporter = true
                 }
                 .buttonStyle(.borderedProminent)
+
+                Button("Choose Folder") {
+                    showingFolderImporter = true
+                }
+                .buttonStyle(.bordered)
 
                 if importedCount > 0 {
                     Button("Done") {
@@ -55,6 +66,13 @@ struct TrackImportView: View {
             ) { result in
                 handleImport(result)
             }
+            .fileImporter(
+                isPresented: $showingFolderImporter,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false
+            ) { result in
+                handleFolderImport(result)
+            }
             .onAppear {
                 showingImporter = true
             }
@@ -75,6 +93,26 @@ struct TrackImportView: View {
                 }
                 try modelContext.save()
                 importedCount += tracks.count
+            } catch {
+                onError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func handleFolderImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            onError(error.localizedDescription)
+        case .success(let urls):
+            guard let folderURL = urls.first else { return }
+            do {
+                let importResult = try SongFolderImporter.importIntoExistingSong(
+                    at: folderURL,
+                    song: song,
+                    context: modelContext
+                )
+                importedCount += importResult.trackCount
+                importedSectionCount += importResult.sectionCount
             } catch {
                 onError(error.localizedDescription)
             }

@@ -77,16 +77,31 @@ enum TimelineLayout {
 }
 
 enum MeasureTiming {
-    static let beatsPerMeasure: Double = 4
+    static let defaultNumerator = 4
+    static let defaultDenominator = 4
 
-    static func measureDuration(bpm: Double) -> TimeInterval {
+    static func beatsPerMeasure(numerator: Int, denominator: Int) -> Double {
+        guard numerator > 0, denominator > 0 else { return 4 }
+        return Double(numerator) * 4.0 / Double(denominator)
+    }
+
+    static func measureDuration(
+        bpm: Double,
+        numerator: Int = defaultNumerator,
+        denominator: Int = defaultDenominator
+    ) -> TimeInterval {
         guard bpm > 0 else { return 0 }
-        return beatsPerMeasure * 60.0 / bpm
+        return beatsPerMeasure(numerator: numerator, denominator: denominator) * 60.0 / bpm
     }
 
     /// Returns the timeline time at the end of the measure containing `time`.
-    static func endOfCurrentMeasure(at time: TimeInterval, bpm: Double) -> TimeInterval {
-        let duration = measureDuration(bpm: bpm)
+    static func endOfCurrentMeasure(
+        at time: TimeInterval,
+        bpm: Double,
+        numerator: Int = defaultNumerator,
+        denominator: Int = defaultDenominator
+    ) -> TimeInterval {
+        let duration = measureDuration(bpm: bpm, numerator: numerator, denominator: denominator)
         guard duration > 0 else { return time }
         let measureIndex = floor(max(0, time) / duration)
         return (measureIndex + 1) * duration
@@ -97,9 +112,11 @@ enum MeasureTiming {
         duration: TimeInterval,
         bpm: Double,
         contentWidth: CGFloat,
+        numerator: Int = defaultNumerator,
+        denominator: Int = defaultDenominator,
         minimumPixelSpacing: CGFloat = 10
     ) -> [TimeInterval] {
-        let measureDur = measureDuration(bpm: bpm)
+        let measureDur = measureDuration(bpm: bpm, numerator: numerator, denominator: denominator)
         guard measureDur > 0, duration > 0, contentWidth > 0 else { return [] }
 
         let safeDuration = max(duration, 0.001)

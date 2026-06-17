@@ -9,6 +9,7 @@ enum AbletonProjectImporter {
     struct ImportResult {
         let bpm: Double
         let sections: [(name: String, startSeconds: TimeInterval)]
+        let timeSignatures: [TimeSignatureChange]
     }
 
     enum ImportError: LocalizedError {
@@ -59,7 +60,16 @@ enum AbletonProjectImporter {
             )
         }
 
-        return ImportResult(bpm: bpm, sections: sections)
+        let timeSignatures = parsed.timeSignatures.enumerated().map { index, signature in
+            TimeSignatureChange(
+                numerator: signature.numerator,
+                denominator: signature.denominator,
+                startSeconds: signature.beats * 60.0 / bpm,
+                sortOrder: index
+            )
+        }
+
+        return ImportResult(bpm: bpm, sections: sections, timeSignatures: timeSignatures)
     }
 
     static func apply(
@@ -69,7 +79,12 @@ enum AbletonProjectImporter {
         context: ModelContext
     ) throws {
         song.bpm = result.bpm
+        if let initial = result.timeSignatures.sortedByTime.first {
+            song.timeSignatureNumerator = initial.numerator
+            song.timeSignatureDenominator = initial.denominator
+        }
         try ArrangementMarkerStore.save(markers, for: song.id)
+        try TimeSignatureStore.save(result.timeSignatures, for: song.id)
         try context.save()
     }
 
@@ -136,6 +151,7 @@ enum AbletonProjectImporter {
     private struct ParsedProject {
         var bpm: Double?
         var locators: [ParsedLocator]
+        var timeSignatures: [ParsedTimeSignature]
     }
 
     private struct ParsedLocator {
@@ -143,11 +159,18 @@ enum AbletonProjectImporter {
         var beats: Double
     }
 
+    private struct ParsedTimeSignature {
+        var numerator: Int
+        var denominator: Int
+        var beats: Double
+    }
+
     private static func parseProject(_ data: Data) throws -> ParsedProject {
         let bpm = try parseMasterTempo(from: data)
         let locatorsXML = try extractArrangementLocatorsXML(from: data)
         let locators = try parseLocatorsXML(locatorsXML)
-        return ParsedProject(bpm: bpm, locators: locators)
+        let timeSignatures = parseTimeSignatures(from: data)
+        return ParsedProject(bpm: bpm, locators: locators, timeSignatures: timeSignatures)
     }
 
     private static func parseMasterTempo(from data: Data) throws -> Double? {
@@ -161,6 +184,44 @@ enum AbletonProjectImporter {
             xmlParser.delegate = parser
             guard xmlParser.parse(), let bpm = parser.bpm else { continue }
             return bpm
+        }
+
+        return nil
+    }
+
+    private static func parseTimeSignatures(from data: Data) -> [ParsedTimeSignature] {
+        let parser = TimeSignaturesXMLParser()
+        let xmlParser = XMLParser(data: data)
+        xmlParser.delegate = parser
+        guard xmlParser.parse(), !parser.signatures.isEmpty else {
+            return parseManualTimeSignature(from: data).map { [$0] } ?? []
+        }
+        return parser.signatures
+            .sorted { $0.beats < $1.beats }
+            .map {
+                ParsedTimeSignature(
+                    numerator: $0.numerator,
+                    denominator: $0.denominator,
+                    beats: $0.beats
+                )
+            }
+    }
+
+    private static func parseManualTimeSignature(from data: Data) -> ParsedTimeSignature? {
+        for trackTag in ["MasterTrack", "MainTrack"] {
+            guard let trackData = findTag(trackTag, in: data) else { continue }
+            guard let timeSignatureData = findTag("TimeSignature", in: trackData) else { continue }
+            guard let timeSignatureXML = String(data: timeSignatureData, encoding: .utf8) else { continue }
+
+            let parser = ManualTimeSignatureXMLParser()
+            let xmlParser = XMLParser(data: Data(timeSignatureXML.utf8))
+            xmlParser.delegate = parser
+            guard xmlParser.parse(),
+                  let numerator = parser.numerator,
+                  let denominator = parser.denominator else {
+                continue
+            }
+            return ParsedTimeSignature(numerator: numerator, denominator: denominator, beats: 0)
         }
 
         return nil
@@ -286,5 +347,114 @@ private final class LocatorsXMLParser: NSObject, XMLParserDelegate {
         insideLocator = false
         currentLocatorName = nil
         currentLocatorBeats = nil
+    }
+}
+
+private final class TimeSignaturesXMLParser: NSObject, XMLParserDelegate {
+    private var insideRemoteableTimeSignature = false
+    private var currentNumerator: Int?
+    private var currentDenominator: Int?
+    private var currentBeats: Double?
+
+    private(set) var signatures: [(numerator: Int, denominator: Int, beats: Double)] = []
+
+    func parser(
+        _ parser: XMLParser,
+        didStartElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?,
+        attributes attributeDict: [String: String] = [:]
+    ) {
+        switch elementName {
+        case "RemoteableTimeSignature":
+            insideRemoteableTimeSignature = true
+            currentNumerator = nil
+            currentDenominator = nil
+            currentBeats = nil
+        case "Numerator" where insideRemoteableTimeSignature:
+            if let value = attributeDict["Value"], let parsed = Int(value) {
+                currentNumerator = parsed
+            }
+        case "Denominator" where insideRemoteableTimeSignature:
+            if let value = attributeDict["Value"], let parsed = Int(value) {
+                currentDenominator = parsed
+            }
+        case "Time" where insideRemoteableTimeSignature:
+            if let value = attributeDict["Value"] {
+                currentBeats = Double(value.replacingOccurrences(of: ",", with: "."))
+            }
+        default:
+            break
+        }
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didEndElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?
+    ) {
+        guard elementName == "RemoteableTimeSignature" else { return }
+
+        if let numerator = currentNumerator,
+           let denominator = currentDenominator,
+           isValidTimeSignature(numerator: numerator, denominator: denominator) {
+            signatures.append(
+                (
+                    numerator: numerator,
+                    denominator: denominator,
+                    beats: currentBeats ?? 0
+                )
+            )
+        }
+
+        insideRemoteableTimeSignature = false
+        currentNumerator = nil
+        currentDenominator = nil
+        currentBeats = nil
+    }
+
+    private func isValidTimeSignature(numerator: Int, denominator: Int) -> Bool {
+        (1...32).contains(numerator) && [1, 2, 4, 8, 16].contains(denominator)
+    }
+}
+
+private final class ManualTimeSignatureXMLParser: NSObject, XMLParserDelegate {
+    private var insideManual = false
+    private(set) var numerator: Int?
+    private(set) var denominator: Int?
+
+    func parser(
+        _ parser: XMLParser,
+        didStartElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?,
+        attributes attributeDict: [String: String] = [:]
+    ) {
+        switch elementName {
+        case "Manual":
+            insideManual = true
+        case "Numerator" where insideManual:
+            if let value = attributeDict["Value"], let parsed = Int(value) {
+                numerator = parsed
+            }
+        case "Denominator" where insideManual:
+            if let value = attributeDict["Value"], let parsed = Int(value) {
+                denominator = parsed
+            }
+        default:
+            break
+        }
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didEndElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?
+    ) {
+        if elementName == "Manual" {
+            insideManual = false
+        }
     }
 }
