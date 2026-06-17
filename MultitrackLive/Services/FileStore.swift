@@ -71,6 +71,7 @@ enum FileStore {
     static func deleteSongFiles(for songID: UUID) {
         ArrangementMarkerStore.delete(for: songID)
         TimeSignatureStore.delete(for: songID)
+        TempoStore.delete(for: songID)
         SongArrangementStore.delete(for: songID)
         let directory = songDirectory(for: songID)
         try? FileManager.default.removeItem(at: directory)
@@ -106,6 +107,9 @@ enum FileStore {
 
         let timeSignatures = TimeSignatureStore.load(for: sourceSongID)
         try TimeSignatureStore.save(timeSignatures, for: destinationSongID)
+
+        let tempoChanges = TempoStore.load(for: sourceSongID)
+        try TempoStore.save(tempoChanges, for: destinationSongID)
 
         var arrangement = SongArrangementStore.load(for: sourceSongID, markers: markers)
         arrangement.clipTrims = arrangement.clipTrims.map { trim in

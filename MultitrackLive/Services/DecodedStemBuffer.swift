@@ -166,6 +166,21 @@ final class DecodedStemBuffer: @unchecked Sendable {
         return available
     }
 
+    func interpolatedSample(channel: Int, frame: Double) -> Float {
+        guard channel >= 0, channel < channelCount, frameCount > 0 else { return 0 }
+        guard frame >= 0 else { return 0 }
+
+        if frame >= Double(frameCount - 1) {
+            return channels[channel][frameCount - 1]
+        }
+
+        let index = Int(floor(frame))
+        let fraction = Float(frame - Double(index))
+        let sampleA = channels[channel][index]
+        let sampleB = channels[channel][index + 1]
+        return sampleA + (sampleB - sampleA) * fraction
+    }
+
     private static func readDirectly(
         from file: AVAudioFile,
         channelCount: Int,

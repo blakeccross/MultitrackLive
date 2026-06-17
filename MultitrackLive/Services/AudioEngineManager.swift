@@ -49,6 +49,10 @@ final class AudioEngineManager {
     private var arrangementRemovedClips: [ArrangementRemovedClip] = []
     private var routingSnapshot: OutputRoutingSnapshot?
     private var usesOutputRouting = false
+    private var tempoChanges: [TempoChange] = []
+    private var referenceBPM: Double = 0
+    private var timeSignatureNumerator: Int = MeasureTiming.defaultNumerator
+    private var timeSignatureDenominator: Int = MeasureTiming.defaultDenominator
 
     var referenceSampleRate: Double {
         DecodedStemBuffer.engineSampleRate
@@ -236,6 +240,7 @@ final class AudioEngineManager {
             try wireTrackOutputs(routing: routing)
             duration = calculateEffectiveDuration()
             transport.setDuration(duration)
+            syncTransportTempoMap()
             currentTime = min(preservedTime, duration)
             transport.setPausedTimeline(currentTime)
 
@@ -263,6 +268,7 @@ final class AudioEngineManager {
         arrangementRemovedClips = removedClips
         duration = calculateEffectiveDuration()
         transport.setDuration(duration)
+        syncTransportTempoMap()
         currentTime = min(preservedTime, duration)
         transport.setPausedTimeline(currentTime)
         transport.cancelScheduledTransition()
@@ -284,25 +290,52 @@ final class AudioEngineManager {
         setArrangement(sectionsByTrack: [:], masterSections: sections, removedClips: [])
     }
 
+    func setTempoMap(
+        _ changes: [TempoChange],
+        referenceBPM: Double,
+        numerator: Int,
+        denominator: Int
+    ) {
+        tempoChanges = changes.sortedByMeasure
+        self.referenceBPM = referenceBPM
+        timeSignatureNumerator = numerator
+        timeSignatureDenominator = denominator
+        syncTransportTempoMap()
+        applyTrackPitch()
+    }
+
+    private func syncTransportTempoMap() {
+        guard referenceBPM > 0, !tempoChanges.isEmpty else { return }
+        transport.setTempoMap(
+            changes: tempoChanges,
+            referenceBPM: referenceBPM,
+            numerator: timeSignatureNumerator,
+            denominator: timeSignatureDenominator,
+            duration: duration
+        )
+    }
+
     func play() {
         guard !tracks.isEmpty, !isPlaying else { return }
         if !engine.isRunning {
             try? engine.start()
         }
 
-        let startTime = quantizeTimelineTime(currentTime)
-        currentTime = startTime
+        let startTime = quantizeTimelineTime(transport.pausedTimelineSeconds())
+        applyTrackPitch(at: startTime)
         transport.beginPlayback(from: startTime)
         isPlaying = true
         startTimer()
+        refreshCurrentTimeFromEngine()
     }
 
     func pause() {
         guard isPlaying else { return }
-        refreshCurrentTimeFromEngine()
-        transport.pause(capturingTimeline: currentTime)
+        let timeline = livePlayheadTime()
+        transport.pause(capturingTimeline: timeline)
         isPlaying = false
         stopTimer()
+        currentTime = timeline
     }
 
     func stop() {
@@ -317,6 +350,7 @@ final class AudioEngineManager {
         transport.cancelScheduledTransition()
         currentTime = clamped
         transport.setPausedTimeline(clamped)
+        applyTrackPitch(at: clamped)
 
         if isPlaying {
             transport.beginPlayback(from: clamped)
@@ -365,12 +399,12 @@ final class AudioEngineManager {
     func updateTrackSettings(id: UUID, settings: TrackSettings) {
         guard var track = tracks[id] else { return }
         track.settings = settings
-        track.timePitchNode.pitch = settings.pitchCents
-        track.timePitchNode.rate = 1.0
         tracks[id] = track
+        applyTrackPitch()
         applyAllMixSettings()
         duration = calculateEffectiveDuration()
         transport.setDuration(duration)
+        syncTransportTempoMap()
         refreshTrackMappers()
     }
 
@@ -545,6 +579,7 @@ final class AudioEngineManager {
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             guard let self, self.isPlaying else { return }
             self.refreshCurrentTimeFromEngine()
+            self.applyTrackPitch(at: self.currentTime)
             if self.currentTime >= self.duration {
                 self.stop()
                 self.onPlaybackFinished?()
@@ -559,6 +594,22 @@ final class AudioEngineManager {
 
     private func refreshCurrentTimeFromEngine() {
         currentTime = livePlayheadTime()
+    }
+
+    private func applyTrackPitch(at timeline: TimeInterval? = nil) {
+        let compensationCents: Float
+        if let timeline, referenceBPM > 0, !tempoChanges.isEmpty {
+            let ratio = transport.playbackRatio(at: timeline)
+            compensationCents = Float(-1200 * log2(max(ratio, 0.01)))
+        } else {
+            compensationCents = 0
+        }
+
+        for id in tracks.keys {
+            guard let track = tracks[id] else { continue }
+            track.timePitchNode.rate = 1.0
+            track.timePitchNode.pitch = track.settings.pitchCents + compensationCents
+        }
     }
 
     /// Host-clock playhead position for UI rendering without publishing observable updates.

@@ -233,6 +233,14 @@ final class PlaybackCoordinator {
             masterSections: layout.rulerSections,
             removedClips: arrangement.removedClips
         )
+
+        let tempoChanges = TempoStore.loadOrMigrate(for: song)
+        audioEngine.setTempoMap(
+            tempoChanges,
+            referenceBPM: tempoChanges.referenceBPM,
+            numerator: song.timeSignatureNumerator ?? MeasureTiming.defaultNumerator,
+            denominator: song.timeSignatureDenominator ?? MeasureTiming.defaultDenominator
+        )
     }
 
     static func makeWaveformSnapshot(for song: Song) -> LiveSongWaveformSnapshot? {

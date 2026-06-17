@@ -12,6 +12,7 @@ final class AudioPlaybackTransport: @unchecked Sendable {
     struct RenderState: Sendable {
         let timelineSeconds: TimeInterval
         let isPlaying: Bool
+        let playbackRatio: Double
     }
 
     private var lock = os_unfair_lock()
@@ -29,6 +30,8 @@ final class AudioPlaybackTransport: @unchecked Sendable {
     private var anchorHostTime: UInt64 = 0
     private var hasAnchor = false
     private var pendingTransition: PendingTransition?
+    private var tempoPlaybackMap = TempoPlaybackMap(segments: [])
+    private var usesTempoMap = false
 
     func setDuration(_ duration: TimeInterval) {
         os_unfair_lock_lock(&lock)
@@ -89,13 +92,32 @@ final class AudioPlaybackTransport: @unchecked Sendable {
         os_unfair_lock_unlock(&lock)
     }
 
+    func setTempoMap(
+        changes: [TempoChange],
+        referenceBPM: Double,
+        numerator: Int,
+        denominator: Int,
+        duration: TimeInterval
+    ) {
+        os_unfair_lock_lock(&lock)
+        tempoPlaybackMap = TempoPlaybackMap.build(
+            tempoChanges: changes.sortedByMeasure,
+            referenceBPM: referenceBPM,
+            numerator: numerator,
+            denominator: denominator,
+            maxSourceTime: max(duration, 1)
+        )
+        usesTempoMap = referenceBPM > 0 && !changes.isEmpty
+        os_unfair_lock_unlock(&lock)
+    }
+
     func clearScheduledTransition() {
         os_unfair_lock_lock(&lock)
         pendingTransition = nil
         os_unfair_lock_unlock(&lock)
     }
 
-    /// Single locked read used by each track render callback.
+    /// Single locked read used by each track source node.
     func renderTimeline(atHostTime hostTime: UInt64, captureAnchor: Bool) -> RenderState {
         os_unfair_lock_lock(&lock)
         defer { os_unfair_lock_unlock(&lock) }
@@ -106,20 +128,38 @@ final class AudioPlaybackTransport: @unchecked Sendable {
         }
 
         guard isPlaying else {
-            return RenderState(timelineSeconds: pausedTimeline, isPlaying: false)
+            return RenderState(timelineSeconds: pausedTimeline, isPlaying: false, playbackRatio: 1.0)
         }
 
         guard hasAnchor else {
-            return RenderState(timelineSeconds: pausedTimeline, isPlaying: true)
+            return RenderState(timelineSeconds: pausedTimeline, isPlaying: true, playbackRatio: 1.0)
         }
 
         let elapsed = Self.seconds(fromHostTimeDelta: hostTime &- anchorHostTime)
-        let linear = max(0, min(anchorTimeline + elapsed, duration))
-        return RenderState(timelineSeconds: mappedTimeline(fromLinear: linear), isPlaying: true)
+        let timeline: TimeInterval
+        if usesTempoMap {
+            timeline = tempoPlaybackMap.sourceTimeAfterWallElapsed(
+                from: anchorTimeline,
+                wallElapsed: elapsed
+            )
+        } else {
+            timeline = anchorTimeline + elapsed
+        }
+        let mapped = mappedTimeline(fromLinear: timeline)
+        let clamped = max(0, min(mapped, duration))
+        let ratio = usesTempoMap ? tempoPlaybackMap.ratio(at: clamped) : 1.0
+        return RenderState(timelineSeconds: clamped, isPlaying: true, playbackRatio: ratio)
     }
 
     func timelineSeconds(atHostTime hostTime: UInt64) -> TimeInterval {
         renderTimeline(atHostTime: hostTime, captureAnchor: false).timelineSeconds
+    }
+
+    func playbackRatio(at timeline: TimeInterval) -> Double {
+        os_unfair_lock_lock(&lock)
+        defer { os_unfair_lock_unlock(&lock) }
+        guard usesTempoMap else { return 1.0 }
+        return tempoPlaybackMap.ratio(at: timeline)
     }
 
     func mappedTimeline(fromLinear linear: TimeInterval) -> TimeInterval {

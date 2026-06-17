@@ -85,6 +85,10 @@ enum AbletonProjectImporter {
         }
         try ArrangementMarkerStore.save(markers, for: song.id)
         try TimeSignatureStore.save(result.timeSignatures, for: song.id)
+        try TempoStore.save(
+            [TempoChange(startMeasure: 1, bpm: result.bpm, sortOrder: 0)],
+            for: song.id
+        )
         try context.save()
     }
 

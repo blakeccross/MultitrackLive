@@ -30,6 +30,7 @@ struct SongDetailView: View {
     @State private var clipTrims: [ArrangementClipTrim] = []
     @State private var removedClips: [ArrangementRemovedClip] = []
     @State private var loopSlotIDs: Set<UUID> = []
+    @State private var tempoChanges: [TempoChange] = []
 
     init(song: Song, initialTab: SongDetailTab = .mix) {
         self.song = song
@@ -79,6 +80,7 @@ struct SongDetailView: View {
                     loopSlotIDs: loopSlotIDs,
                     for: song.id
                 )
+                try? TempoStore.save(tempoChanges, for: song.id)
             }
     }
 
@@ -130,7 +132,8 @@ struct SongDetailView: View {
                             arrangementSlots: $arrangementSlots,
                             clipTrims: $clipTrims,
                             removedClips: $removedClips,
-                            loopSlotIDs: $loopSlotIDs
+                            loopSlotIDs: $loopSlotIDs,
+                            tempoChanges: $tempoChanges
                         )
                     }
 
@@ -160,7 +163,17 @@ struct SongDetailView: View {
             viewModel = model
         }
         reloadArrangementMarkers()
+        reloadTempoChanges()
         syncArrangementPlayback()
+        syncTempoPlayback()
+    }
+
+    private func reloadTempoChanges() {
+        tempoChanges = TempoStore.loadOrMigrate(for: song)
+        if song.bpm != tempoChanges.referenceBPM {
+            song.bpm = tempoChanges.referenceBPM
+            try? modelContext.save()
+        }
     }
 
     private func reloadArrangementMarkers() {
@@ -180,6 +193,11 @@ struct SongDetailView: View {
             clipTrims: clipTrims,
             removedClips: removedClips
         )
+    }
+
+    private func syncTempoPlayback() {
+        guard let viewModel else { return }
+        viewModel.syncTempoMap(tempoChanges)
     }
 
     private func handleAbletonImport(_ result: Result<[URL], Error>) {
@@ -209,8 +227,10 @@ struct SongDetailView: View {
                     loopSlotIDs: loopSlotIDs,
                     for: song.id
                 )
+                reloadTempoChanges()
                 abletonImportSummary = importSummary(for: importResult)
                 syncArrangementPlayback()
+                syncTempoPlayback()
             } catch {
                 abletonImportError = error.localizedDescription
             }

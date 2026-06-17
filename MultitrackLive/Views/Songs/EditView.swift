@@ -14,6 +14,7 @@ struct EditView: View {
     @Binding var clipTrims: [ArrangementClipTrim]
     @Binding var removedClips: [ArrangementRemovedClip]
     @Binding var loopSlotIDs: Set<UUID>
+    @Binding var tempoChanges: [TempoChange]
 
     @State private var timelineZoom: CGFloat = 1
     @State private var timelineViewportWidth: CGFloat = 0
@@ -26,6 +27,8 @@ struct EditView: View {
     @State private var showingTimeSignatureEditor = false
     @State private var showingGroupEditor = false
     @State private var showingChangeKey = false
+    @State private var showingTempoEditor = false
+    @State private var editingTempoMarkerID: UUID?
     @State private var selectedClip: SelectedArrangementClip?
     @FocusState private var isTimelineFocused: Bool
     @State private var cachedRulerSections: [ArrangementDisplaySection] = []
@@ -33,6 +36,62 @@ struct EditView: View {
 
     @Query(sort: [SortDescriptor(\TrackGroup.sortOrder), SortDescriptor(\TrackGroup.name)])
     private var trackGroups: [TrackGroup]
+
+    private var measureNumerator: Int {
+        song.timeSignatureNumerator ?? MeasureTiming.defaultNumerator
+    }
+
+    private var measureDenominator: Int {
+        song.timeSignatureDenominator ?? MeasureTiming.defaultDenominator
+    }
+
+    private var normalizedTempoChanges: [TempoChange] {
+        tempoChanges.normalizedEnsuringInitialMarker(defaultBPM: song.bpm ?? TempoChange.defaultBPM)
+    }
+
+    private func persistTempoChanges() {
+        let normalized = normalizedTempoChanges
+        tempoChanges = normalized
+        if song.bpm != normalized.referenceBPM {
+            song.bpm = normalized.referenceBPM
+            try? modelContext.save()
+        }
+        try? TempoStore.save(normalized, for: song.id)
+        viewModel.syncTempoMap(normalized)
+    }
+
+    private func handleTempoRulerTap(at time: TimeInterval) {
+        let boundary = MeasureTiming.nearestMeasureBoundary(
+            to: time,
+            tempoChanges: normalizedTempoChanges,
+            numerator: measureNumerator,
+            denominator: measureDenominator
+        )
+
+        if let existing = normalizedTempoChanges.first(where: { $0.startMeasure == boundary.measure }) {
+            editingTempoMarkerID = existing.id
+        } else {
+            let activeBPM = MeasureTiming.activeBPM(
+                at: boundary.time,
+                tempoChanges: normalizedTempoChanges,
+                numerator: measureNumerator,
+                denominator: measureDenominator
+            )
+            let newMarker = TempoChange(startMeasure: boundary.measure, bpm: activeBPM)
+            tempoChanges = (normalizedTempoChanges + [newMarker]).normalizedEnsuringInitialMarker(
+                defaultBPM: song.bpm ?? TempoChange.defaultBPM
+            )
+            editingTempoMarkerID = tempoChanges.first(where: { $0.startMeasure == boundary.measure })?.id
+        }
+        showingTempoEditor = true
+    }
+
+    private func deleteTempoMarker(_ marker: TempoChange) {
+        guard marker.startMeasure > 1 else { return }
+        tempoChanges.removeAll { $0.id == marker.id }
+        tempoChanges = normalizedTempoChanges
+        persistTempoChanges()
+    }
 
     private var markers: [ArrangementMarker] {
         arrangementMarkers.sortedByTime
@@ -168,6 +227,8 @@ struct EditView: View {
         .onAppear {
             refreshTimelineLayout()
             isTimelineFocused = true
+            tempoChanges = normalizedTempoChanges
+            viewModel.syncTempoMap(tempoChanges)
         }
         .onChange(of: selectedClip) { _, newValue in
             if newValue != nil {
@@ -341,20 +402,49 @@ struct EditView: View {
                                 duration: timelineDuration,
                                 contentWidth: timelineContentWidth,
                                 sections: displaySections,
+                                tempoChanges: normalizedTempoChanges,
+                                timeSignatureNumerator: measureNumerator,
+                                timeSignatureDenominator: measureDenominator,
                                 cuedSectionID: cuedSectionID,
                                 cueFlashPhase: cueFlashPhase,
                                 loopSlotIDs: loopSlotIDs,
                                 sectionMarkerHeight: TimelineLayout.sectionMarkerHeight,
+                                tempoRulerHeight: TimelineLayout.tempoRulerHeight,
                                 rulerHeight: TimelineLayout.rulerHeight,
                                 onSeek: { time in
                                     clearMarkerCue()
                                     seekOnTimeline(to: time)
                                 },
                                 onCueSection: cueSection,
-                                onToggleLoopSection: toggleLoopSection
+                                onToggleLoopSection: toggleLoopSection,
+                                onTempoRulerTap: handleTempoRulerTap,
+                                onEditTempoMarker: { marker in
+                                    editingTempoMarkerID = marker.id
+                                    showingTempoEditor = true
+                                },
+                                onDeleteTempoMarker: deleteTempoMarker
                             )
                             .frame(height: TimelineLayout.rulerTotalHeight)
-                            .id("\(displaySections.map(\.id))|\(timelineContentWidth)")
+                            .id("\(displaySections.map(\.id))|\(timelineContentWidth)|\(normalizedTempoChanges.map(\.id))")
+                            .popover(isPresented: $showingTempoEditor, arrowEdge: .bottom) {
+                                if let markerID = editingTempoMarkerID,
+                                   let marker = tempoChanges.first(where: { $0.id == markerID }) {
+                                    TempoMarkerEditorMenu(
+                                        marker: marker,
+                                        canDelete: marker.startMeasure > 1,
+                                        onApply: { bpm in
+                                            applyTempoMarker(markerID: markerID, bpm: bpm)
+                                        },
+                                        onDelete: {
+                                            if let marker = tempoChanges.first(where: { $0.id == markerID }) {
+                                                deleteTempoMarker(marker)
+                                            }
+                                            showingTempoEditor = false
+                                            editingTempoMarkerID = nil
+                                        }
+                                    )
+                                }
+                            }
 
                             VStack(spacing: TimelineLayout.laneSpacing) {
                                 ForEach(song.sortedTracks) { track in
@@ -391,7 +481,7 @@ struct EditView: View {
                         .background {
                             TimelineMeasureGridOverlay(
                                 duration: timelineDuration,
-                                bpm: song.bpm,
+                                tempoChanges: normalizedTempoChanges,
                                 timeSignatureNumerator: song.timeSignatureNumerator,
                                 timeSignatureDenominator: song.timeSignatureDenominator,
                                 rulerHeight: TimelineLayout.rulerTotalHeight
@@ -465,10 +555,31 @@ struct EditView: View {
         }
     }
 
+    private func applyTempoMarker(markerID: UUID, bpm: Double) {
+        guard TempoChange.validBPMRange.contains(bpm) else { return }
+
+        tempoChanges = tempoChanges.map { change in
+            guard change.id == markerID else { return change }
+            return TempoChange(
+                id: change.id,
+                startMeasure: change.startMeasure,
+                bpm: bpm,
+                sortOrder: change.sortOrder
+            )
+        }.normalizedEnsuringInitialMarker(defaultBPM: song.bpm ?? TempoChange.defaultBPM)
+
+        persistTempoChanges()
+        showingTempoEditor = false
+        editingTempoMarkerID = nil
+    }
+
     private var trackHeaderRulerCorner: some View {
         VStack(spacing: 0) {
             Color.clear
                 .frame(height: TimelineLayout.sectionMarkerHeight)
+
+            Color.clear
+                .frame(height: TimelineLayout.tempoRulerHeight)
 
             ZStack {
                 Rectangle()
@@ -773,9 +884,64 @@ private struct TimeSignatureEditorMenu: View {
     }
 }
 
+private struct TempoMarkerEditorMenu: View {
+    let marker: TempoChange
+    let canDelete: Bool
+    let onApply: (Double) -> Void
+    let onDelete: () -> Void
+
+    @State private var bpm: Double
+
+    init(
+        marker: TempoChange,
+        canDelete: Bool,
+        onApply: @escaping (Double) -> Void,
+        onDelete: @escaping () -> Void
+    ) {
+        self.marker = marker
+        self.canDelete = canDelete
+        self.onApply = onApply
+        self.onDelete = onDelete
+        _bpm = State(initialValue: marker.bpm)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Tempo at Measure \(marker.startMeasure)")
+                .font(.headline)
+
+            Text("Affects measure grid spacing and playback speed.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 16) {
+                Stepper(value: $bpm, in: TempoChange.validBPMRange, step: 0.1) {
+                    Text(String(format: "%.1f BPM", bpm))
+                        .monospacedDigit()
+                }
+
+                Button("Apply") {
+                    onApply(bpm)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            if canDelete {
+                Divider()
+
+                Button("Delete Marker", role: .destructive) {
+                    onDelete()
+                }
+            }
+        }
+        .padding()
+        .frame(minWidth: 280)
+    }
+}
+
 private struct TimelineMeasureGridOverlay: View {
     let duration: TimeInterval
-    let bpm: Double?
+    let tempoChanges: [TempoChange]
     let timeSignatureNumerator: Int?
     let timeSignatureDenominator: Int?
     let rulerHeight: CGFloat
@@ -793,10 +959,10 @@ private struct TimelineMeasureGridOverlay: View {
     }
 
     private func measureBoundaries(for contentWidth: CGFloat) -> [TimeInterval] {
-        guard let bpm, bpm > 0, contentWidth > 0 else { return [] }
+        guard !tempoChanges.isEmpty, contentWidth > 0 else { return [] }
         return MeasureTiming.visibleMeasureBoundaries(
             duration: safeDuration,
-            bpm: bpm,
+            tempoChanges: tempoChanges,
             contentWidth: contentWidth,
             numerator: measureNumerator,
             denominator: measureDenominator
@@ -841,14 +1007,21 @@ private struct TimelineRulerView: View {
     let duration: TimeInterval
     let contentWidth: CGFloat
     let sections: [ArrangementDisplaySection]
+    let tempoChanges: [TempoChange]
+    let timeSignatureNumerator: Int
+    let timeSignatureDenominator: Int
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
     let loopSlotIDs: Set<UUID>
     let sectionMarkerHeight: CGFloat
+    let tempoRulerHeight: CGFloat
     let rulerHeight: CGFloat
     let onSeek: (TimeInterval) -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
     let onToggleLoopSection: (ArrangementDisplaySection) -> Void
+    let onTempoRulerTap: (TimeInterval) -> Void
+    let onEditTempoMarker: (TempoChange) -> Void
+    let onDeleteTempoMarker: (TempoChange) -> Void
 
     private var safeDuration: TimeInterval {
         max(duration, 0.001)
@@ -858,6 +1031,18 @@ private struct TimelineRulerView: View {
         VStack(spacing: 0) {
             sectionMarkerRow
                 .frame(width: contentWidth, height: sectionMarkerHeight)
+
+            TimelineTempoRulerView(
+                duration: safeDuration,
+                contentWidth: contentWidth,
+                tempoChanges: tempoChanges,
+                timeSignatureNumerator: timeSignatureNumerator,
+                timeSignatureDenominator: timeSignatureDenominator,
+                height: tempoRulerHeight,
+                onTap: onTempoRulerTap,
+                onEditMarker: onEditTempoMarker,
+                onDeleteMarker: onDeleteTempoMarker
+            )
 
             ZStack(alignment: .topLeading) {
                 Rectangle()
@@ -1035,6 +1220,141 @@ private struct TimelineRulerView: View {
     }
 }
 
+private struct TimelineTempoRulerView: View {
+    let duration: TimeInterval
+    let contentWidth: CGFloat
+    let tempoChanges: [TempoChange]
+    let timeSignatureNumerator: Int
+    let timeSignatureDenominator: Int
+    let height: CGFloat
+    let onTap: (TimeInterval) -> Void
+    let onEditMarker: (TempoChange) -> Void
+    let onDeleteMarker: (TempoChange) -> Void
+
+    private var safeDuration: TimeInterval {
+        max(duration, 0.001)
+    }
+
+    private var sortedMarkers: [TempoChange] {
+        tempoChanges.sortedByMeasure
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.04))
+
+            ForEach(Array(tempoSegments.enumerated()), id: \.offset) { index, segment in
+                let startX = TimelineLayout.xPosition(
+                    for: segment.startTime,
+                    duration: safeDuration,
+                    contentWidth: contentWidth
+                )
+                let endX = TimelineLayout.xPosition(
+                    for: segment.endTime,
+                    duration: safeDuration,
+                    contentWidth: contentWidth
+                )
+                let segmentWidth = max(0, endX - startX)
+
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(tempoColor(index).opacity(0.22))
+
+                    Text(String(format: "%.0f", segment.bpm))
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(tempoColor(index))
+                        .padding(.horizontal, 4)
+                        .frame(width: segmentWidth, alignment: .leading)
+                        .lineLimit(1)
+                }
+                .frame(width: segmentWidth, height: height)
+                .offset(x: startX)
+            }
+
+            ForEach(sortedMarkers) { marker in
+                let time = MeasureTiming.timeAtStartOfMeasure(
+                    marker.startMeasure,
+                    tempoChanges: tempoChanges,
+                    numerator: timeSignatureNumerator,
+                    denominator: timeSignatureDenominator
+                )
+                let x = TimelineLayout.xPosition(
+                    for: time,
+                    duration: safeDuration,
+                    contentWidth: contentWidth
+                )
+
+                Rectangle()
+                    .fill(Color.orange.opacity(0.85))
+                    .frame(width: 2, height: height)
+                    .offset(x: x)
+                    .contextMenu {
+                        Button("Edit Tempo") {
+                            onEditMarker(marker)
+                        }
+                        if marker.startMeasure > 1 {
+                            Button("Delete Marker", role: .destructive) {
+                                onDeleteMarker(marker)
+                            }
+                        }
+                    }
+            }
+        }
+        .frame(width: contentWidth, height: height)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onEnded { value in
+                    let time = TimelineLayout.time(
+                        at: value.location.x,
+                        duration: safeDuration,
+                        contentWidth: contentWidth
+                    )
+                    onTap(time)
+                }
+        )
+    }
+
+    private struct TempoSegment {
+        let startTime: TimeInterval
+        let endTime: TimeInterval
+        let bpm: Double
+    }
+
+    private var tempoSegments: [TempoSegment] {
+        let markers = sortedMarkers
+        guard !markers.isEmpty else { return [] }
+
+        return markers.enumerated().map { index, marker in
+            let startTime = MeasureTiming.timeAtStartOfMeasure(
+                marker.startMeasure,
+                tempoChanges: tempoChanges,
+                numerator: timeSignatureNumerator,
+                denominator: timeSignatureDenominator
+            )
+            let endTime: TimeInterval
+            if index + 1 < markers.count {
+                endTime = MeasureTiming.timeAtStartOfMeasure(
+                    markers[index + 1].startMeasure,
+                    tempoChanges: tempoChanges,
+                    numerator: timeSignatureNumerator,
+                    denominator: timeSignatureDenominator
+                )
+            } else {
+                endTime = safeDuration
+            }
+            return TempoSegment(startTime: startTime, endTime: endTime, bpm: marker.bpm)
+        }
+    }
+
+    private func tempoColor(_ index: Int) -> Color {
+        let colors: [Color] = [.orange, .pink, .yellow, .red, .brown]
+        return colors[index % colors.count]
+    }
+}
+
 #Preview {
     EditView(
         song: Song(name: "Preview"),
@@ -1043,6 +1363,7 @@ private struct TimelineRulerView: View {
         arrangementSlots: .constant([]),
         clipTrims: .constant([]),
         removedClips: .constant([]),
-        loopSlotIDs: .constant([])
+        loopSlotIDs: .constant([]),
+        tempoChanges: .constant([TempoChange(startMeasure: 1, bpm: 120)])
     )
 }
