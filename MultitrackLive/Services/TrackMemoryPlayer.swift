@@ -117,38 +117,134 @@ final class TrackMemoryPlayer {
             let outputChannelCount = outputBuffers.count
             guard outputChannelCount > 0 else { return }
 
-            let sourceSpan = Double(outputFrames) / sampleRate * ratio
+            if let bounds = mapper.linearResampleBounds(atMasterTimeline: masterStart, sampleRate: sampleRate) {
+                renderResampledTempoLinear(
+                    startSourceFrame: bounds.startSourceFrame,
+                    endSourceFrame: bounds.endSourceFrame,
+                    sourceFrameStep: ratio,
+                    outputFrames: outputFrames,
+                    outputBuffers: outputBuffers,
+                    outputChannelCount: outputChannelCount,
+                    leftGain: leftGain,
+                    rightGain: rightGain
+                )
+                return
+            }
+
+            renderResampledTempoMapped(
+                masterStart: masterStart,
+                ratio: ratio,
+                outputFrames: outputFrames,
+                outputBuffers: outputBuffers,
+                outputChannelCount: outputChannelCount,
+                leftGain: leftGain,
+                rightGain: rightGain
+            )
+        }
+
+        private func renderResampledTempoLinear(
+            startSourceFrame: Double,
+            endSourceFrame: Double,
+            sourceFrameStep: Double,
+            outputFrames: Int,
+            outputBuffers: UnsafeMutableAudioBufferListPointer,
+            outputChannelCount: Int,
+            leftGain: Float,
+            rightGain: Float
+        ) {
+            var sourceFrame = startSourceFrame
 
             for outputFrame in 0..<outputFrames {
-                let progress = (Double(outputFrame) + 0.5) / Double(outputFrames)
-                let masterTime = masterStart + progress * sourceSpan
+                guard sourceFrame < endSourceFrame else { break }
+                writeResampledFrame(
+                    sourceFrame: sourceFrame,
+                    outputFrame: outputFrame,
+                    outputBuffers: outputBuffers,
+                    outputChannelCount: outputChannelCount,
+                    leftGain: leftGain,
+                    rightGain: rightGain
+                )
+                sourceFrame += sourceFrameStep
+            }
+        }
 
-                guard let sourceTime = mapper.sourceSeconds(atMasterTimeline: masterTime) else {
-                    continue
+        private func renderResampledTempoMapped(
+            masterStart: TimeInterval,
+            ratio: Double,
+            outputFrames: Int,
+            outputBuffers: UnsafeMutableAudioBufferListPointer,
+            outputChannelCount: Int,
+            leftGain: Float,
+            rightGain: Float
+        ) {
+            var renderedFrames = 0
+            var masterTime = masterStart
+            let masterStep = ratio / sampleRate
+
+            while renderedFrames < outputFrames {
+                let bufferRemaining = Double(outputFrames - renderedFrames) / sampleRate
+                let regionSeconds = mapper.regionRemainingSeconds(
+                    fromMasterTimeline: masterTime,
+                    bufferLimit: bufferRemaining
+                )
+
+                guard regionSeconds > 0,
+                      let sourceStart = mapper.sourceSeconds(atMasterTimeline: masterTime) else {
+                    break
                 }
 
-                let sourceFrame = sourceTime * sampleRate
+                let runFrames = min(
+                    Int((regionSeconds * sampleRate).rounded(.down)),
+                    outputFrames - renderedFrames
+                )
+                guard runFrames > 0 else { break }
 
-                if buffer.channelCount == 1 {
-                    guard let outputData = outputBuffers[0].mData?.assumingMemoryBound(to: Float.self) else { continue }
-                    outputData[outputFrame] = buffer.interpolatedSample(channel: 0, frame: sourceFrame) * leftGain
-                    continue
+                var sourceFrame = sourceStart * sampleRate
+
+                for offset in 0..<runFrames {
+                    writeResampledFrame(
+                        sourceFrame: sourceFrame,
+                        outputFrame: renderedFrames + offset,
+                        outputBuffers: outputBuffers,
+                        outputChannelCount: outputChannelCount,
+                        leftGain: leftGain,
+                        rightGain: rightGain
+                    )
+                    sourceFrame += ratio
+                    masterTime += masterStep
                 }
 
-                if outputChannelCount >= 2, buffer.channelCount >= 2 {
-                    if let leftOutput = outputBuffers[0].mData?.assumingMemoryBound(to: Float.self) {
-                        leftOutput[outputFrame] = buffer.interpolatedSample(channel: 0, frame: sourceFrame) * leftGain
-                    }
-                    if let rightOutput = outputBuffers[1].mData?.assumingMemoryBound(to: Float.self) {
-                        rightOutput[outputFrame] = buffer.interpolatedSample(channel: 1, frame: sourceFrame) * rightGain
-                    }
-                    continue
-                }
+                renderedFrames += runFrames
+            }
+        }
 
-                for channel in 0..<min(buffer.channelCount, outputChannelCount) {
-                    guard let outputData = outputBuffers[channel].mData?.assumingMemoryBound(to: Float.self) else { continue }
-                    outputData[outputFrame] = buffer.interpolatedSample(channel: channel, frame: sourceFrame) * mix.volume
+        private func writeResampledFrame(
+            sourceFrame: Double,
+            outputFrame: Int,
+            outputBuffers: UnsafeMutableAudioBufferListPointer,
+            outputChannelCount: Int,
+            leftGain: Float,
+            rightGain: Float
+        ) {
+            if buffer.channelCount == 1 {
+                guard let outputData = outputBuffers[0].mData?.assumingMemoryBound(to: Float.self) else { return }
+                outputData[outputFrame] = buffer.interpolatedSample(channel: 0, frame: sourceFrame) * leftGain
+                return
+            }
+
+            if outputChannelCount >= 2, buffer.channelCount >= 2 {
+                if let leftOutput = outputBuffers[0].mData?.assumingMemoryBound(to: Float.self) {
+                    leftOutput[outputFrame] = buffer.interpolatedSample(channel: 0, frame: sourceFrame) * leftGain
                 }
+                if let rightOutput = outputBuffers[1].mData?.assumingMemoryBound(to: Float.self) {
+                    rightOutput[outputFrame] = buffer.interpolatedSample(channel: 1, frame: sourceFrame) * rightGain
+                }
+                return
+            }
+
+            for channel in 0..<min(buffer.channelCount, outputChannelCount) {
+                guard let outputData = outputBuffers[channel].mData?.assumingMemoryBound(to: Float.self) else { continue }
+                outputData[outputFrame] = buffer.interpolatedSample(channel: channel, frame: sourceFrame) * mix.volume
             }
         }
 

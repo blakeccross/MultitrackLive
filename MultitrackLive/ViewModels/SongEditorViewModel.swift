@@ -29,6 +29,7 @@ final class SongEditorViewModel {
 
         if highQuality || wasHighQuality {
             reloadTask?.cancel()
+            audioEngine.stop()
             await performReload()
             return
         }
@@ -81,29 +82,47 @@ final class SongEditorViewModel {
             return
         }
 
+        audioEngine.stop()
+
         let bakePitchShift = song.transposeHighQuality
 
         let preparationResult: Result<[AudioEngineManager.PreparedTrackPayload], Error> =
             await Task.detached(priority: .userInitiated) {
                 do {
-                    var prepared: [AudioEngineManager.PreparedTrackPayload] = []
-                    prepared.reserveCapacity(trackInputs.count)
-
-                    for input in trackInputs {
-                        try Task.checkCancellation()
-                        let payload = try autoreleasepool {
-                            try AudioEngineManager.prepareTrackPayload(
-                                id: input.id,
-                                url: input.url,
-                                settings: input.settings,
-                                groupID: input.groupID,
-                                bakePitchShift: bakePitchShift
-                            )
+                    let inputs = trackInputs
+                    return try await withThrowingTaskGroup(
+                        of: (Int, AudioEngineManager.PreparedTrackPayload).self
+                    ) { group in
+                        for (index, input) in inputs.enumerated() {
+                            group.addTask {
+                                try Task.checkCancellation()
+                                let payload = try autoreleasepool {
+                                    try AudioEngineManager.prepareTrackPayload(
+                                        id: input.id,
+                                        url: input.url,
+                                        settings: input.settings,
+                                        groupID: input.groupID,
+                                        bakePitchShift: bakePitchShift
+                                    )
+                                }
+                                return (index, payload)
+                            }
                         }
-                        prepared.append(payload)
-                    }
 
-                    return .success(prepared)
+                        var prepared = [AudioEngineManager.PreparedTrackPayload?](
+                            repeating: nil,
+                            count: inputs.count
+                        )
+                        for try await (index, payload) in group {
+                            prepared[index] = payload
+                        }
+
+                        guard prepared.allSatisfy({ $0 != nil }) else {
+                            throw CancellationError()
+                        }
+
+                        return .success(prepared.map { $0! })
+                    }
                 } catch {
                     return .failure(error)
                 }

@@ -53,6 +53,7 @@ final class AudioEngineManager {
     private var referenceBPM: Double = 0
     private var timeSignatureNumerator: Int = MeasureTiming.defaultNumerator
     private var timeSignatureDenominator: Int = MeasureTiming.defaultDenominator
+    private var lastAppliedPitchCompensationCents: Float?
 
     var referenceSampleRate: Double {
         DecodedStemBuffer.engineSampleRate
@@ -603,6 +604,17 @@ final class AudioEngineManager {
             compensationCents = Float(-1200 * log2(max(ratio, 0.01)))
         } else {
             compensationCents = 0
+        }
+
+        if let timeline,
+           let lastAppliedPitchCompensationCents,
+           abs(lastAppliedPitchCompensationCents - compensationCents) < 0.01 {
+            return
+        }
+        if timeline != nil {
+            lastAppliedPitchCompensationCents = compensationCents
+        } else {
+            lastAppliedPitchCompensationCents = nil
         }
 
         for id in tracks.keys {

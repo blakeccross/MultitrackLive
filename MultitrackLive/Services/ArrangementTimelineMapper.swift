@@ -7,6 +7,8 @@ struct ArrangementTimelineMapper: Sendable {
     private let trimEnd: TimeInterval
     private let usesArrangement: Bool
 
+    var hasArrangementMapping: Bool { usesArrangement }
+
     init(
         sections: [ArrangementDisplaySection],
         trimStart: TimeInterval,
@@ -17,6 +19,16 @@ struct ArrangementTimelineMapper: Sendable {
         self.trimStart = trimStart
         self.trimEnd = trimEnd
         self.usesArrangement = usesArrangement
+    }
+
+    /// Fast-path bounds for tempo resampling when the master timeline maps 1:1 to source trim.
+    func linearResampleBounds(
+        atMasterTimeline master: TimeInterval,
+        sampleRate: Double
+    ) -> (startSourceFrame: Double, endSourceFrame: Double)? {
+        guard !usesArrangement, sampleRate > 0 else { return nil }
+        guard let sourceStart = sourceSeconds(atMasterTimeline: master) else { return nil }
+        return (sourceStart * sampleRate, trimEnd * sampleRate)
     }
 
     /// Returns source-file seconds for the given master-timeline position, or nil when silent.
