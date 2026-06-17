@@ -5,6 +5,7 @@ enum DecodedStemBufferError: Error {
     case unsupportedFormat
     case conversionFailed
     case emptyFile
+    case pitchShiftFailed
 }
 
 /// Float32 PCM decoded once at load time for real-time memory playback.
@@ -93,6 +94,46 @@ final class DecodedStemBuffer: @unchecked Sendable {
             channelCount: channelCount,
             frameCount: frameCount,
             audioFormat: targetFormat,
+            channels: channelPointers
+        )
+    }
+
+    func applyingSemitoneShift(_ semitones: Int) throws -> DecodedStemBuffer {
+        try RubberBandPitchProcessor.pitchShift(buffer: self, semitones: semitones)
+    }
+
+    func channelPointer(_ channel: Int) -> UnsafePointer<Float> {
+        UnsafePointer(channels[channel])
+    }
+
+    static func fromPitchShiftResult(
+        _ result: PitchShiftResult,
+        sampleRate: Double,
+        audioFormat: AVAudioFormat
+    ) throws -> DecodedStemBuffer {
+        let channelCount = Int(result.channelCount)
+        let frameCount = Int(result.frameCount)
+        guard channelCount > 0, frameCount > 0, let sourceChannels = result.channels else {
+            throw DecodedStemBufferError.pitchShiftFailed
+        }
+
+        var channelPointers: [UnsafeMutablePointer<Float>] = []
+        channelPointers.reserveCapacity(channelCount)
+
+        for channel in 0..<channelCount {
+            guard let sourceChannel = sourceChannels[channel] else {
+                throw DecodedStemBufferError.pitchShiftFailed
+            }
+            let pointer = UnsafeMutablePointer<Float>.allocate(capacity: frameCount)
+            pointer.initialize(from: sourceChannel, count: frameCount)
+            channelPointers.append(pointer)
+        }
+
+        return DecodedStemBuffer(
+            sampleRate: sampleRate,
+            channelCount: channelCount,
+            frameCount: frameCount,
+            audioFormat: audioFormat,
             channels: channelPointers
         )
     }

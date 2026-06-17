@@ -9,39 +9,131 @@ final class SongEditorViewModel {
     let song: Song
     private(set) var loadError: String?
     private(set) var isLoaded = false
+    private(set) var isReloadingSong = false
     private var trackDurations: [UUID: TimeInterval] = [:]
+    private var reloadTask: Task<Void, Never>?
+    private var reloadGeneration = 0
 
     init(song: Song) {
         self.song = song
     }
 
     func loadSong() {
-        do {
-            trackDurations = [:]
-            let trackPayload = song.sortedTracks.map { track in
-                let url = FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath)
-                let duration = FileStore.fileDuration(at: url) ?? 0
-                trackDurations[track.id] = duration
-                return (
-                    id: track.id,
-                    url: url,
-                    settings: AudioEngineManager.TrackSettings(track: track),
-                    groupID: track.group?.id
-                )
-            }
+        reloadSong()
+    }
 
-            guard !trackPayload.isEmpty else {
-                isLoaded = false
-                loadError = "Import at least one track to preview this song."
-                return
-            }
+    func applyKeyChange(context: ModelContext, highQuality: Bool) async {
+        let wasHighQuality = song.transposeHighQuality
+        song.transposeHighQuality = highQuality
+        try? context.save()
 
-            try audioEngine.loadTracks(trackPayload)
-            isLoaded = true
-            loadError = nil
-        } catch {
+        if highQuality || wasHighQuality {
+            reloadTask?.cancel()
+            await performReload()
+            return
+        }
+
+        applyRealtimePitch()
+    }
+
+    private func applyRealtimePitch() {
+        guard isLoaded else { return }
+
+        for track in song.sortedTracks {
+            audioEngine.updateTrackSettings(
+                id: track.id,
+                settings: AudioEngineManager.TrackSettings(track: track)
+            )
+        }
+    }
+
+    private func reloadSong() {
+        reloadTask?.cancel()
+        reloadTask = Task { @MainActor in
+            await performReload()
+        }
+    }
+
+    @MainActor
+    private func performReload() async {
+        reloadGeneration += 1
+        let generation = reloadGeneration
+        isReloadingSong = true
+        defer {
+            if generation == reloadGeneration {
+                isReloadingSong = false
+                reloadTask = nil
+            }
+        }
+
+        let trackInputs = song.sortedTracks.map { track in
+            (
+                id: track.id,
+                url: FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath),
+                settings: AudioEngineManager.TrackSettings(track: track),
+                groupID: track.group?.id
+            )
+        }
+
+        guard !trackInputs.isEmpty else {
             isLoaded = false
-            loadError = error.localizedDescription
+            loadError = "Import at least one track to preview this song."
+            return
+        }
+
+        let bakePitchShift = song.transposeHighQuality
+
+        let preparationResult: Result<[AudioEngineManager.PreparedTrackPayload], Error> =
+            await Task.detached(priority: .userInitiated) {
+                do {
+                    var prepared: [AudioEngineManager.PreparedTrackPayload] = []
+                    prepared.reserveCapacity(trackInputs.count)
+
+                    for input in trackInputs {
+                        try Task.checkCancellation()
+                        let payload = try autoreleasepool {
+                            try AudioEngineManager.prepareTrackPayload(
+                                id: input.id,
+                                url: input.url,
+                                settings: input.settings,
+                                groupID: input.groupID,
+                                bakePitchShift: bakePitchShift
+                            )
+                        }
+                        prepared.append(payload)
+                    }
+
+                    return .success(prepared)
+                } catch {
+                    return .failure(error)
+                }
+            }.value
+
+        guard generation == reloadGeneration, !Task.isCancelled else { return }
+
+        switch preparationResult {
+        case .success(let prepared):
+            trackDurations = [:]
+            for payload in prepared {
+                trackDurations[payload.id] = Double(payload.buffer.frameCount) / payload.buffer.sampleRate
+            }
+
+            do {
+                try audioEngine.loadPreparedTracks(prepared)
+                isLoaded = true
+                loadError = nil
+            } catch {
+                isLoaded = false
+                loadError = error.localizedDescription
+            }
+
+        case .failure(let error):
+            isLoaded = false
+            if error is CancellationError {
+                loadError = nil
+            } else {
+                loadError = error.localizedDescription
+            }
         }
     }
 

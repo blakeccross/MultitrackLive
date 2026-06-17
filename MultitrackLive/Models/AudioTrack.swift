@@ -13,6 +13,7 @@ final class AudioTrack {
     var isSolo: Bool
     var trimStartSeconds: Double
     var trimEndSeconds: Double?
+    var excludeFromTranspose: Bool
 
     var song: Song?
     var group: TrackGroup?
@@ -28,5 +29,6 @@ final class AudioTrack {
         isSolo = false
         trimStartSeconds = 0.0
         trimEndSeconds = nil
+        excludeFromTranspose = false
     }
 }

@@ -57,6 +57,10 @@
 		AA0000010000000000000035 /* TimeSignatureChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000035 /* TimeSignatureChange.swift */; };
 		AA0000010000000000000036 /* TimeSignatureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000036 /* TimeSignatureStore.swift */; };
 		AA0000010000000000000034 /* SongFolderImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000034 /* SongFolderImporter.swift */; };
+		AA0000010000000000000037 /* ChangeKeyDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000037 /* ChangeKeyDialog.swift */; };
+		AA0000010000000000000038 /* PitchShiftBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000039 /* PitchShiftBridge.mm */; };
+		AA000001000000000000003A /* RubberBandPitchProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003A /* RubberBandPitchProcessor.swift */; };
+		AA000001000000000000003B /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003D /* Accelerate.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -110,6 +114,13 @@
 		AA0000020000000000000036 /* TimeSignatureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeSignatureStore.swift; sourceTree = "<group>"; };
 		AA0000020000000000000035 /* TimeSignatureChange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeSignatureChange.swift; sourceTree = "<group>"; };
 		AA0000020000000000000034 /* SongFolderImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongFolderImporter.swift; sourceTree = "<group>"; };
+		AA0000020000000000000037 /* ChangeKeyDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangeKeyDialog.swift; sourceTree = "<group>"; };
+		AA0000020000000000000038 /* PitchShiftBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PitchShiftBridge.h; sourceTree = "<group>"; };
+		AA0000020000000000000039 /* PitchShiftBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = PitchShiftBridge.mm; sourceTree = "<group>"; };
+		AA000002000000000000003A /* RubberBandPitchProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubberBandPitchProcessor.swift; sourceTree = "<group>"; };
+		AA000002000000000000003B /* MultitrackLive-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "MultitrackLive-Bridging-Header.h"; sourceTree = "<group>"; };
+		AA000002000000000000003C /* RubberBandSingle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = RubberBandSingle.cpp; path = ThirdParty/rubberband/single/RubberBandSingle.cpp; sourceTree = SOURCE_ROOT; };
+		AA000002000000000000003D /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		AA0000020000000000000033 /* ManageOutputsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageOutputsView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000024 /* TimelinePlayheadOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelinePlayheadOverlay.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -119,6 +130,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA000001000000000000003B /* Accelerate.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -137,6 +149,8 @@
 			isa = PBXGroup;
 			children = (
 				AA0000020000000000000001 /* MultitrackLiveApp.swift */,
+				AA000002000000000000003B /* MultitrackLive-Bridging-Header.h */,
+				AA000005000000000000000E /* Audio */,
 				AA0000050000000000000004 /* Models */,
 				AA0000050000000000000005 /* Services */,
 				AA0000050000000000000006 /* ViewModels */,
@@ -174,6 +188,16 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
+		AA000005000000000000000E /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000020000000000000038 /* PitchShiftBridge.h */,
+				AA0000020000000000000039 /* PitchShiftBridge.mm */,
+				AA000002000000000000003C /* RubberBandSingle.cpp */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
 		AA0000050000000000000005 /* Services */ = {
 			isa = PBXGroup;
 			children = (
@@ -193,6 +217,7 @@
 				AA0000020000000000000021 /* ArrangementTimelineMapper.swift */,
 				AA0000020000000000000022 /* AudioPlaybackTransport.swift */,
 				AA0000020000000000000026 /* DecodedStemBuffer.swift */,
+				AA000002000000000000003A /* RubberBandPitchProcessor.swift */,
 				AA0000020000000000000027 /* TrackMemoryPlayer.swift */,
 				AA0000020000000000000008 /* PlaybackCoordinator.swift */,
 			);
@@ -226,6 +251,7 @@
 				AA000002000000000000000E /* MixView.swift */,
 				AA000002000000000000000F /* EditView.swift */,
 				AA0000020000000000000020 /* ArrangementEditorMenu.swift */,
+				AA0000020000000000000037 /* ChangeKeyDialog.swift */,
 				AA000002000000000000002C /* TrackGroupEditorView.swift */,
 				AA0000020000000000000033 /* ManageOutputsView.swift */,
 				AA000002000000000000001D /* TimelineLayout.swift */,
@@ -347,6 +373,9 @@
 				AA000001000000000000001D /* ArrangementSlot.swift in Sources */,
 				AA000001000000000000001E /* SongArrangementStore.swift in Sources */,
 				AA000001000000000000001F /* ArrangementEditorMenu.swift in Sources */,
+				AA0000010000000000000037 /* ChangeKeyDialog.swift in Sources */,
+				AA0000010000000000000038 /* PitchShiftBridge.mm in Sources */,
+				AA000001000000000000003A /* RubberBandPitchProcessor.swift in Sources */,
 				AA0000010000000000000020 /* ArrangementTimelineMapper.swift in Sources */,
 				AA0000010000000000000021 /* AudioPlaybackTransport.swift in Sources */,
 				AA0000010000000000000026 /* DecodedStemBuffer.swift in Sources */,
@@ -416,11 +445,16 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/ThirdParty/rubberband",
+				);
 				INFOPLIST_FILE = MultitrackLive/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Multitrack Live";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -441,6 +475,7 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "MultitrackLive/MultitrackLive-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -451,11 +486,16 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/ThirdParty/rubberband",
+				);
 				INFOPLIST_FILE = MultitrackLive/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Multitrack Live";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -476,6 +516,7 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "MultitrackLive/MultitrackLive-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

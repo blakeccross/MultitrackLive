@@ -227,16 +227,22 @@ struct LivePlaybackView: View {
                 Text(loadError)
                     .font(.caption)
                     .foregroundStyle(.red)
-            } else if let snapshot = coordinator.currentWaveformSnapshot {
-                LiveSetlistWaveformScrollView(
-                    currentSnapshot: snapshot,
-                    nextSnapshot: coordinator.nextWaveformSnapshot,
-                    transitionToNext: coordinator.transitionAfterCurrentSong,
-                    cuedSectionID: cuedSectionID,
-                    cueFlashPhase: cueFlashPhase,
-                    onSeek: coordinator.seek,
-                    onCueSection: cueSection
-                )
+            } else {
+                Group {
+                    if let snapshot = coordinator.currentWaveformSnapshot {
+                        LiveSetlistWaveformScrollView(
+                            currentSnapshot: snapshot,
+                            nextSnapshot: coordinator.nextWaveformSnapshot,
+                            transitionToNext: coordinator.transitionAfterCurrentSong,
+                            cuedSectionID: cuedSectionID,
+                            cueFlashPhase: cueFlashPhase,
+                            onSeek: coordinator.seek,
+                            onCueSection: cueSection
+                        )
+                    } else {
+                        LiveSetlistWaveformLoadingPlaceholder()
+                    }
+                }
             }
 
             TransportControls(
@@ -282,6 +288,26 @@ struct LivePlaybackView: View {
                 .disabled(coordinator.nextSong == nil)
             }
             .buttonStyle(.bordered)
+        }
+    }
+
+    private struct LiveSetlistWaveformLoadingPlaceholder: View {
+        private let waveformHeight: CGFloat = 72
+
+        private var laneHeight: CGFloat {
+            waveformHeight + 24
+        }
+
+        var body: some View {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.secondary.opacity(0.10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: laneHeight)
+                .redacted(reason: .placeholder)
         }
     }
 

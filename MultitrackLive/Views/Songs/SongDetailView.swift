@@ -118,19 +118,33 @@ struct SongDetailView: View {
             .padding()
 
             if let viewModel {
-                switch selectedTab {
-                case .mix:
-                    MixView(song: song, viewModel: viewModel)
-                case .edit:
-                    EditView(
-                        song: song,
-                        viewModel: viewModel,
-                        arrangementMarkers: arrangementMarkers,
-                        arrangementSlots: $arrangementSlots,
-                        clipTrims: $clipTrims,
-                        removedClips: $removedClips,
-                        loopSlotIDs: $loopSlotIDs
-                    )
+                ZStack {
+                    switch selectedTab {
+                    case .mix:
+                        MixView(song: song, viewModel: viewModel)
+                    case .edit:
+                        EditView(
+                            song: song,
+                            viewModel: viewModel,
+                            arrangementMarkers: arrangementMarkers,
+                            arrangementSlots: $arrangementSlots,
+                            clipTrims: $clipTrims,
+                            removedClips: $removedClips,
+                            loopSlotIDs: $loopSlotIDs
+                        )
+                    }
+
+                    if viewModel.isReloadingSong {
+                        Color.black.opacity(0.2)
+                            .ignoresSafeArea()
+                        VStack(spacing: 12) {
+                            ProgressView()
+                            Text(viewModel.isReloadingSong && song.transposeHighQuality ? "Processing audio…" : "Loading audio…")
+                                .font(.headline)
+                        }
+                        .padding(24)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    }
                 }
             } else {
                 ProgressView("Loading song...")

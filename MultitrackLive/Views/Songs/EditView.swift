@@ -25,6 +25,7 @@ struct EditView: View {
     @State private var showingArrangementEditor = false
     @State private var showingTimeSignatureEditor = false
     @State private var showingGroupEditor = false
+    @State private var showingChangeKey = false
     @State private var selectedClip: SelectedArrangementClip?
     @FocusState private var isTimelineFocused: Bool
     @State private var cachedRulerSections: [ArrangementDisplaySection] = []
@@ -210,6 +211,9 @@ struct EditView: View {
         .sheet(isPresented: $showingGroupEditor) {
             TrackGroupEditorView()
         }
+        .sheet(isPresented: $showingChangeKey) {
+            ChangeKeyDialog(song: song, viewModel: viewModel)
+        }
     }
 
     private func removeSelectedClip() {
@@ -315,6 +319,7 @@ struct EditView: View {
             showingArrangementEditor: $showingArrangementEditor,
             showingTimeSignatureEditor: $showingTimeSignatureEditor,
             showingGroupEditor: $showingGroupEditor,
+            showingChangeKey: $showingChangeKey,
             arrangementSlots: $arrangementSlots,
             clipTrims: $clipTrims,
             removedClips: $removedClips,
@@ -511,6 +516,7 @@ private struct EditTransportBar: View {
     @Binding var showingArrangementEditor: Bool
     @Binding var showingTimeSignatureEditor: Bool
     @Binding var showingGroupEditor: Bool
+    @Binding var showingChangeKey: Bool
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
     @Binding var removedClips: [ArrangementRemovedClip]
@@ -536,6 +542,7 @@ private struct EditTransportBar: View {
 
             HStack(spacing: 8) {
                 timeSignatureEditorButton
+                changeKeyButton
 
                 if !markers.isEmpty {
                     arrangementEditorButton
@@ -593,6 +600,32 @@ private struct EditTransportBar: View {
                     .labelStyle(.titleAndIcon)
             }
             .buttonStyle(.bordered)
+        }
+    }
+
+    private var changeKeyButton: some View {
+        Button {
+            showingChangeKey = true
+        } label: {
+            Label(changeKeyButtonTitle, systemImage: "key.fill")
+                .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(.bordered)
+        .disabled(song.sortedTracks.isEmpty)
+    }
+
+    private var changeKeyButtonTitle: String {
+        switch song.transposeSemitones {
+        case 0:
+            return "Change Key"
+        case 1:
+            return "Key +1"
+        case -1:
+            return "Key -1"
+        case let value where value > 0:
+            return "Key +\(value)"
+        default:
+            return "Key \(song.transposeSemitones)"
         }
     }
 

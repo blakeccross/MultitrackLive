@@ -204,7 +204,7 @@ final class PlaybackCoordinator {
         }
 
         let routing = routingProvider?()
-        try audioEngine.loadTracks(trackPayload, routing: routing)
+        try audioEngine.loadTracks(trackPayload, routing: routing, bakePitchShift: song.transposeHighQuality)
 
         let markers = ArrangementMarkerStore.load(for: song.id).sortedByTime
         let arrangement = SongArrangementStore.load(for: song.id, markers: markers)

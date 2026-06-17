@@ -234,6 +234,8 @@ struct SongLibraryView: View {
         copy.bpm = source.bpm
         copy.timeSignatureNumerator = source.timeSignatureNumerator
         copy.timeSignatureDenominator = source.timeSignatureDenominator
+        copy.transposeSemitones = source.transposeSemitones
+        copy.transposeHighQuality = source.transposeHighQuality
         modelContext.insert(copy)
 
         var trackIDMap: [UUID: UUID] = [:]
@@ -261,6 +263,7 @@ struct SongLibraryView: View {
                 newTrack.isSolo = track.isSolo
                 newTrack.trimStartSeconds = track.trimStartSeconds
                 newTrack.trimEndSeconds = track.trimEndSeconds
+                newTrack.excludeFromTranspose = track.excludeFromTranspose
                 newTrack.group = track.group
                 newTrack.song = copy
             }

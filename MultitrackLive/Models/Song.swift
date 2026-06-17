@@ -9,6 +9,8 @@ final class Song {
     var bpm: Double?
     var timeSignatureNumerator: Int?
     var timeSignatureDenominator: Int?
+    var transposeSemitones: Int
+    var transposeHighQuality: Bool
 
     @Relationship(deleteRule: .cascade, inverse: \AudioTrack.song)
     var tracks: [AudioTrack]
@@ -20,6 +22,8 @@ final class Song {
         bpm = nil
         timeSignatureNumerator = nil
         timeSignatureDenominator = nil
+        transposeSemitones = 0
+        transposeHighQuality = false
         tracks = []
     }
 

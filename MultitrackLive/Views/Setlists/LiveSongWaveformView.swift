@@ -323,6 +323,7 @@ struct LiveSetlistWaveformScrollView: View {
                     }
                     .fixedSize(horizontal: true, vertical: false)
                     .padding(.vertical, 2)
+                    .frame(minWidth: geometry.size.width, alignment: .leading)
                 }
                 .onAppear {
                     scrollToCurrent(proxy)

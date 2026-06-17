@@ -13,15 +13,29 @@ final class AudioEngineManager {
         var isSolo: Bool
         var trimStart: TimeInterval
         var trimEnd: TimeInterval?
+        var pitchCents: Float
+        var excludeFromTranspose: Bool
+    }
+
+    struct PreparedTrackPayload: Sendable {
+        let id: UUID
+        let buffer: DecodedStemBuffer
+        let settings: TrackSettings
+        let groupID: UUID?
     }
 
     private struct TrackState {
         let trackID: UUID
         let memoryPlayer: TrackMemoryPlayer
+        let timePitchNode: AVAudioUnitTimePitch
         var settings: TrackSettings
         let fileDuration: TimeInterval
         let groupID: UUID?
         let sourceFormat: AVAudioFormat
+
+        var playbackOutputNode: AVAudioNode {
+            timePitchNode
+        }
     }
 
     private let engine = AVAudioEngine()
@@ -64,6 +78,23 @@ final class AudioEngineManager {
 
     func loadTracks(
         _ payloads: [(id: UUID, url: URL, settings: TrackSettings, groupID: UUID?)],
+        routing: OutputRoutingSnapshot? = nil,
+        bakePitchShift: Bool = false
+    ) throws {
+        let prepared = try payloads.map { payload in
+            try Self.prepareTrackPayload(
+                id: payload.id,
+                url: payload.url,
+                settings: payload.settings,
+                groupID: payload.groupID,
+                bakePitchShift: bakePitchShift
+            )
+        }
+        try loadPreparedTracks(prepared, routing: routing)
+    }
+
+    func loadPreparedTracks(
+        _ payloads: [PreparedTrackPayload],
         routing: OutputRoutingSnapshot? = nil
     ) throws {
         stop()
@@ -76,50 +107,109 @@ final class AudioEngineManager {
         routingSnapshot = routing
         usesOutputRouting = routing != nil
 
-        for payload in payloads {
-            let decodedBuffer = try DecodedStemBuffer.decode(from: payload.url)
-            var settings = payload.settings
-            let fileDuration = Double(decodedBuffer.frameCount) / decodedBuffer.sampleRate
-            if settings.trimEnd == nil {
-                settings.trimEnd = fileDuration
+        var loadedTracks: [UUID: TrackState] = [:]
+        do {
+            for payload in payloads {
+                loadedTracks[payload.id] = try buildTrackState(for: payload)
+            }
+            tracks = loadedTracks
+
+            if usesOutputRouting, let routing {
+                try wireTrackOutputs(routing: routing)
+            } else {
+                connectTracksToMasterMixer()
+                try startEngineIfNeeded()
             }
 
-            let mapper = makeMapper(
-                trackID: payload.id,
-                settings: settings,
-                fileDuration: fileDuration
-            )
-            let memoryPlayer = TrackMemoryPlayer(
-                trackID: payload.id,
-                buffer: decodedBuffer,
-                transport: transport,
-                mapper: mapper
-            )
-
-            engine.attach(memoryPlayer.sourceNode)
-
-            let format = decodedBuffer.audioFormat
-
-            tracks[payload.id] = TrackState(
-                trackID: payload.id,
-                memoryPlayer: memoryPlayer,
-                settings: settings,
-                fileDuration: fileDuration,
-                groupID: payload.groupID,
-                sourceFormat: format
-            )
+            applyAllMixSettings()
+            duration = calculateEffectiveDuration()
+            transport.setDuration(duration)
+        } catch {
+            tracks = loadedTracks
+            teardownTracks()
+            throw error
         }
+    }
 
-        if usesOutputRouting, let routing {
-            try wireTrackOutputs(routing: routing)
+    static func pitchShiftedBuffer(
+        from decodedBuffer: DecodedStemBuffer,
+        settings: TrackSettings
+    ) throws -> DecodedStemBuffer {
+        let semitones = Int((settings.pitchCents / 100).rounded())
+        guard semitones != 0 else { return decodedBuffer }
+        return try decodedBuffer.applyingSemitoneShift(semitones)
+    }
+
+    static func prepareTrackPayload(
+        id: UUID,
+        url: URL,
+        settings: TrackSettings,
+        groupID: UUID?,
+        bakePitchShift: Bool = false
+    ) throws -> PreparedTrackPayload {
+        let decodedBuffer = try DecodedStemBuffer.decode(from: url)
+        let playbackBuffer: DecodedStemBuffer
+        var resolvedSettings = settings
+
+        if bakePitchShift {
+            playbackBuffer = try pitchShiftedBuffer(from: decodedBuffer, settings: settings)
+            if Int((settings.pitchCents / 100).rounded()) != 0 {
+                resolvedSettings.pitchCents = 0
+            }
         } else {
-            connectTracksToMasterMixer()
-            try startEngineIfNeeded()
+            playbackBuffer = decodedBuffer
         }
 
-        applyAllMixSettings()
-        duration = calculateEffectiveDuration()
-        transport.setDuration(duration)
+        let fileDuration = Double(playbackBuffer.frameCount) / playbackBuffer.sampleRate
+        if resolvedSettings.trimEnd == nil {
+            resolvedSettings.trimEnd = fileDuration
+        }
+        return PreparedTrackPayload(
+            id: id,
+            buffer: playbackBuffer,
+            settings: resolvedSettings,
+            groupID: groupID
+        )
+    }
+
+    private func buildTrackState(for payload: PreparedTrackPayload) throws -> TrackState {
+        var settings = payload.settings
+        let playbackBuffer = payload.buffer
+        let fileDuration = Double(playbackBuffer.frameCount) / playbackBuffer.sampleRate
+        if settings.trimEnd == nil {
+            settings.trimEnd = fileDuration
+        }
+
+        let mapper = makeMapper(
+            trackID: payload.id,
+            settings: settings,
+            fileDuration: fileDuration
+        )
+        let memoryPlayer = TrackMemoryPlayer(
+            trackID: payload.id,
+            buffer: playbackBuffer,
+            transport: transport,
+            mapper: mapper
+        )
+
+        let timePitchNode = AVAudioUnitTimePitch()
+        timePitchNode.pitch = settings.pitchCents
+        timePitchNode.rate = 1.0
+
+        let format = playbackBuffer.audioFormat
+        engine.attach(memoryPlayer.sourceNode)
+        engine.attach(timePitchNode)
+        engine.connect(memoryPlayer.sourceNode, to: timePitchNode, format: format)
+
+        return TrackState(
+            trackID: payload.id,
+            memoryPlayer: memoryPlayer,
+            timePitchNode: timePitchNode,
+            settings: settings,
+            fileDuration: fileDuration,
+            groupID: payload.groupID,
+            sourceFormat: format
+        )
     }
 
     func applyOutputRouting(_ routing: OutputRoutingSnapshot) {
@@ -275,6 +365,8 @@ final class AudioEngineManager {
     func updateTrackSettings(id: UUID, settings: TrackSettings) {
         guard var track = tracks[id] else { return }
         track.settings = settings
+        track.timePitchNode.pitch = settings.pitchCents
+        track.timePitchNode.rate = 1.0
         tracks[id] = track
         applyAllMixSettings()
         duration = calculateEffectiveDuration()
@@ -358,7 +450,10 @@ final class AudioEngineManager {
         stopEngineForGraphChanges()
         for track in tracks.values {
             engine.disconnectNodeOutput(track.memoryPlayer.sourceNode)
+            engine.disconnectNodeInput(track.timePitchNode)
+            engine.disconnectNodeOutput(track.timePitchNode)
             engine.detach(track.memoryPlayer.sourceNode)
+            engine.detach(track.timePitchNode)
         }
         tracks.removeAll()
         outputRoutingManager.teardown(in: engine)
@@ -383,7 +478,6 @@ final class AudioEngineManager {
             _ = AudioOutputDeviceService.setSystemDefaultOutputDevice(uid: uid)
         }
 
-        try startEngineIfNeeded()
         let effectiveChannelCount = effectiveOutputChannelCount(routing: routing)
         stopEngineForGraphChanges()
 
@@ -396,7 +490,7 @@ final class AudioEngineManager {
     private func disconnectTrackOutputs() {
         outputRoutingManager.teardown(in: engine)
         for track in tracks.values {
-            engine.disconnectNodeOutput(track.memoryPlayer.sourceNode)
+            engine.disconnectNodeOutput(track.playbackOutputNode)
         }
     }
 
@@ -404,7 +498,7 @@ final class AudioEngineManager {
         if effectiveChannelCount > 2 {
             let routeTracks = tracks.values.map { track in
                 (
-                    sourceNode: track.memoryPlayer.sourceNode,
+                    sourceNode: track.playbackOutputNode,
                     format: track.sourceFormat,
                     destination: OutputRoutingStore.destination(for: track.groupID, snapshot: routing)
                 )
@@ -430,9 +524,9 @@ final class AudioEngineManager {
         engine.connect(engine.mainMixerNode, to: engine.outputNode, format: outputFormat)
 
         for track in tracks.values {
-            engine.disconnectNodeOutput(track.memoryPlayer.sourceNode)
-            OutputRoutingManager.clearChannelMap(on: track.memoryPlayer.sourceNode)
-            engine.connect(track.memoryPlayer.sourceNode, to: masterMixer, format: track.sourceFormat)
+            engine.disconnectNodeOutput(track.playbackOutputNode)
+            OutputRoutingManager.clearChannelMap(on: track.playbackOutputNode)
+            engine.connect(track.playbackOutputNode, to: masterMixer, format: track.sourceFormat)
         }
     }
 
@@ -490,5 +584,8 @@ extension AudioEngineManager.TrackSettings {
         isSolo = track.isSolo
         trimStart = track.trimStartSeconds
         trimEnd = track.trimEndSeconds
+        excludeFromTranspose = track.excludeFromTranspose
+        let semitones = track.song?.transposeSemitones ?? 0
+        pitchCents = track.excludeFromTranspose ? 0 : Float(semitones * 100)
     }
 }
