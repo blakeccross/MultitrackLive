@@ -147,12 +147,11 @@ final class AudioEngineManager {
 
     static func prepareTrackPayload(
         id: UUID,
-        url: URL,
+        decodedBuffer: DecodedStemBuffer,
         settings: TrackSettings,
         groupID: UUID?,
         bakePitchShift: Bool = false
     ) throws -> PreparedTrackPayload {
-        let decodedBuffer = try DecodedStemBuffer.decode(from: url)
         let playbackBuffer: DecodedStemBuffer
         var resolvedSettings = settings
 
@@ -174,6 +173,23 @@ final class AudioEngineManager {
             buffer: playbackBuffer,
             settings: resolvedSettings,
             groupID: groupID
+        )
+    }
+
+    static func prepareTrackPayload(
+        id: UUID,
+        url: URL,
+        settings: TrackSettings,
+        groupID: UUID?,
+        bakePitchShift: Bool = false
+    ) throws -> PreparedTrackPayload {
+        let decodedBuffer = try DecodedStemBuffer.decode(from: url)
+        return try prepareTrackPayload(
+            id: id,
+            decodedBuffer: decodedBuffer,
+            settings: settings,
+            groupID: groupID,
+            bakePitchShift: bakePitchShift
         )
     }
 

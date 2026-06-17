@@ -62,6 +62,7 @@
 		AA000001000000000000003A /* RubberBandPitchProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003A /* RubberBandPitchProcessor.swift */; };
 		AA000001000000000000003C /* TempoChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003E /* TempoChange.swift */; };
 		AA000001000000000000003D /* TempoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003F /* TempoStore.swift */; };
+		AA0000010000000000000040 /* TrackBakeCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000040 /* TrackBakeCache.swift */; };
 		AA000001000000000000003B /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003D /* Accelerate.framework */; };
 /* End PBXBuildFile section */
 
@@ -122,6 +123,7 @@
 		AA000002000000000000003A /* RubberBandPitchProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubberBandPitchProcessor.swift; sourceTree = "<group>"; };
 		AA000002000000000000003E /* TempoChange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoChange.swift; sourceTree = "<group>"; };
 		AA000002000000000000003F /* TempoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoStore.swift; sourceTree = "<group>"; };
+		AA0000020000000000000040 /* TrackBakeCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackBakeCache.swift; sourceTree = "<group>"; };
 		AA000002000000000000003B /* MultitrackLive-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "MultitrackLive-Bridging-Header.h"; sourceTree = "<group>"; };
 		AA000002000000000000003C /* RubberBandSingle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = RubberBandSingle.cpp; path = ThirdParty/rubberband/single/RubberBandSingle.cpp; sourceTree = SOURCE_ROOT; };
 		AA000002000000000000003D /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
@@ -217,6 +219,7 @@
 				AA000002000000000000001C /* ArrangementMarkerStore.swift */,
 				AA0000020000000000000036 /* TimeSignatureStore.swift */,
 				AA000002000000000000003F /* TempoStore.swift */,
+				AA0000020000000000000040 /* TrackBakeCache.swift */,
 				AA000002000000000000001F /* SongArrangementStore.swift */,
 				AA0000020000000000000016 /* WaveformLoader.swift */,
 				AA0000020000000000000007 /* AudioEngineManager.swift */,
@@ -377,6 +380,7 @@
 				AA0000010000000000000036 /* TimeSignatureStore.swift in Sources */,
 				AA000001000000000000003C /* TempoChange.swift in Sources */,
 				AA000001000000000000003D /* TempoStore.swift in Sources */,
+				AA0000010000000000000040 /* TrackBakeCache.swift in Sources */,
 				AA000001000000000000001C /* TimelineLayout.swift in Sources */,
 				AA000001000000000000001D /* ArrangementSlot.swift in Sources */,
 				AA000001000000000000001E /* SongArrangementStore.swift in Sources */,

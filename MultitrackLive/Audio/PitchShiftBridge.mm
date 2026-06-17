@@ -13,7 +13,9 @@ static double semitonesToPitchScale(int semitones) {
     return std::pow(2.0, semitones / 12.0);
 }
 
-PitchShiftResult pitch_shift_offline(
+namespace {
+
+PitchShiftResult pitchShiftOfflineStretcher(
     const float *const *inputChannels,
     int channelCount,
     int frameCount,
@@ -25,13 +27,14 @@ PitchShiftResult pitch_shift_offline(
         return result;
     }
 
-    const unsigned int blockSize = 4096;
+    const unsigned int blockSize = 8192;
     const RubberBandOptions options =
-        RubberBandOptionProcessOffline |
-        RubberBandOptionEngineFiner |
+        RubberBandOptionProcessRealTime |
+        RubberBandOptionEngineFaster |
         RubberBandOptionPitchHighQuality |
         RubberBandOptionFormantPreserved |
-        RubberBandOptionChannelsTogether;
+        RubberBandOptionChannelsTogether |
+        RubberBandOptionThreadingNever;
 
     RubberBandState state = rubberband_new(
         static_cast<unsigned int>(sampleRate),
@@ -45,14 +48,25 @@ PitchShiftResult pitch_shift_offline(
         return result;
     }
 
-    rubberband_set_expected_input_duration(state, static_cast<unsigned int>(frameCount));
     rubberband_set_max_process_size(state, blockSize);
 
-    std::vector<const float *> inputPointers(static_cast<size_t>(channelCount));
     std::vector<std::vector<float>> outputChannels(static_cast<size_t>(channelCount));
     for (auto &channel : outputChannels) {
-        channel.reserve(static_cast<size_t>(frameCount));
+        channel.resize(static_cast<size_t>(frameCount), 0.f);
     }
+
+    std::vector<const float *> inputPointers(static_cast<size_t>(channelCount));
+    std::vector<std::vector<float>> retrieveBlock(
+        static_cast<size_t>(channelCount),
+        std::vector<float>(blockSize)
+    );
+    std::vector<float *> retrievePointers(static_cast<size_t>(channelCount));
+    for (int channel = 0; channel < channelCount; ++channel) {
+        retrievePointers[static_cast<size_t>(channel)] =
+            retrieveBlock[static_cast<size_t>(channel)].data();
+    }
+
+    int writePosition = 0;
 
     auto retrieveAvailable = [&]() {
         while (rubberband_available(state) > 0) {
@@ -60,49 +74,36 @@ PitchShiftResult pitch_shift_offline(
                 blockSize,
                 static_cast<unsigned int>(rubberband_available(state))
             );
-            std::vector<std::vector<float>> block(
-                static_cast<size_t>(channelCount),
-                std::vector<float>(toRetrieve)
-            );
-            std::vector<float *> outputPointers(static_cast<size_t>(channelCount));
-            for (int channel = 0; channel < channelCount; ++channel) {
-                outputPointers[static_cast<size_t>(channel)] = block[static_cast<size_t>(channel)].data();
-            }
-
             const unsigned int retrieved = rubberband_retrieve(
                 state,
-                outputPointers.data(),
+                retrievePointers.data(),
                 toRetrieve
             );
+            if (retrieved == 0) {
+                break;
+            }
 
             for (int channel = 0; channel < channelCount; ++channel) {
                 auto &destination = outputChannels[static_cast<size_t>(channel)];
-                destination.insert(
-                    destination.end(),
-                    block[static_cast<size_t>(channel)].begin(),
-                    block[static_cast<size_t>(channel)].begin() + retrieved
+                const size_t copyCount = std::min(
+                    static_cast<size_t>(retrieved),
+                    destination.size() - static_cast<size_t>(writePosition)
+                );
+                if (copyCount == 0) {
+                    continue;
+                }
+                std::memcpy(
+                    destination.data() + writePosition,
+                    retrieveBlock[static_cast<size_t>(channel)].data(),
+                    copyCount * sizeof(float)
                 );
             }
+
+            writePosition += static_cast<int>(retrieved);
         }
     };
 
     int position = 0;
-    while (position < frameCount) {
-        const unsigned int count = std::min(
-            blockSize,
-            static_cast<unsigned int>(frameCount - position)
-        );
-        for (int channel = 0; channel < channelCount; ++channel) {
-            inputPointers[static_cast<size_t>(channel)] = inputChannels[channel] + position;
-        }
-        const int isFinal = (position + static_cast<int>(count) >= frameCount) ? 1 : 0;
-        rubberband_study(state, inputPointers.data(), count, isFinal);
-        position += static_cast<int>(count);
-    }
-    rubberband_study(state, nullptr, 0, 1);
-    rubberband_calculate_stretch(state);
-
-    position = 0;
     while (position < frameCount) {
         const unsigned int count = std::min(
             blockSize,
@@ -122,37 +123,42 @@ PitchShiftResult pitch_shift_offline(
 
     rubberband_delete(state);
 
-    if (outputChannels.empty() || outputChannels[0].empty()) {
+    if (writePosition <= 0) {
         return result;
     }
 
+    int startFrame = 0;
+    int outputFrames = writePosition;
+    if (outputFrames > frameCount) {
+        startFrame = outputFrames - frameCount;
+        outputFrames = frameCount;
+    } else if (outputFrames < frameCount) {
+        outputFrames = frameCount;
+    }
+
     result.channelCount = channelCount;
-    result.frameCount = static_cast<int>(outputChannels[0].size());
+    result.frameCount = outputFrames;
     result.channels = new float *[static_cast<size_t>(channelCount)]();
+
     for (int channel = 0; channel < channelCount; ++channel) {
-        result.channels[channel] = new float[static_cast<size_t>(result.frameCount)];
-        std::memcpy(
-            result.channels[channel],
-            outputChannels[static_cast<size_t>(channel)].data(),
-            static_cast<size_t>(result.frameCount) * sizeof(float)
+        result.channels[channel] = new float[static_cast<size_t>(outputFrames)]();
+        const auto &source = outputChannels[static_cast<size_t>(channel)];
+        const size_t available = source.size() - static_cast<size_t>(startFrame);
+        const size_t copyFrames = std::min(
+            static_cast<size_t>(outputFrames),
+            available
         );
+        if (copyFrames > 0) {
+            std::memcpy(
+                result.channels[channel],
+                source.data() + startFrame,
+                copyFrames * sizeof(float)
+            );
+        }
     }
 
     return result;
 }
-
-void pitch_shift_free_result(PitchShiftResult result) {
-    if (!result.channels) {
-        return;
-    }
-
-    for (int channel = 0; channel < result.channelCount; ++channel) {
-        delete[] result.channels[channel];
-    }
-    delete[] result.channels;
-}
-
-namespace {
 
 template<typename T>
 class SimpleRingBuffer {
@@ -362,6 +368,33 @@ struct LivePitchStreamImpl {
 
 } // namespace
 
+PitchShiftResult pitch_shift_offline(
+    const float *const *inputChannels,
+    int channelCount,
+    int frameCount,
+    double sampleRate,
+    int semitoneShift
+) {
+    return pitchShiftOfflineStretcher(
+        inputChannels,
+        channelCount,
+        frameCount,
+        sampleRate,
+        semitoneShift
+    );
+}
+
+void pitch_shift_free_result(PitchShiftResult result) {
+    if (!result.channels) {
+        return;
+    }
+
+    for (int channel = 0; channel < result.channelCount; ++channel) {
+        delete[] result.channels[channel];
+    }
+    delete[] result.channels;
+}
+
 LivePitchStream live_pitch_stream_create(unsigned int sampleRate, unsigned int channelCount) {
     if (channelCount == 0) {
         return nullptr;
@@ -398,4 +431,3 @@ unsigned int live_pitch_stream_process(
     }
     return impl->process(inputChannels, inputFrameCount, outputChannels, outputFrameCount);
 }
-
