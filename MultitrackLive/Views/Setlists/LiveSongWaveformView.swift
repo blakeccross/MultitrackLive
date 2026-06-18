@@ -50,16 +50,41 @@ struct LiveSongWaveformView: View {
             .joined(separator: ";")
     }
 
+    private var waveformBaselineRanges: [ClosedRange<CGFloat>] {
+        if usesArrangementLayout {
+            return sections.map { section in
+                let startX = TimelineLayout.xPosition(
+                    for: section.timelineStartSeconds,
+                    duration: safeTimelineDuration,
+                    contentWidth: contentWidth
+                )
+                let endX = TimelineLayout.xPosition(
+                    for: section.timelineEndSeconds,
+                    duration: safeTimelineDuration,
+                    contentWidth: contentWidth
+                )
+                return startX...endX
+            }
+        }
+        return [0...contentWidth]
+    }
+
+    private var isLoadingWaveform: Bool {
+        !trackSources.isEmpty && cachedDisplayPeaks.isEmpty
+    }
+
     var body: some View {
         ZStack(alignment: .leading) {
             sectionBackgrounds(contentWidth: contentWidth)
 
-            if !cachedDisplayPeaks.isEmpty {
+            if !cachedDisplayPeaks.isEmpty || isLoadingWaveform {
                 LiveSectionWaveformCanvas(
                     bars: cachedDisplayPeaks,
                     sections: sections,
                     timelineDuration: safeTimelineDuration,
-                    contentWidth: contentWidth
+                    contentWidth: contentWidth,
+                    showsEmptyBaseline: isLoadingWaveform,
+                    baselineRanges: waveformBaselineRanges
                 )
                 .frame(width: contentWidth, height: waveformHeight)
                 .allowsHitTesting(false)
@@ -115,6 +140,10 @@ struct LiveSongWaveformView: View {
     private func sectionBackgrounds(contentWidth: CGFloat) -> some View {
         if usesArrangementLayout {
             ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(Color.dawLaneBackground)
+                    .frame(width: contentWidth, height: waveformHeight)
+
                 ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
                     let startX = TimelineLayout.xPosition(
                         for: section.timelineStartSeconds,
@@ -293,62 +322,54 @@ struct LiveSetlistWaveformScrollView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: true) {
-                    HStack(alignment: .top, spacing: laneSpacing) {
-                        waveformLane(
-                            snapshot: currentSnapshot,
-                            isCurrent: true,
-                            scrollID: "current",
-                            viewportWidth: geometry.size.width
-                        )
-
-                        if let nextSnapshot {
-                            if let transitionToNext {
-                                VStack {
-                                    Spacer()
-                                    SetlistTransitionBadge(transition: transitionToNext)
-                                    Spacer()
-                                }
-                                .frame(height: laneHeight)
-                            }
-
+            let viewportWidth = geometry.size.width
+            if viewportWidth > 0 {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        HStack(alignment: .top, spacing: laneSpacing) {
                             waveformLane(
-                                snapshot: nextSnapshot,
-                                isCurrent: false,
-                                scrollID: "next",
-                                viewportWidth: geometry.size.width
+                                snapshot: currentSnapshot,
+                                isCurrent: true,
+                                scrollID: "current"
                             )
+
+                            if let nextSnapshot {
+                                if let transitionToNext {
+                                    VStack {
+                                        Spacer()
+                                        SetlistTransitionBadge(transition: transitionToNext)
+                                        Spacer()
+                                    }
+                                    .frame(height: laneHeight)
+                                }
+
+                                waveformLane(
+                                    snapshot: nextSnapshot,
+                                    isCurrent: false,
+                                    scrollID: "next"
+                                )
+                            }
                         }
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(.vertical, 2)
+                        .frame(minWidth: viewportWidth, alignment: .leading)
                     }
-                    .fixedSize(horizontal: true, vertical: false)
-                    .padding(.vertical, 2)
-                    .frame(minWidth: geometry.size.width, alignment: .leading)
-                }
-                .onAppear {
-                    scrollToCurrent(proxy)
-                }
-                .onChange(of: currentSnapshot.songID) { _, _ in
-                    scrollToCurrent(proxy)
-                }
-                .onChange(of: nextSnapshot?.songID) { _, _ in
-                    scrollToCurrent(proxy)
+                    .defaultScrollAnchor(.leading)
+                    .scrollTargetBehavior(.viewAligned)
+                    .onAppear {
+                        scrollToCurrent(proxy)
+                    }
+                    .onChange(of: currentSnapshot.songID) { _, _ in
+                        scrollToCurrent(proxy)
+                    }
+                    .onChange(of: nextSnapshot?.songID) { _, _ in
+                        scrollToCurrent(proxy)
+                    }
                 }
             }
         }
+        .frame(maxWidth: .infinity)
         .frame(height: laneHeight)
-    }
-
-    private func contentWidth(for snapshot: LiveSongWaveformSnapshot, viewportWidth: CGFloat) -> CGFloat {
-        if nextSnapshot == nil, viewportWidth > 0 {
-            let zoom = TimelineLayout.minZoom(
-                duration: snapshot.timelineDuration,
-                viewportWidth: viewportWidth
-            )
-            return TimelineLayout.contentWidth(for: snapshot.timelineDuration, zoom: zoom)
-        }
-
-        return snapshot.contentWidth
     }
 
     private func scrollToCurrent(_ proxy: ScrollViewProxy) {
@@ -362,10 +383,9 @@ struct LiveSetlistWaveformScrollView: View {
     private func waveformLane(
         snapshot: LiveSongWaveformSnapshot,
         isCurrent: Bool,
-        scrollID: String,
-        viewportWidth: CGFloat
+        scrollID: String
     ) -> some View {
-        let laneContentWidth = contentWidth(for: snapshot, viewportWidth: viewportWidth)
+        let laneContentWidth = snapshot.contentWidth
 
         VStack(alignment: .leading, spacing: 6) {
             Text(snapshot.songName)
@@ -426,6 +446,8 @@ private struct LiveSectionWaveformCanvas: View {
     let sections: [ArrangementDisplaySection]
     let timelineDuration: TimeInterval
     let contentWidth: CGFloat
+    var showsEmptyBaseline = false
+    var baselineRanges: [ClosedRange<CGFloat>] = []
 
     private let minBarHeight: CGFloat = 1.0
 
@@ -437,7 +459,20 @@ private struct LiveSectionWaveformCanvas: View {
     }
 
     private func drawWaveform(in context: inout GraphicsContext, size: CGSize) {
-        guard !bars.isEmpty else { return }
+        guard !bars.isEmpty else {
+            guard showsEmptyBaseline else { return }
+
+            let midY = size.height / 2
+            let fillColor = Color.dawWaveformFill.opacity(0.35)
+            let ranges = baselineRanges.isEmpty ? [0...size.width] : baselineRanges
+
+            for range in ranges {
+                let startX = max(0, range.lowerBound)
+                let endX = min(size.width, range.upperBound)
+                drawSilentSegment(in: &context, startX: startX, endX: endX, midY: midY, fillColor: fillColor)
+            }
+            return
+        }
 
         let midY = size.height / 2
         let barWidth = size.width / CGFloat(bars.count)
@@ -482,5 +517,20 @@ private struct LiveSectionWaveformCanvas: View {
             }
         }
         return 0
+    }
+
+    private func drawSilentSegment(
+        in context: inout GraphicsContext,
+        startX: CGFloat,
+        endX: CGFloat,
+        midY: CGFloat,
+        fillColor: Color
+    ) {
+        guard endX > startX else { return }
+
+        var path = Path()
+        path.move(to: CGPoint(x: startX, y: midY))
+        path.addLine(to: CGPoint(x: endX, y: midY))
+        context.stroke(path, with: .color(fillColor), lineWidth: 1)
     }
 }

@@ -23,6 +23,15 @@ extension Color {
         #endif
     }
 
+    /// Fully opaque background for pinned ruler headers so scrolling tracks don't show through.
+    static var dawStickyRulerBackground: Color {
+        #if os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color(uiColor: .systemGroupedBackground)
+        #endif
+    }
+
     static var dawTrackHeaderBackground: Color {
         #if os(macOS)
         Color(nsColor: .controlBackgroundColor)

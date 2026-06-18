@@ -19,6 +19,7 @@ struct MultitrackLiveApp: App {
         }
         .modelContainer(modelContainer)
         #if os(macOS)
+        .windowToolbarStyle(.expanded)
         .commands {
             SongMenuCommands()
         }

@@ -59,7 +59,7 @@ struct SongLibraryPanel: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Hide song library")
+                .accessibilityLabel("Close songs menu")
             }
             .padding(.horizontal)
             .padding(.top, 12)
@@ -364,6 +364,12 @@ private struct SongLibraryDragRow: View {
             Image(systemName: "line.3.horizontal")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+                .draggable(song.id.uuidString) {
+                    dragPreview
+                }
+                .accessibilityLabel("Drag \(song.name) to setlist")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.name)
@@ -377,17 +383,18 @@ private struct SongLibraryDragRow: View {
             Spacer(minLength: 0)
         }
         .contentShape(Rectangle())
-        .draggable(song.id.uuidString) {
-            HStack(spacing: 8) {
-                Image(systemName: "music.note")
-                Text(song.name)
-                    .lineLimit(1)
-            }
-            .font(.subheadline)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var dragPreview: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "music.note")
+            Text(song.name)
+                .lineLimit(1)
         }
+        .font(.subheadline)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

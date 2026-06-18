@@ -3,8 +3,10 @@ import SwiftUI
 
 struct SongDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
 
     @Bindable var song: Song
+    let setlistName: String
 
     @State private var viewModel: SongEditorViewModel?
     @State private var showingAbletonImporter = false
@@ -21,6 +23,20 @@ struct SongDetailView: View {
     var body: some View {
         songDetailContent
             .navigationTitle(song.name)
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: setlistBackButtonPlacement) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "chevron.left")
+                                .font(.body.weight(.semibold))
+                            Text(displaySetlistName)
+                        }
+                    }
+                }
+            }
             .fileImporter(
                 isPresented: $showingAbletonImporter,
                 allowedContentTypes: [AbletonProjectImporter.abletonLiveSetType],
@@ -60,6 +76,21 @@ struct SongDetailView: View {
                 try? TempoStore.save(tempoChanges, for: song.id)
                 try? TimeSignatureStore.save(timeSignatureChanges, for: song.id)
             }
+    }
+
+    #if os(iOS)
+    private var setlistBackButtonPlacement: ToolbarItemPlacement {
+        .topBarLeading
+    }
+    #else
+    private var setlistBackButtonPlacement: ToolbarItemPlacement {
+        .navigation
+    }
+    #endif
+
+    private var displaySetlistName: String {
+        let trimmed = setlistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Setlist" : trimmed
     }
 
     private var songDetailContent: some View {
@@ -253,6 +284,6 @@ struct SongDetailView: View {
 
 #Preview {
     NavigationStack {
-        SongDetailView(song: Song(name: "Preview"))
+        SongDetailView(song: Song(name: "Preview"), setlistName: "Preview Setlist")
     }
 }

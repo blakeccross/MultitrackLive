@@ -36,6 +36,9 @@ struct EditView: View {
     @FocusState private var isTimelineFocused: Bool
     @State private var cachedRulerSections: [ArrangementDisplaySection] = []
     @State private var cachedTrackSections: [UUID: [ArrangementDisplaySection]] = [:]
+    @State private var timelineVerticalScrollOffset: CGFloat = 0
+
+    private let timelineVerticalScrollSpace = "editTimelineVerticalScroll"
 
     @Query(sort: [SortDescriptor(\TrackGroup.sortOrder), SortDescriptor(\TrackGroup.name)])
     private var trackGroups: [TrackGroup]
@@ -263,7 +266,11 @@ struct EditView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+#if os(macOS)
+            EditTransportStatusStrip(viewModel: viewModel)
+#else
             transportBar
+#endif
 
             if hasTimelineContent {
                 dawTimeline
@@ -332,6 +339,31 @@ struct EditView: View {
         .sheet(isPresented: $showingChangeKey) {
             ChangeKeyDialog(song: song, viewModel: viewModel)
         }
+#if os(macOS)
+        .toolbar {
+            EditSongToolbarContent(
+                viewModel: viewModel,
+                markers: markers,
+                song: song,
+                showingArrangementEditor: $showingArrangementEditor,
+                showingTimeSignatureEditor: $showingTimeSignatureEditor,
+                timeSignatureChanges: $timeSignatureChanges,
+                normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
+                onPersistTimeSignatureChanges: persistTimeSignatureChanges,
+                tempoChanges: $tempoChanges,
+                normalizedTempoChanges: normalizedTempoChanges,
+                onPersistTempoChanges: persistTempoChanges,
+                showingChangeKey: $showingChangeKey,
+                arrangementSlots: $arrangementSlots,
+                clipTrims: $clipTrims,
+                removedClips: $removedClips,
+                loopSlotIDs: $loopSlotIDs,
+                onClearMarkerCue: { clearMarkerCue() }
+            )
+        }
+        .toolbarBackground(.bar, for: .windowToolbar)
+        .modifier(EditViewMacToolbarBackgroundVisibilityModifier())
+#endif
     }
 
     private func removeSelectedClip() {
@@ -407,13 +439,6 @@ struct EditView: View {
         viewModel.seekAndPlay(to: time)
     }
 
-    private func formatClipDuration(_ value: TimeInterval) -> String {
-        let totalSeconds = max(0, Int(value.rounded()))
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
     private func clampTimelineZoom() {
         guard timelineViewportWidth > 0 else { return }
         let minZoom = timelineMinZoom
@@ -429,11 +454,7 @@ struct EditView: View {
         EditTransportBar(
             viewModel: viewModel,
             markers: markers,
-            displaySections: displaySections,
-            selectedClip: selectedClip,
             song: song,
-            trackSections: trackSections(for:),
-            formatClipDuration: formatClipDuration,
             showingArrangementEditor: $showingArrangementEditor,
             showingTimeSignatureEditor: $showingTimeSignatureEditor,
             timeSignatureChanges: $timeSignatureChanges,
@@ -452,137 +473,30 @@ struct EditView: View {
     }
 
     private var dawTimeline: some View {
-        ScrollView(.vertical, showsIndicators: true) {
+        GeometryReader { geometry in
+            let tracksViewportHeight = max(0, geometry.size.height - TimelineLayout.rulerTotalHeight)
+
             HStack(alignment: .top, spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: true) {
-                    ZStack(alignment: .topLeading) {
-                        VStack(spacing: 0) {
-                            TimelineRulerView(
-                                duration: timelineDuration,
-                                contentWidth: timelineContentWidth,
-                                sections: displaySections,
-                                tempoChanges: normalizedTempoChanges,
-                                timeSignatureChanges: normalizedTimeSignatureChanges,
-                                cuedSectionID: cuedSectionID,
-                                cueFlashPhase: cueFlashPhase,
-                                loopSlotIDs: loopSlotIDs,
-                                sectionMarkerHeight: TimelineLayout.sectionMarkerHeight,
-                                timeSignatureRulerHeight: TimelineLayout.timeSignatureRulerHeight,
-                                tempoRulerHeight: TimelineLayout.tempoRulerHeight,
-                                rulerHeight: TimelineLayout.rulerHeight,
-                                onSeek: { time in
-                                    clearMarkerCue()
-                                    seekOnTimeline(to: time)
-                                },
-                                onCueSection: cueSection,
-                                onToggleLoopSection: toggleLoopSection,
-                                onTimeSignatureRulerTap: handleTimeSignatureRulerTap,
-                                onEditTimeSignatureMarker: { marker in
-                                    editingTimeSignatureMarkerID = marker.id
-                                    showingTimeSignatureMarkerEditor = true
-                                },
-                                onDeleteTimeSignatureMarker: deleteTimeSignatureMarker,
-                                onTempoRulerTap: handleTempoRulerTap,
-                                onEditTempoMarker: { marker in
-                                    editingTempoMarkerID = marker.id
-                                    showingTempoEditor = true
-                                },
-                                onDeleteTempoMarker: deleteTempoMarker
-                            )
-                            .frame(height: TimelineLayout.rulerTotalHeight)
-                            .id("\(displaySections.map(\.id))|\(timelineContentWidth)|\(normalizedTempoChanges.map(\.id))|\(normalizedTimeSignatureChanges.map(\.id))")
-                            .popover(isPresented: $showingTimeSignatureMarkerEditor, arrowEdge: .bottom) {
-                                if let markerID = editingTimeSignatureMarkerID,
-                                   let marker = timeSignatureChanges.first(where: { $0.id == markerID }) {
-                                    TimeSignatureMarkerEditorMenu(
-                                        marker: marker,
-                                        canDelete: marker.startMeasure > 1,
-                                        onApply: { numerator, denominator in
-                                            applyTimeSignatureMarker(
-                                                markerID: markerID,
-                                                numerator: numerator,
-                                                denominator: denominator
-                                            )
-                                        },
-                                        onDelete: {
-                                            if let marker = timeSignatureChanges.first(where: { $0.id == markerID }) {
-                                                deleteTimeSignatureMarker(marker)
-                                            }
-                                            showingTimeSignatureMarkerEditor = false
-                                            editingTimeSignatureMarkerID = nil
-                                        }
-                                    )
-                                }
-                            }
-                            .popover(isPresented: $showingTempoEditor, arrowEdge: .bottom) {
-                                if let markerID = editingTempoMarkerID,
-                                   let marker = tempoChanges.first(where: { $0.id == markerID }) {
-                                    TempoMarkerEditorMenu(
-                                        marker: marker,
-                                        canDelete: marker.startMeasure > 1,
-                                        onApply: { bpm in
-                                            applyTempoMarker(markerID: markerID, bpm: bpm)
-                                        },
-                                        onDelete: {
-                                            if let marker = tempoChanges.first(where: { $0.id == markerID }) {
-                                                deleteTempoMarker(marker)
-                                            }
-                                            showingTempoEditor = false
-                                            editingTempoMarkerID = nil
-                                        }
-                                    )
-                                }
-                            }
+                    VStack(alignment: .leading, spacing: 0) {
+                        timelineRulerStack
+                            .frame(width: timelineContentWidth, height: TimelineLayout.rulerTotalHeight)
 
-                            VStack(spacing: TimelineLayout.laneSpacing) {
-                                ForEach(song.sortedTracks) { track in
-                                    WaveformLaneView(
-                                        track: track,
-                                        fileURL: FileStore.trackURL(
-                                            songID: song.id,
-                                            relativePath: track.relativeFilePath
-                                        ),
-                                        fileDuration: viewModel.fileDuration(for: track),
-                                        timelineDuration: timelineDuration,
-                                        timelineContentWidth: timelineContentWidth,
-                                        arrangementSections: trackSections(for: track),
-                                        arrangementSlots: $arrangementSlots,
-                                        clipTrims: $clipTrims,
-                                        selectedClip: $selectedClip,
-                                        markers: markers,
-                                        laneHeight: TimelineLayout.laneHeight,
-                                        onTrimChange: {
-                                            viewModel.updateTrim(for: track, context: modelContext)
-                                        },
-                                        onCueSection: cueSection,
-                                        loopSlotIDs: loopSlotIDs,
-                                        onToggleLoopSection: toggleLoopSection,
-                                        onClipTrimCommitted: {
-                                            persistArrangement()
-                                            commitTrackArrangementChange(for: track.id)
-                                        }
+                        ScrollView(.vertical, showsIndicators: true) {
+                            trackTimelineScrollContent
+                                .frame(width: timelineContentWidth, alignment: .leading)
+                                .background {
+                                    TimelineVerticalScrollOffsetReporter(
+                                        coordinateSpaceName: timelineVerticalScrollSpace
                                     )
                                 }
-                            }
                         }
-                        .frame(width: timelineContentWidth, alignment: .leading)
-                        .background {
-                            TimelineMeasureGridOverlay(
-                                duration: timelineDuration,
-                                tempoChanges: normalizedTempoChanges,
-                                timeSignatureChanges: normalizedTimeSignatureChanges,
-                                rulerHeight: TimelineLayout.rulerTotalHeight
-                            )
-                        }
-
-                        TimelinePlayheadOverlay(
-                            duration: timelineDuration,
-                            contentWidth: timelineContentWidth,
-                            height: timelinePlayheadHeight
-                        )
+                        .coordinateSpace(name: timelineVerticalScrollSpace)
+                        .frame(height: tracksViewportHeight)
                     }
+                    .frame(width: timelineContentWidth, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onGeometryChange(for: CGFloat.self) { proxy in
                     proxy.size.width
                 } action: { width in
@@ -593,44 +507,203 @@ struct EditView: View {
                     isTimelineFocused = true
                 }
 
-                trackHeaderColumn
+                trackHeaderColumn(tracksViewportHeight: tracksViewportHeight)
+            }
+        }
+        .frame(maxHeight: .infinity)
+        .onPreferenceChange(TimelineVerticalScrollOffsetKey.self) { offset in
+            timelineVerticalScrollOffset = offset
+        }
+    }
+
+    private var timelineRulerStack: some View {
+        ZStack(alignment: .topLeading) {
+            Rectangle()
+                .fill(Color.dawStickyRulerBackground)
+                .frame(width: timelineContentWidth, height: TimelineLayout.rulerTotalHeight)
+
+            timelineRulerSection
+
+            TimelineMeasureGridOverlay(
+                duration: timelineDuration,
+                tempoChanges: normalizedTempoChanges,
+                timeSignatureChanges: normalizedTimeSignatureChanges,
+                rulerHeight: TimelineLayout.rulerTotalHeight
+            )
+            .allowsHitTesting(false)
+
+            TimelinePlayheadOverlay(
+                duration: timelineDuration,
+                contentWidth: timelineContentWidth,
+                height: TimelineLayout.rulerTotalHeight
+            )
+        }
+        .frame(width: timelineContentWidth, height: TimelineLayout.rulerTotalHeight, alignment: .leading)
+        .clipped()
+    }
+
+    private func trackHeaderColumn(tracksViewportHeight: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            trackHeaderRulerCorner
+
+            trackHeaderList
+                .offset(y: -timelineVerticalScrollOffset)
+                .frame(height: tracksViewportHeight, alignment: .top)
+                .clipped()
+        }
+        .frame(width: TimelineLayout.trackHeaderWidth)
+    }
+
+    private var timelineRulerSection: some View {
+        TimelineRulerView(
+            duration: timelineDuration,
+            contentWidth: timelineContentWidth,
+            sections: displaySections,
+            tempoChanges: normalizedTempoChanges,
+            timeSignatureChanges: normalizedTimeSignatureChanges,
+            cuedSectionID: cuedSectionID,
+            cueFlashPhase: cueFlashPhase,
+            loopSlotIDs: loopSlotIDs,
+            sectionMarkerHeight: TimelineLayout.sectionMarkerHeight,
+            timeSignatureRulerHeight: TimelineLayout.timeSignatureRulerHeight,
+            tempoRulerHeight: TimelineLayout.tempoRulerHeight,
+            rulerHeight: TimelineLayout.rulerHeight,
+            onSeek: { time in
+                clearMarkerCue()
+                seekOnTimeline(to: time)
+            },
+            onCueSection: cueSection,
+            onToggleLoopSection: toggleLoopSection,
+            onTimeSignatureRulerTap: handleTimeSignatureRulerTap,
+            onEditTimeSignatureMarker: { marker in
+                editingTimeSignatureMarkerID = marker.id
+                showingTimeSignatureMarkerEditor = true
+            },
+            onDeleteTimeSignatureMarker: deleteTimeSignatureMarker,
+            onTempoRulerTap: handleTempoRulerTap,
+            onEditTempoMarker: { marker in
+                editingTempoMarkerID = marker.id
+                showingTempoEditor = true
+            },
+            onDeleteTempoMarker: deleteTempoMarker
+        )
+        .frame(height: TimelineLayout.rulerTotalHeight)
+        .id("\(displaySections.map(\.id))|\(timelineContentWidth)|\(normalizedTempoChanges.map(\.id))|\(normalizedTimeSignatureChanges.map(\.id))")
+        .popover(isPresented: $showingTimeSignatureMarkerEditor, arrowEdge: .bottom) {
+            if let markerID = editingTimeSignatureMarkerID,
+               let marker = timeSignatureChanges.first(where: { $0.id == markerID }) {
+                TimeSignatureMarkerEditorMenu(
+                    marker: marker,
+                    canDelete: marker.startMeasure > 1,
+                    onApply: { numerator, denominator in
+                        applyTimeSignatureMarker(
+                            markerID: markerID,
+                            numerator: numerator,
+                            denominator: denominator
+                        )
+                    },
+                    onDelete: {
+                        if let marker = timeSignatureChanges.first(where: { $0.id == markerID }) {
+                            deleteTimeSignatureMarker(marker)
+                        }
+                        showingTimeSignatureMarkerEditor = false
+                        editingTimeSignatureMarkerID = nil
+                    }
+                )
+            }
+        }
+        .popover(isPresented: $showingTempoEditor, arrowEdge: .bottom) {
+            if let markerID = editingTempoMarkerID,
+               let marker = tempoChanges.first(where: { $0.id == markerID }) {
+                TempoMarkerEditorMenu(
+                    marker: marker,
+                    canDelete: marker.startMeasure > 1,
+                    onApply: { bpm in
+                        applyTempoMarker(markerID: markerID, bpm: bpm)
+                    },
+                    onDelete: {
+                        if let marker = tempoChanges.first(where: { $0.id == markerID }) {
+                            deleteTempoMarker(marker)
+                        }
+                        showingTempoEditor = false
+                        editingTempoMarkerID = nil
+                    }
+                )
             }
         }
     }
 
-    private var trackAreaHeight: CGFloat {
-        let count = song.sortedTracks.count
-        guard count > 0 else { return 0 }
-        return CGFloat(count) * TimelineLayout.laneHeight
-            + CGFloat(count - 1) * TimelineLayout.laneSpacing
-    }
-
-    private var timelinePlayheadHeight: CGFloat {
-        TimelineLayout.rulerTotalHeight + trackAreaHeight
-    }
-
-    private var trackHeaderColumn: some View {
-        VStack(spacing: 0) {
-            trackHeaderRulerCorner
-
-            VStack(spacing: TimelineLayout.laneSpacing) {
-                ForEach(song.sortedTracks) { track in
-                    TrackLaneHeaderView(
-                        track: track,
-                        fileDuration: viewModel.fileDuration(for: track),
-                        laneHeight: TimelineLayout.laneHeight,
-                        groups: trackGroups,
-                        onMixChange: {
-                            viewModel.updateMix(for: track, context: modelContext)
-                        },
-                        onGroupChange: {
-                            viewModel.updateGroup(for: track, context: modelContext)
-                        },
-                        onManageGroups: {
-                            showingGroupEditor = true
-                        }
+    private var trackTimelineScrollContent: some View {
+        ZStack(alignment: .topLeading) {
+            trackLanesContent
+                .background {
+                    TimelineMeasureGridOverlay(
+                        duration: timelineDuration,
+                        tempoChanges: normalizedTempoChanges,
+                        timeSignatureChanges: normalizedTimeSignatureChanges,
+                        rulerHeight: 0
                     )
                 }
+
+            TimelinePlayheadOverlay(
+                duration: timelineDuration,
+                contentWidth: timelineContentWidth,
+                height: trackAreaHeight
+            )
+        }
+    }
+
+    private var trackLanesContent: some View {
+        VStack(spacing: TimelineLayout.laneSpacing) {
+            ForEach(song.sortedTracks) { track in
+                WaveformLaneView(
+                    track: track,
+                    fileURL: FileStore.trackURL(
+                        songID: song.id,
+                        relativePath: track.relativeFilePath
+                    ),
+                    fileDuration: viewModel.fileDuration(for: track),
+                    timelineDuration: timelineDuration,
+                    timelineContentWidth: timelineContentWidth,
+                    arrangementSections: trackSections(for: track),
+                    arrangementSlots: $arrangementSlots,
+                    clipTrims: $clipTrims,
+                    selectedClip: $selectedClip,
+                    markers: markers,
+                    laneHeight: TimelineLayout.laneHeight,
+                    onTrimChange: {
+                        viewModel.updateTrim(for: track, context: modelContext)
+                    },
+                    onCueSection: cueSection,
+                    loopSlotIDs: loopSlotIDs,
+                    onToggleLoopSection: toggleLoopSection,
+                    onClipTrimCommitted: {
+                        persistArrangement()
+                        commitTrackArrangementChange(for: track.id)
+                    }
+                )
+            }
+        }
+    }
+
+    private var trackHeaderList: some View {
+        VStack(spacing: TimelineLayout.laneSpacing) {
+            ForEach(song.sortedTracks) { track in
+                TrackLaneHeaderView(
+                    track: track,
+                    fileDuration: viewModel.fileDuration(for: track),
+                    laneHeight: TimelineLayout.laneHeight,
+                    groups: trackGroups,
+                    onMixChange: {
+                        viewModel.updateMix(for: track, context: modelContext)
+                    },
+                    onGroupChange: {
+                        viewModel.updateGroup(for: track, context: modelContext)
+                    },
+                    onManageGroups: {
+                        showingGroupEditor = true
+                    }
+                )
             }
         }
         .frame(width: TimelineLayout.trackHeaderWidth)
@@ -640,6 +713,13 @@ struct EditView: View {
                 .fill(Color.dawTimelineDivider)
                 .frame(width: 1)
         }
+    }
+
+    private var trackAreaHeight: CGFloat {
+        let count = song.sortedTracks.count
+        guard count > 0 else { return 0 }
+        return CGFloat(count) * TimelineLayout.laneHeight
+            + CGFloat(count - 1) * TimelineLayout.laneSpacing
     }
 
     private func applyTempoMarker(markerID: UUID, bpm: Double) {
@@ -729,14 +809,251 @@ struct EditView: View {
     }
 }
 
+#if os(macOS)
+private struct EditViewMacToolbarBackgroundVisibilityModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        } else {
+            content
+        }
+    }
+}
+#endif
+
+private struct EditTransportStatusStrip: View {
+    let viewModel: SongEditorViewModel
+
+    var body: some View {
+        if let loadError = viewModel.loadError {
+            Text(loadError)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal)
+                .padding(.vertical, 6)
+                .background(.bar)
+        }
+    }
+}
+
+#if os(macOS)
+private struct EditSongToolbarContent: ToolbarContent {
+    let viewModel: SongEditorViewModel
+    let markers: [ArrangementMarker]
+    @Bindable var song: Song
+    @Binding var showingArrangementEditor: Bool
+    @Binding var showingTimeSignatureEditor: Bool
+    @Binding var timeSignatureChanges: [TimeSignatureChange]
+    let normalizedTimeSignatureChanges: [TimeSignatureChange]
+    let onPersistTimeSignatureChanges: () -> Void
+    @Binding var tempoChanges: [TempoChange]
+    let normalizedTempoChanges: [TempoChange]
+    let onPersistTempoChanges: () -> Void
+    @Binding var showingChangeKey: Bool
+    @Binding var arrangementSlots: [ArrangementSlot]
+    @Binding var clipTrims: [ArrangementClipTrim]
+    @Binding var removedClips: [ArrangementRemovedClip]
+    @Binding var loopSlotIDs: Set<UUID>
+    let onClearMarkerCue: () -> Void
+
+    @State private var showingTempoToolbarEditor = false
+    @Bindable private var audioEngine = AudioEngineManager.shared
+
+    @ToolbarContentBuilder
+    var body: some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .navigation) {
+                tempoEditorButton
+            }
+            .sharedBackgroundVisibility(.hidden)
+
+            ToolbarItem(placement: .navigation) {
+                timeSignatureEditorButton
+            }
+            .sharedBackgroundVisibility(.hidden)
+
+            ToolbarItem {
+                Spacer(minLength: 0)
+            }
+
+            ToolbarItem {
+                transportStopButton
+            }
+            .sharedBackgroundVisibility(.hidden)
+
+            ToolbarItem {
+                transportPlayButton
+            }
+            .sharedBackgroundVisibility(.hidden)
+
+            ToolbarItem {
+                Spacer(minLength: 0)
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                changeKeyButton
+            }
+            .sharedBackgroundVisibility(.hidden)
+
+            if !markers.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    arrangementEditorButton
+                }
+                .sharedBackgroundVisibility(.hidden)
+            }
+        } else {
+            ToolbarItem(placement: .navigation) {
+                tempoEditorButton
+            }
+
+            ToolbarItem(placement: .navigation) {
+                timeSignatureEditorButton
+            }
+
+            ToolbarItem {
+                Spacer(minLength: 0)
+            }
+
+            ToolbarItem {
+                transportStopButton
+            }
+
+            ToolbarItem {
+                transportPlayButton
+            }
+
+            ToolbarItem {
+                Spacer(minLength: 0)
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                changeKeyButton
+            }
+
+            if !markers.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    arrangementEditorButton
+                }
+            }
+        }
+    }
+
+    private var transportStopButton: some View {
+        Button {
+            onClearMarkerCue()
+            viewModel.stop()
+        } label: {
+            Image(systemName: "stop.fill")
+                .font(.title2)
+        }
+        .buttonStyle(.plain)
+        .disabled(!viewModel.isLoaded)
+    }
+
+    private var transportPlayButton: some View {
+        Button(action: audioEngine.isPlaying ? viewModel.pause : viewModel.play) {
+            Image(systemName: audioEngine.isPlaying ? "pause.fill" : "play.fill")
+                .font(.title2)
+        }
+        .buttonStyle(.plain)
+        .disabled(!viewModel.isLoaded)
+    }
+
+    private var tempoEditorButton: some View {
+        Button {
+            showingTempoToolbarEditor = true
+        } label: {
+            Label(
+                String(format: "%.0f BPM", normalizedTempoChanges.referenceBPM),
+                systemImage: "metronome"
+            )
+            .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(.bordered)
+        .popover(isPresented: $showingTempoToolbarEditor, arrowEdge: .bottom) {
+            TempoEditorMenu(
+                song: song,
+                tempoChanges: $tempoChanges,
+                normalizedTempoChanges: normalizedTempoChanges,
+                onPersist: onPersistTempoChanges
+            )
+        }
+    }
+
+    private var changeKeyButton: some View {
+        Button {
+            showingChangeKey = true
+        } label: {
+            Label(changeKeyButtonTitle, systemImage: "key.fill")
+                .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(.bordered)
+        .disabled(song.sortedTracks.isEmpty)
+    }
+
+    private var changeKeyButtonTitle: String {
+        switch song.transposeSemitones {
+        case 0:
+            return "Change Key"
+        case 1:
+            return "Key +1"
+        case -1:
+            return "Key -1"
+        case let value where value > 0:
+            return "Key +\(value)"
+        default:
+            return "Key \(song.transposeSemitones)"
+        }
+    }
+
+    private var timeSignatureEditorButton: some View {
+        Button {
+            showingTimeSignatureEditor = true
+        } label: {
+            Label(
+                song.timeSignatureDisplay ?? "4/4",
+                systemImage: "music.quarternote.3"
+            )
+            .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(.bordered)
+        .popover(isPresented: $showingTimeSignatureEditor, arrowEdge: .bottom) {
+            TimeSignatureEditorMenu(
+                song: song,
+                timeSignatureChanges: $timeSignatureChanges,
+                normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
+                onPersist: onPersistTimeSignatureChanges
+            )
+        }
+    }
+
+    private var arrangementEditorButton: some View {
+        Button {
+            showingArrangementEditor = true
+        } label: {
+            Label("Arrangement", systemImage: "list.bullet.rectangle")
+                .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(.bordered)
+        .popover(isPresented: $showingArrangementEditor, arrowEdge: .bottom) {
+            ArrangementEditorMenu(
+                slots: $arrangementSlots,
+                clipTrims: $clipTrims,
+                removedClips: $removedClips,
+                loopSlotIDs: $loopSlotIDs,
+                markers: markers,
+                songID: song.id
+            )
+        }
+    }
+}
+#endif
+
 private struct EditTransportBar: View {
     let viewModel: SongEditorViewModel
     let markers: [ArrangementMarker]
-    let displaySections: [ArrangementDisplaySection]
-    let selectedClip: SelectedArrangementClip?
     @Bindable var song: Song
-    let trackSections: (AudioTrack) -> [ArrangementDisplaySection]
-    let formatClipDuration: (TimeInterval) -> String
     @Binding var showingArrangementEditor: Bool
     @Binding var showingTimeSignatureEditor: Bool
     @Binding var timeSignatureChanges: [TimeSignatureChange]
@@ -795,27 +1112,6 @@ private struct EditTransportBar: View {
 
             if let loadError = viewModel.loadError {
                 Text(loadError)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if let selectedClip,
-               let track = song.sortedTracks.first(where: { $0.id == selectedClip.trackID }),
-               let section = trackSections(track).first(where: { $0.id == selectedClip.slotID }) {
-                HStack(spacing: 12) {
-                    Text("Selected: \(section.name) — \(track.displayName)")
-                        .font(.caption.weight(.medium))
-                    Text(formatClipDuration(section.duration))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    #if os(macOS)
-                    Text("Press Delete to remove")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    #endif
-                }
-            } else if !displaySections.isEmpty {
-                Text("Click a track clip to select it. Drag clip edges to trim. Double-click a section marker to cue.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1180,6 +1476,27 @@ private struct TempoMarkerEditorMenu: View {
         }
         .padding()
         .frame(minWidth: 280)
+    }
+}
+
+private struct TimelineVerticalScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct TimelineVerticalScrollOffsetReporter: View {
+    let coordinateSpaceName: String
+
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(
+                key: TimelineVerticalScrollOffsetKey.self,
+                value: -proxy.frame(in: .named(coordinateSpaceName)).minY
+            )
+        }
     }
 }
 
