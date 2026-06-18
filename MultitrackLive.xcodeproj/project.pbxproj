@@ -20,7 +20,6 @@
 		AA000001000000000000000B /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000000B /* RootView.swift */; };
 		AA000001000000000000000C /* SongLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000000C /* SongLibraryView.swift */; };
 		AA000001000000000000000D /* SongDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000000D /* SongDetailView.swift */; };
-		AA000001000000000000000E /* MixView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000000E /* MixView.swift */; };
 		AA000001000000000000000F /* EditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000000F /* EditView.swift */; };
 		AA0000010000000000000010 /* TrackImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000010 /* TrackImportView.swift */; };
 		AA0000010000000000000011 /* SetlistLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000011 /* SetlistLibraryView.swift */; };
@@ -81,7 +80,6 @@
 		AA000002000000000000000B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		AA000002000000000000000C /* SongLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongLibraryView.swift; sourceTree = "<group>"; };
 		AA000002000000000000000D /* SongDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongDetailView.swift; sourceTree = "<group>"; };
-		AA000002000000000000000E /* MixView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixView.swift; sourceTree = "<group>"; };
 		AA000002000000000000000F /* EditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000010 /* TrackImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackImportView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000011 /* SetlistLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistLibraryView.swift; sourceTree = "<group>"; };
@@ -257,7 +255,6 @@
 			children = (
 				AA000002000000000000000C /* SongLibraryView.swift */,
 				AA000002000000000000000D /* SongDetailView.swift */,
-				AA000002000000000000000E /* MixView.swift */,
 				AA000002000000000000000F /* EditView.swift */,
 				AA0000020000000000000020 /* ArrangementEditorMenu.swift */,
 				AA0000020000000000000037 /* ChangeKeyDialog.swift */,
@@ -364,7 +361,6 @@
 				AA000001000000000000000B /* RootView.swift in Sources */,
 				AA000001000000000000000C /* SongLibraryView.swift in Sources */,
 				AA000001000000000000000D /* SongDetailView.swift in Sources */,
-				AA000001000000000000000E /* MixView.swift in Sources */,
 				AA000001000000000000000F /* EditView.swift in Sources */,
 				AA0000010000000000000010 /* TrackImportView.swift in Sources */,
 				AA0000010000000000000011 /* SetlistLibraryView.swift in Sources */,

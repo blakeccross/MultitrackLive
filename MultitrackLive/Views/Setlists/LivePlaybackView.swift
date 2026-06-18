@@ -158,7 +158,7 @@ struct LivePlaybackView: View {
             set: { if !$0 { songToEditID = nil } }
         )) {
             if let songToEditID, let song = songForEditing(id: songToEditID) {
-                SongDetailView(song: song, initialTab: .edit)
+                SongDetailView(song: song)
             }
         }
     }

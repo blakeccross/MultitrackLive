@@ -1,26 +1,11 @@
 import SwiftData
 import SwiftUI
 
-enum SongDetailTab: String, CaseIterable, Identifiable {
-    case mix
-    case edit
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .mix: return "Mix"
-        case .edit: return "Edit"
-        }
-    }
-}
-
 struct SongDetailView: View {
     @Environment(\.modelContext) private var modelContext
 
     @Bindable var song: Song
 
-    @State private var selectedTab: SongDetailTab
     @State private var viewModel: SongEditorViewModel?
     @State private var showingAbletonImporter = false
     @State private var abletonImportError: String?
@@ -32,11 +17,6 @@ struct SongDetailView: View {
     @State private var loopSlotIDs: Set<UUID> = []
     @State private var tempoChanges: [TempoChange] = []
     @State private var timeSignatureChanges: [TimeSignatureChange] = []
-
-    init(song: Song, initialTab: SongDetailTab = .mix) {
-        self.song = song
-        _selectedTab = State(initialValue: initialTab)
-    }
 
     var body: some View {
         songDetailContent
@@ -113,32 +93,19 @@ struct SongDetailView: View {
                 .padding(.top, 8)
             }
 
-            Picker("Mode", selection: $selectedTab) {
-                ForEach(SongDetailTab.allCases) { tab in
-                    Text(tab.title).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding()
-
             if let viewModel {
                 ZStack {
-                    switch selectedTab {
-                    case .mix:
-                        MixView(song: song, viewModel: viewModel)
-                    case .edit:
-                        EditView(
-                            song: song,
-                            viewModel: viewModel,
-                            arrangementMarkers: arrangementMarkers,
-                            arrangementSlots: $arrangementSlots,
-                            clipTrims: $clipTrims,
-                            removedClips: $removedClips,
-                            loopSlotIDs: $loopSlotIDs,
-                            tempoChanges: $tempoChanges,
-                            timeSignatureChanges: $timeSignatureChanges
-                        )
-                    }
+                    EditView(
+                        song: song,
+                        viewModel: viewModel,
+                        arrangementMarkers: arrangementMarkers,
+                        arrangementSlots: $arrangementSlots,
+                        clipTrims: $clipTrims,
+                        removedClips: $removedClips,
+                        loopSlotIDs: $loopSlotIDs,
+                        tempoChanges: $tempoChanges,
+                        timeSignatureChanges: $timeSignatureChanges
+                    )
 
                     if viewModel.isReloadingSong {
                         Color.black.opacity(0.2)
