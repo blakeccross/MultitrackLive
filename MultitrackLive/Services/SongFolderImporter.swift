@@ -125,6 +125,7 @@ enum SongFolderImporter {
                 song.tracks.append(track)
             }
             trackCount = tracks.count
+            TrackGroupStore.autoAssignGroups(for: song, in: context)
         }
 
         if let abletonURL = scan.abletonURL {

@@ -21,13 +21,6 @@ struct SongDetailView: View {
     var body: some View {
         songDetailContent
             .navigationTitle(song.name)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Add Ableton File") {
-                        showingAbletonImporter = true
-                    }
-                }
-            }
             .fileImporter(
                 isPresented: $showingAbletonImporter,
                 allowedContentTypes: [AbletonProjectImporter.abletonLiveSetType],
@@ -52,6 +45,9 @@ struct SongDetailView: View {
                 Text(abletonImportSummary ?? "")
             }
             .onAppear(perform: handleAppear)
+            #if os(macOS)
+            .focusedValue(\.songEditorActions, songEditorActions)
+            #endif
             .onDisappear {
                 AudioEngineManager.shared.stop()
                 try? SongArrangementStore.save(
@@ -68,31 +64,6 @@ struct SongDetailView: View {
 
     private var songDetailContent: some View {
         VStack(spacing: 0) {
-            if let bpm = song.bpm {
-                HStack {
-                    Label(String(format: "%.1f BPM", bpm), systemImage: "metronome")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let timeSignature = song.timeSignatureDisplay {
-                        Text("·")
-                            .foregroundStyle(.secondary)
-                        Label(timeSignature, systemImage: "music.quarternote.3")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !arrangementMarkers.isEmpty {
-                        Text("·")
-                            .foregroundStyle(.secondary)
-                        Text("\(arrangementMarkers.count) sections")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .padding(.top, 8)
-            }
-
             if let viewModel {
                 ZStack {
                     EditView(
@@ -125,6 +96,20 @@ struct SongDetailView: View {
             }
         }
     }
+
+    #if os(macOS)
+    private var songEditorActions: SongEditorActions {
+        SongEditorActions(
+            canAutoGroup: !song.sortedTracks.isEmpty,
+            autoGroup: {
+                TrackGroupStore.autoAssignGroups(for: song, in: modelContext)
+            },
+            importAbleton: {
+                showingAbletonImporter = true
+            }
+        )
+    }
+    #endif
 
     private func handleAppear() {
         if viewModel == nil {

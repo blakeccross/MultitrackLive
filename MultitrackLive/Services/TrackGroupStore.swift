@@ -106,6 +106,16 @@ enum TrackGroupStore {
 
     @discardableResult
     static func autoAssignGroups(
+        for song: Song,
+        in context: ModelContext
+    ) -> Int {
+        ensureDefaults(in: context)
+        let groups = sortedGroups(from: context)
+        return autoAssignGroups(for: song.sortedTracks, groups: groups, in: context)
+    }
+
+    @discardableResult
+    static func autoAssignGroups(
         for tracks: [AudioTrack],
         groups: [TrackGroup],
         in context: ModelContext

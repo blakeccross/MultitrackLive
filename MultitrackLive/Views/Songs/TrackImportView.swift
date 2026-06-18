@@ -93,6 +93,7 @@ struct TrackImportView: View {
                 }
                 try modelContext.save()
                 importedCount += tracks.count
+                TrackGroupStore.autoAssignGroups(for: song, in: modelContext)
             } catch {
                 onError(error.localizedDescription)
             }

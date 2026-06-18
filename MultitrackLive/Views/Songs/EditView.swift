@@ -439,16 +439,15 @@ struct EditView: View {
             timeSignatureChanges: $timeSignatureChanges,
             normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
             onPersistTimeSignatureChanges: persistTimeSignatureChanges,
-            showingGroupEditor: $showingGroupEditor,
+            tempoChanges: $tempoChanges,
+            normalizedTempoChanges: normalizedTempoChanges,
+            onPersistTempoChanges: persistTempoChanges,
             showingChangeKey: $showingChangeKey,
             arrangementSlots: $arrangementSlots,
             clipTrims: $clipTrims,
             removedClips: $removedClips,
             loopSlotIDs: $loopSlotIDs,
-            onClearMarkerCue: { clearMarkerCue() },
-            onAutoGroup: {
-                viewModel.autoAssignGroups(groups: trackGroups, context: modelContext)
-            }
+            onClearMarkerCue: { clearMarkerCue() }
         )
     }
 
@@ -743,41 +742,56 @@ private struct EditTransportBar: View {
     @Binding var timeSignatureChanges: [TimeSignatureChange]
     let normalizedTimeSignatureChanges: [TimeSignatureChange]
     let onPersistTimeSignatureChanges: () -> Void
-    @Binding var showingGroupEditor: Bool
+    @Binding var tempoChanges: [TempoChange]
+    let normalizedTempoChanges: [TempoChange]
+    let onPersistTempoChanges: () -> Void
     @Binding var showingChangeKey: Bool
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
     @Binding var removedClips: [ArrangementRemovedClip]
     @Binding var loopSlotIDs: Set<UUID>
     let onClearMarkerCue: () -> Void
-    let onAutoGroup: () -> Void
 
+    @State private var showingTempoToolbarEditor = false
     @Bindable private var audioEngine = AudioEngineManager.shared
 
     var body: some View {
         VStack(spacing: 8) {
-            TransportControls(
-                audioEngine: audioEngine,
-                isLoaded: viewModel.isLoaded,
-                duration: audioEngine.duration,
-                onPlay: viewModel.play,
-                onPause: viewModel.pause,
-                onStop: {
-                    onClearMarkerCue()
-                    viewModel.stop()
+            ZStack {
+                HStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        tempoEditorButton
+                        timeSignatureEditorButton
+                    }
+
+                    Spacer(minLength: 8)
+
+                    HStack(spacing: 8) {
+                        changeKeyButton
+                        if !markers.isEmpty {
+                            arrangementEditorButton
+                        }
+                    }
                 }
-            )
 
-            HStack(spacing: 8) {
-                timeSignatureEditorButton
-                changeKeyButton
+                HStack(spacing: 8) {
+                    Button {
+                        onClearMarkerCue()
+                        viewModel.stop()
+                    } label: {
+                        Image(systemName: "stop.fill")
+                            .font(.title2)
+                    }
+                    .disabled(!viewModel.isLoaded)
 
-                if !markers.isEmpty {
-                    arrangementEditorButton
+                    Button(action: audioEngine.isPlaying ? viewModel.pause : viewModel.play) {
+                        Image(systemName: audioEngine.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.title2)
+                    }
+                    .disabled(!viewModel.isLoaded)
                 }
             }
-
-            groupsEditorButton
+            .padding(.horizontal)
 
             if let loadError = viewModel.loadError {
                 Text(loadError)
@@ -810,24 +824,24 @@ private struct EditTransportBar: View {
         .background(.bar)
     }
 
-    private var groupsEditorButton: some View {
-        HStack(spacing: 8) {
-            Button {
-                onAutoGroup()
-            } label: {
-                Label("Auto Group", systemImage: "wand.and.stars")
-                    .labelStyle(.titleAndIcon)
-            }
-            .buttonStyle(.bordered)
-            .disabled(song.sortedTracks.isEmpty)
-
-            Button {
-                showingGroupEditor = true
-            } label: {
-                Label("Groups", systemImage: "square.grid.2x2")
-                    .labelStyle(.titleAndIcon)
-            }
-            .buttonStyle(.bordered)
+    private var tempoEditorButton: some View {
+        Button {
+            showingTempoToolbarEditor = true
+        } label: {
+            Label(
+                String(format: "%.0f BPM", normalizedTempoChanges.referenceBPM),
+                systemImage: "metronome"
+            )
+            .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(.bordered)
+        .popover(isPresented: $showingTempoToolbarEditor, arrowEdge: .bottom) {
+            TempoEditorMenu(
+                song: song,
+                tempoChanges: $tempoChanges,
+                normalizedTempoChanges: normalizedTempoChanges,
+                onPersist: onPersistTempoChanges
+            )
         }
     }
 
@@ -1032,6 +1046,85 @@ private struct TimeSignatureEditorMenu: View {
 
         self.numerator = numerator
         self.denominator = denominator
+    }
+}
+
+private struct TempoEditorMenu: View {
+    @Environment(\.modelContext) private var modelContext
+
+    @Bindable var song: Song
+    @Binding var tempoChanges: [TempoChange]
+    let normalizedTempoChanges: [TempoChange]
+    let onPersist: () -> Void
+
+    @State private var bpm: Double
+
+    init(
+        song: Song,
+        tempoChanges: Binding<[TempoChange]>,
+        normalizedTempoChanges: [TempoChange],
+        onPersist: @escaping () -> Void
+    ) {
+        self.song = song
+        _tempoChanges = tempoChanges
+        self.normalizedTempoChanges = normalizedTempoChanges
+        self.onPersist = onPersist
+        _bpm = State(initialValue: normalizedTempoChanges.referenceBPM)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Tempo")
+                .font(.headline)
+
+            Text("Edits the measure 1 tempo marker.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Stepper(value: $bpm, in: TempoChange.validBPMRange, step: 0.1) {
+                Text(String(format: "%.1f BPM", bpm))
+                    .monospacedDigit()
+            }
+            .onChange(of: bpm) { _, newValue in
+                applyTempo(newValue)
+            }
+        }
+        .padding()
+        .frame(minWidth: 280)
+        .onChange(of: song.bpm) { _, _ in
+            syncFromSong()
+        }
+    }
+
+    private func syncFromSong() {
+        bpm = normalizedTempoChanges.referenceBPM
+    }
+
+    private func applyTempo(_ bpm: Double) {
+        guard TempoChange.validBPMRange.contains(bpm) else { return }
+
+        song.bpm = bpm
+
+        if let measureOneID = normalizedTempoChanges.first(where: { $0.startMeasure == 1 })?.id {
+            tempoChanges = tempoChanges.map { change in
+                guard change.id == measureOneID else { return change }
+                return TempoChange(
+                    id: change.id,
+                    startMeasure: 1,
+                    bpm: bpm,
+                    sortOrder: change.sortOrder
+                )
+            }
+        } else {
+            tempoChanges = [
+                TempoChange(startMeasure: 1, bpm: bpm, sortOrder: 0)
+            ]
+        }
+
+        try? modelContext.save()
+        onPersist()
+
+        self.bpm = bpm
     }
 }
 
