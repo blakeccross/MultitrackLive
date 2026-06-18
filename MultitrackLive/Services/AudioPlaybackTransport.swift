@@ -95,16 +95,14 @@ final class AudioPlaybackTransport: @unchecked Sendable {
     func setTempoMap(
         changes: [TempoChange],
         referenceBPM: Double,
-        numerator: Int,
-        denominator: Int,
+        timeSignatureChanges: [TimeSignatureChange],
         duration: TimeInterval
     ) {
         os_unfair_lock_lock(&lock)
         tempoPlaybackMap = TempoPlaybackMap.build(
             tempoChanges: changes.sortedByMeasure,
             referenceBPM: referenceBPM,
-            numerator: numerator,
-            denominator: denominator,
+            timeSignatureChanges: timeSignatureChanges,
             maxSourceTime: max(duration, 1)
         )
         usesTempoMap = referenceBPM > 0 && !changes.isEmpty

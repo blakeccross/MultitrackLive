@@ -235,11 +235,11 @@ final class PlaybackCoordinator {
         )
 
         let tempoChanges = TempoStore.loadOrMigrate(for: song)
+        let timeSignatureChanges = TimeSignatureStore.loadOrMigrate(for: song, tempoChanges: tempoChanges)
         audioEngine.setTempoMap(
             tempoChanges,
             referenceBPM: tempoChanges.referenceBPM,
-            numerator: song.timeSignatureNumerator ?? MeasureTiming.defaultNumerator,
-            denominator: song.timeSignatureDenominator ?? MeasureTiming.defaultDenominator
+            timeSignatureChanges: timeSignatureChanges
         )
     }
 

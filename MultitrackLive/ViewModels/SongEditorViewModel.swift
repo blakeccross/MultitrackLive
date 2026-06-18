@@ -148,7 +148,13 @@ final class SongEditorViewModel {
                 try audioEngine.loadPreparedTracks(prepared)
                 isLoaded = true
                 loadError = nil
-                syncTempoMap(TempoStore.loadOrMigrate(for: song))
+                syncTempoMap(
+                    TempoStore.loadOrMigrate(for: song),
+                    timeSignatureChanges: TimeSignatureStore.loadOrMigrate(
+                        for: song,
+                        tempoChanges: TempoStore.loadOrMigrate(for: song)
+                    )
+                )
             } catch {
                 isLoaded = false
                 loadError = error.localizedDescription
@@ -316,16 +322,22 @@ final class SongEditorViewModel {
         )
     }
 
-    func syncTempoMap(_ tempoChanges: [TempoChange]) {
+    func syncTempoMap(
+        _ tempoChanges: [TempoChange],
+        timeSignatureChanges: [TimeSignatureChange]
+    ) {
         guard isLoaded else { return }
-        let normalized = tempoChanges.normalizedEnsuringInitialMarker(
+        let normalizedTempo = tempoChanges.normalizedEnsuringInitialMarker(
             defaultBPM: song.bpm ?? TempoChange.defaultBPM
         )
+        let normalizedSignatures = timeSignatureChanges.normalizedEnsuringInitialMarker(
+            defaultNumerator: song.timeSignatureNumerator ?? MeasureTiming.defaultNumerator,
+            defaultDenominator: song.timeSignatureDenominator ?? MeasureTiming.defaultDenominator
+        )
         audioEngine.setTempoMap(
-            normalized,
-            referenceBPM: normalized.referenceBPM,
-            numerator: song.timeSignatureNumerator ?? MeasureTiming.defaultNumerator,
-            denominator: song.timeSignatureDenominator ?? MeasureTiming.defaultDenominator
+            normalizedTempo,
+            referenceBPM: normalizedTempo.referenceBPM,
+            timeSignatureChanges: normalizedSignatures
         )
     }
 

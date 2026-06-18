@@ -6,6 +6,9 @@ import UniformTypeIdentifiers
 enum AbletonProjectImporter {
     static let abletonLiveSetType = UTType(filenameExtension: "als") ?? .data
 
+    /// Ableton's sentinel beat time for initial automation values.
+    private static let initialAutomationBeatThreshold = -63_071_999.0
+
     struct ImportResult {
         let bpm: Double
         let sections: [(name: String, startSeconds: TimeInterval)]
@@ -60,16 +63,94 @@ enum AbletonProjectImporter {
             )
         }
 
-        let timeSignatures = parsed.timeSignatures.enumerated().map { index, signature in
-            TimeSignatureChange(
-                numerator: signature.numerator,
-                denominator: signature.denominator,
-                startSeconds: signature.beats * 60.0 / bpm,
-                sortOrder: index
+        let tempoChanges = [TempoChange(startMeasure: 1, bpm: bpm, sortOrder: 0)]
+        let timeSignatures = buildImportedTimeSignatures(
+            from: parsed.timeSignatures,
+            tempoChanges: tempoChanges
+        )
+
+        return ImportResult(bpm: bpm, sections: sections, timeSignatures: timeSignatures)
+    }
+
+    private static func buildImportedTimeSignatures(
+        from parsedSignatures: [ParsedTimeSignature],
+        tempoChanges: [TempoChange]
+    ) -> [TimeSignatureChange] {
+        let sortedSignatures = parsedSignatures.sorted { $0.beats < $1.beats }
+        var builtTimeSignatures: [TimeSignatureChange] = []
+
+        for signature in sortedSignatures {
+            let contextSignatures: [TimeSignatureChange]
+            if builtTimeSignatures.isEmpty {
+                contextSignatures = [
+                    TimeSignatureChange(
+                        numerator: signature.numerator,
+                        denominator: signature.denominator,
+                        startMeasure: 1,
+                        sortOrder: 0
+                    )
+                ]
+            } else {
+                contextSignatures = builtTimeSignatures
+            }
+
+            if signature.beats > 0,
+               let active = contextSignatures.sortedByMeasure.active(
+                atMeasure: MeasureTiming.measureIndex(
+                    atBeat: max(0, signature.beats - 0.001),
+                    tempoChanges: tempoChanges,
+                    timeSignatureChanges: contextSignatures
+                )
+               ),
+               active.numerator == signature.numerator,
+               active.denominator == signature.denominator {
+                continue
+            }
+
+            let startMeasure: Int
+            if signature.beats <= 0 {
+                startMeasure = 1
+            } else if let snapped = MeasureTiming.snappedMeasure(
+                forBeat: signature.beats,
+                timeSignatureChanges: contextSignatures
+            ) {
+                startMeasure = snapped
+            } else {
+                continue
+            }
+
+            if builtTimeSignatures.contains(where: { $0.startMeasure == startMeasure }) {
+                continue
+            }
+
+            builtTimeSignatures.append(
+                TimeSignatureChange(
+                    numerator: signature.numerator,
+                    denominator: signature.denominator,
+                    startMeasure: startMeasure,
+                    sortOrder: builtTimeSignatures.count
+                )
             )
         }
 
-        return ImportResult(bpm: bpm, sections: sections, timeSignatures: timeSignatures)
+        let defaultNumerator = sortedSignatures.first?.numerator ?? MeasureTiming.defaultNumerator
+        let defaultDenominator = sortedSignatures.first?.denominator ?? MeasureTiming.defaultDenominator
+
+        if builtTimeSignatures.isEmpty {
+            return [
+                TimeSignatureChange(
+                    numerator: defaultNumerator,
+                    denominator: defaultDenominator,
+                    startMeasure: 1,
+                    sortOrder: 0
+                )
+            ]
+        }
+
+        return builtTimeSignatures.normalizedEnsuringInitialMarker(
+            defaultNumerator: defaultNumerator,
+            defaultDenominator: defaultDenominator
+        )
     }
 
     static func apply(
@@ -79,7 +160,7 @@ enum AbletonProjectImporter {
         context: ModelContext
     ) throws {
         song.bpm = result.bpm
-        if let initial = result.timeSignatures.sortedByTime.first {
+        if let initial = result.timeSignatures.sortedByMeasure.first {
             song.timeSignatureNumerator = initial.numerator
             song.timeSignatureDenominator = initial.denominator
         }
@@ -173,7 +254,7 @@ enum AbletonProjectImporter {
         let bpm = try parseMasterTempo(from: data)
         let locatorsXML = try extractArrangementLocatorsXML(from: data)
         let locators = try parseLocatorsXML(locatorsXML)
-        let timeSignatures = parseTimeSignatures(from: data)
+        let timeSignatures = parseArrangementTimeSignatures(from: data)
         return ParsedProject(bpm: bpm, locators: locators, timeSignatures: timeSignatures)
     }
 
@@ -193,42 +274,144 @@ enum AbletonProjectImporter {
         return nil
     }
 
-    private static func parseTimeSignatures(from data: Data) -> [ParsedTimeSignature] {
-        let parser = TimeSignaturesXMLParser()
-        let xmlParser = XMLParser(data: data)
-        xmlParser.delegate = parser
-        guard xmlParser.parse(), !parser.signatures.isEmpty else {
-            return parseManualTimeSignature(from: data).map { [$0] } ?? []
+    private static func parseArrangementTimeSignatures(from data: Data) -> [ParsedTimeSignature] {
+        guard let trackData = findTag("MasterTrack", in: data) ?? findTag("MainTrack", in: data),
+              let xml = String(data: trackData, encoding: .utf8) else {
+            return []
         }
-        return parser.signatures
-            .sorted { $0.beats < $1.beats }
-            .map {
+
+        var events: [(beats: Double, enumValue: Int)] = []
+
+        if let manualValue = firstMatch(
+            in: xml,
+            pattern: #"<TimeSignature>[\s\S]*?<Manual Value="(\d+)""#
+        ), let value = Int(manualValue), value > 0 {
+            events.append((beats: 0, enumValue: value))
+        }
+
+        if let automationEvents = firstMatch(
+            in: xml,
+            pattern: #"<TimeSignature>[\s\S]*?<ArrangerAutomation>[\s\S]*?<Events>([\s\S]*?)</Events>"#
+        ) {
+            events.append(contentsOf: parseEnumEvents(from: automationEvents))
+        }
+
+        if let automationTargetId = firstMatch(
+            in: xml,
+            pattern: #"<TimeSignature>[\s\S]*?<AutomationTarget Id="(\d+)""#
+        ), let envelopeEvents = firstMatch(
+            in: xml,
+            pattern: #"<AutomationEnvelope[^>]*>[\s\S]*?<PointeeId Value="\#(automationTargetId)" />[\s\S]*?<Events>([\s\S]*?)</Events>"#
+        ) {
+            events.append(contentsOf: parseEnumEvents(from: envelopeEvents))
+        } else if let envelopeEvents = firstMatch(
+            in: xml,
+            pattern: #"<AutomationEnvelope[^>]*>[\s\S]*?<PointeeId Value="10" />[\s\S]*?<Events>([\s\S]*?)</Events>"#
+        ) {
+            events.append(contentsOf: parseEnumEvents(from: envelopeEvents))
+        } else {
+            events.append(contentsOf: parseTimeSignatureEnumEventsFromEnvelopes(in: xml))
+        }
+
+        var signatures: [ParsedTimeSignature] = []
+        var seenBeatKeys: Set<String> = []
+
+        for event in events.sorted(by: { $0.beats < $1.beats }) {
+            guard let decoded = AbletonTimeSignatureEncoding.decode(event.enumValue) else { continue }
+            let beatKey = String(format: "%.6f|%d|%d", event.beats, decoded.numerator, decoded.denominator)
+            guard seenBeatKeys.insert(beatKey).inserted else { continue }
+            signatures.append(
                 ParsedTimeSignature(
-                    numerator: $0.numerator,
-                    denominator: $0.denominator,
-                    beats: $0.beats
+                    numerator: decoded.numerator,
+                    denominator: decoded.denominator,
+                    beats: event.beats
                 )
-            }
+            )
+        }
+
+        return signatures.sorted { $0.beats < $1.beats }
     }
 
-    private static func parseManualTimeSignature(from data: Data) -> ParsedTimeSignature? {
-        for trackTag in ["MasterTrack", "MainTrack"] {
-            guard let trackData = findTag(trackTag, in: data) else { continue }
-            guard let timeSignatureData = findTag("TimeSignature", in: trackData) else { continue }
-            guard let timeSignatureXML = String(data: timeSignatureData, encoding: .utf8) else { continue }
-
-            let parser = ManualTimeSignatureXMLParser()
-            let xmlParser = XMLParser(data: Data(timeSignatureXML.utf8))
-            xmlParser.delegate = parser
-            guard xmlParser.parse(),
-                  let numerator = parser.numerator,
-                  let denominator = parser.denominator else {
-                continue
-            }
-            return ParsedTimeSignature(numerator: numerator, denominator: denominator, beats: 0)
+    private static func parseTimeSignatureEnumEventsFromEnvelopes(in xml: String) -> [(beats: Double, enumValue: Int)] {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"<AutomationEnvelope[^>]*>[\s\S]*?<Events>([\s\S]*?)</Events>"#
+        ) else {
+            return []
         }
 
-        return nil
+        let range = NSRange(xml.startIndex..<xml.endIndex, in: xml)
+        var events: [(beats: Double, enumValue: Int)] = []
+
+        for match in regex.matches(in: xml, range: range) {
+            guard match.numberOfRanges > 1,
+                  let eventsRange = Range(match.range(at: 1), in: xml) else {
+                continue
+            }
+
+            let eventsXML = String(xml[eventsRange])
+            let parsed = parseEnumEvents(from: eventsXML).filter { event in
+                (200...450).contains(event.enumValue)
+            }
+            guard parsed.contains(where: { $0.beats <= initialAutomationBeatThreshold || $0.beats == 0 }) else {
+                continue
+            }
+            events.append(contentsOf: parsed)
+        }
+
+        return events
+    }
+
+    private static func parseEnumEvents(from eventsXML: String) -> [(beats: Double, enumValue: Int)] {
+        let patterns = [
+            (#"<EnumEvent[^>]*Time="([^"]+)"[^>]*Value="([^"]+)""#, false),
+            (#"<EnumEvent[^>]*Value="([^"]+)"[^>]*Time="([^"]+)""#, true),
+        ]
+        let range = NSRange(eventsXML.startIndex..<eventsXML.endIndex, in: eventsXML)
+        var parsed: [(beats: Double, enumValue: Int)] = []
+        var seenEventKeys: Set<String> = []
+
+        for (pattern, swapped) in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            for match in regex.matches(in: eventsXML, range: range) {
+                guard match.numberOfRanges == 3,
+                      let firstRange = Range(match.range(at: 1), in: eventsXML),
+                      let secondRange = Range(match.range(at: 2), in: eventsXML) else {
+                    continue
+                }
+                let timeString = swapped ? eventsXML[secondRange] : eventsXML[firstRange]
+                let valueString = swapped ? eventsXML[firstRange] : eventsXML[secondRange]
+                guard let beats = Double(timeString.replacingOccurrences(of: ",", with: ".")),
+                      let enumValue = Int(valueString) else {
+                    continue
+                }
+                let normalizedBeat = normalizeAbletonBeatTime(beats)
+                let key = "\(normalizedBeat)|\(enumValue)"
+                guard seenEventKeys.insert(key).inserted else { continue }
+                parsed.append((beats: normalizedBeat, enumValue: enumValue))
+            }
+        }
+
+        return parsed
+    }
+
+    private static func normalizeAbletonBeatTime(_ time: Double) -> Double {
+        if time <= initialAutomationBeatThreshold {
+            return 0
+        }
+        return max(0, time)
+    }
+
+    private static func firstMatch(in text: String, pattern: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(
+                in: text,
+                range: NSRange(text.startIndex..<text.endIndex, in: text)
+              ),
+              match.numberOfRanges > 1,
+              let range = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return String(text[range])
     }
 
     private static func extractArrangementLocatorsXML(from data: Data) throws -> Data {
@@ -277,6 +460,48 @@ enum AbletonProjectImporter {
         }
 
         return Data(data[startRange.lowerBound ..< endRange.upperBound])
+    }
+}
+
+private enum AbletonTimeSignatureEncoding {
+    // Ableton stores arrangement time signatures as enum IDs on the master track.
+    // IDs 200–225 are the classic Live preset list; 299–302 appear in Live 11.3+ sets.
+    private static let table: [Int: (numerator: Int, denominator: Int)] = [
+        200: (3, 4),
+        201: (4, 4),
+        202: (2, 4),
+        203: (6, 4),
+        204: (7, 4),
+        205: (5, 4),
+        206: (1, 4),
+        207: (2, 2),
+        208: (3, 2),
+        209: (4, 2),
+        210: (3, 8),
+        211: (6, 8),
+        212: (7, 8),
+        213: (9, 8),
+        214: (12, 8),
+        215: (1, 8),
+        216: (2, 8),
+        217: (4, 8),
+        218: (5, 8),
+        219: (8, 8),
+        220: (10, 8),
+        221: (11, 8),
+        222: (13, 8),
+        223: (14, 8),
+        224: (15, 8),
+        225: (16, 8),
+        // Live 11.3+ remaps preset meters to a higher enum ID range.
+        299: (3, 8),
+        300: (3, 8),
+        301: (6, 8),
+        302: (6, 8),
+    ]
+
+    static func decode(_ value: Int) -> (numerator: Int, denominator: Int)? {
+        table[value]
     }
 }
 
@@ -351,114 +576,5 @@ private final class LocatorsXMLParser: NSObject, XMLParserDelegate {
         insideLocator = false
         currentLocatorName = nil
         currentLocatorBeats = nil
-    }
-}
-
-private final class TimeSignaturesXMLParser: NSObject, XMLParserDelegate {
-    private var insideRemoteableTimeSignature = false
-    private var currentNumerator: Int?
-    private var currentDenominator: Int?
-    private var currentBeats: Double?
-
-    private(set) var signatures: [(numerator: Int, denominator: Int, beats: Double)] = []
-
-    func parser(
-        _ parser: XMLParser,
-        didStartElement elementName: String,
-        namespaceURI: String?,
-        qualifiedName qName: String?,
-        attributes attributeDict: [String: String] = [:]
-    ) {
-        switch elementName {
-        case "RemoteableTimeSignature":
-            insideRemoteableTimeSignature = true
-            currentNumerator = nil
-            currentDenominator = nil
-            currentBeats = nil
-        case "Numerator" where insideRemoteableTimeSignature:
-            if let value = attributeDict["Value"], let parsed = Int(value) {
-                currentNumerator = parsed
-            }
-        case "Denominator" where insideRemoteableTimeSignature:
-            if let value = attributeDict["Value"], let parsed = Int(value) {
-                currentDenominator = parsed
-            }
-        case "Time" where insideRemoteableTimeSignature:
-            if let value = attributeDict["Value"] {
-                currentBeats = Double(value.replacingOccurrences(of: ",", with: "."))
-            }
-        default:
-            break
-        }
-    }
-
-    func parser(
-        _ parser: XMLParser,
-        didEndElement elementName: String,
-        namespaceURI: String?,
-        qualifiedName qName: String?
-    ) {
-        guard elementName == "RemoteableTimeSignature" else { return }
-
-        if let numerator = currentNumerator,
-           let denominator = currentDenominator,
-           isValidTimeSignature(numerator: numerator, denominator: denominator) {
-            signatures.append(
-                (
-                    numerator: numerator,
-                    denominator: denominator,
-                    beats: currentBeats ?? 0
-                )
-            )
-        }
-
-        insideRemoteableTimeSignature = false
-        currentNumerator = nil
-        currentDenominator = nil
-        currentBeats = nil
-    }
-
-    private func isValidTimeSignature(numerator: Int, denominator: Int) -> Bool {
-        (1...32).contains(numerator) && [1, 2, 4, 8, 16].contains(denominator)
-    }
-}
-
-private final class ManualTimeSignatureXMLParser: NSObject, XMLParserDelegate {
-    private var insideManual = false
-    private(set) var numerator: Int?
-    private(set) var denominator: Int?
-
-    func parser(
-        _ parser: XMLParser,
-        didStartElement elementName: String,
-        namespaceURI: String?,
-        qualifiedName qName: String?,
-        attributes attributeDict: [String: String] = [:]
-    ) {
-        switch elementName {
-        case "Manual":
-            insideManual = true
-        case "Numerator" where insideManual:
-            if let value = attributeDict["Value"], let parsed = Int(value) {
-                numerator = parsed
-            }
-        case "Denominator" where insideManual:
-            if let value = attributeDict["Value"], let parsed = Int(value) {
-                denominator = parsed
-            }
-        default:
-            break
-        }
-    }
-
-    func parser(
-        _ parser: XMLParser,
-        didEndElement elementName: String,
-        namespaceURI: String?,
-        qualifiedName qName: String?
-    ) {
-        if elementName == "Manual" {
-            insideManual = false
-        }
     }
 }

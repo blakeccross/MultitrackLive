@@ -51,8 +51,7 @@ final class AudioEngineManager {
     private var usesOutputRouting = false
     private var tempoChanges: [TempoChange] = []
     private var referenceBPM: Double = 0
-    private var timeSignatureNumerator: Int = MeasureTiming.defaultNumerator
-    private var timeSignatureDenominator: Int = MeasureTiming.defaultDenominator
+    private var timeSignatureChanges: [TimeSignatureChange] = []
     private var lastAppliedPitchCompensationCents: Float?
 
     var referenceSampleRate: Double {
@@ -310,13 +309,11 @@ final class AudioEngineManager {
     func setTempoMap(
         _ changes: [TempoChange],
         referenceBPM: Double,
-        numerator: Int,
-        denominator: Int
+        timeSignatureChanges: [TimeSignatureChange]
     ) {
         tempoChanges = changes.sortedByMeasure
         self.referenceBPM = referenceBPM
-        timeSignatureNumerator = numerator
-        timeSignatureDenominator = denominator
+        self.timeSignatureChanges = timeSignatureChanges.sortedByMeasure
         syncTransportTempoMap()
         applyTrackPitch()
     }
@@ -326,8 +323,7 @@ final class AudioEngineManager {
         transport.setTempoMap(
             changes: tempoChanges,
             referenceBPM: referenceBPM,
-            numerator: timeSignatureNumerator,
-            denominator: timeSignatureDenominator,
+            timeSignatureChanges: timeSignatureChanges,
             duration: duration
         )
     }

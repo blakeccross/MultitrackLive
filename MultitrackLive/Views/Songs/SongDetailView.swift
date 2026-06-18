@@ -31,6 +31,7 @@ struct SongDetailView: View {
     @State private var removedClips: [ArrangementRemovedClip] = []
     @State private var loopSlotIDs: Set<UUID> = []
     @State private var tempoChanges: [TempoChange] = []
+    @State private var timeSignatureChanges: [TimeSignatureChange] = []
 
     init(song: Song, initialTab: SongDetailTab = .mix) {
         self.song = song
@@ -81,6 +82,7 @@ struct SongDetailView: View {
                     for: song.id
                 )
                 try? TempoStore.save(tempoChanges, for: song.id)
+                try? TimeSignatureStore.save(timeSignatureChanges, for: song.id)
             }
     }
 
@@ -133,7 +135,8 @@ struct SongDetailView: View {
                             clipTrims: $clipTrims,
                             removedClips: $removedClips,
                             loopSlotIDs: $loopSlotIDs,
-                            tempoChanges: $tempoChanges
+                            tempoChanges: $tempoChanges,
+                            timeSignatureChanges: $timeSignatureChanges
                         )
                     }
 
@@ -164,6 +167,7 @@ struct SongDetailView: View {
         }
         reloadArrangementMarkers()
         reloadTempoChanges()
+        reloadTimeSignatureChanges()
         syncArrangementPlayback()
         syncTempoPlayback()
     }
@@ -172,6 +176,24 @@ struct SongDetailView: View {
         tempoChanges = TempoStore.loadOrMigrate(for: song)
         if song.bpm != tempoChanges.referenceBPM {
             song.bpm = tempoChanges.referenceBPM
+            try? modelContext.save()
+        }
+    }
+
+    private func reloadTimeSignatureChanges() {
+        timeSignatureChanges = TimeSignatureStore.loadOrMigrate(for: song, tempoChanges: tempoChanges)
+        let referenceNumerator = timeSignatureChanges.referenceNumerator
+        let referenceDenominator = timeSignatureChanges.referenceDenominator
+        var didChange = false
+        if song.timeSignatureNumerator != referenceNumerator {
+            song.timeSignatureNumerator = referenceNumerator
+            didChange = true
+        }
+        if song.timeSignatureDenominator != referenceDenominator {
+            song.timeSignatureDenominator = referenceDenominator
+            didChange = true
+        }
+        if didChange {
             try? modelContext.save()
         }
     }
@@ -197,7 +219,7 @@ struct SongDetailView: View {
 
     private func syncTempoPlayback() {
         guard let viewModel else { return }
-        viewModel.syncTempoMap(tempoChanges)
+        viewModel.syncTempoMap(tempoChanges, timeSignatureChanges: timeSignatureChanges)
     }
 
     private func handleAbletonImport(_ result: Result<[URL], Error>) {
@@ -228,6 +250,7 @@ struct SongDetailView: View {
                     for: song.id
                 )
                 reloadTempoChanges()
+                reloadTimeSignatureChanges()
                 abletonImportSummary = importSummary(for: importResult)
                 syncArrangementPlayback()
                 syncTempoPlayback()
@@ -244,8 +267,21 @@ struct SongDetailView: View {
         }
         let extraCount = max(0, result.sections.count - 4)
         var message = "Imported \(result.sections.count) sections at \(bpmText)."
-        if let initial = result.timeSignatures.sortedByTime.first {
+        let signatures = result.timeSignatures.sortedByMeasure
+        if signatures.count == 1, let initial = signatures.first {
             message += " Time signature: \(initial.displayName)."
+        } else if signatures.count > 1 {
+            let summary = signatures.prefix(3).map { signature in
+                if signature.startMeasure == 1 {
+                    return signature.displayName
+                }
+                return "\(signature.displayName) at measure \(signature.startMeasure)"
+            }.joined(separator: ", ")
+            message += " Time signatures: \(summary)"
+            if signatures.count > 3 {
+                message += ", …"
+            }
+            message += "."
         }
         message += "\n"
         message += sectionLines.joined(separator: "\n")
