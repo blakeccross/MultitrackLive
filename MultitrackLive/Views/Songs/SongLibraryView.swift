@@ -2,10 +2,14 @@ import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct SongLibraryView: View {
+struct SongLibraryPanel: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Song.createdAt, order: .reverse) private var songs: [Song]
 
+    var onEdit: (Song) -> Void
+    var onDismiss: () -> Void
+
+    @State private var searchText = ""
     @State private var showingNewSongAlert = false
     @State private var showingFolderImporter = false
     @State private var newSongName = ""
@@ -18,8 +22,54 @@ struct SongLibraryView: View {
     @State private var songActionError: String?
     @State private var folderImportSummary: String?
 
+    private var filteredSongs: [Song] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return songs }
+        return songs.filter { $0.name.localizedCaseInsensitiveContains(query) }
+    }
+
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Songs")
+                    .font(.headline)
+                Spacer()
+                Menu {
+                    Button {
+                        newSongName = ""
+                        showingNewSongAlert = true
+                    } label: {
+                        Label("New Song", systemImage: "plus")
+                    }
+
+                    Button {
+                        showingFolderImporter = true
+                    } label: {
+                        Label("Import from Folder", systemImage: "folder")
+                    }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundStyle(Color.accentColor)
+                }
+                .menuStyle(.borderlessButton)
+                .accessibilityLabel("Add song")
+
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Hide song library")
+            }
+            .padding(.horizontal)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            TextField("Search songs", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+
             Group {
                 if songs.isEmpty {
                     ContentUnavailableView(
@@ -27,143 +77,133 @@ struct SongLibraryView: View {
                         systemImage: "music.note",
                         description: Text("Create a song or import a folder with multitrack stems and an Ableton file.")
                     )
-                } else {
-                    List(songs) { song in
-                        NavigationLink {
-                            SongDetailView(song: song)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(song.name)
-                                    .font(.headline)
-                                Text("\(song.tracks.count) tracks")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .contextMenu {
-                            Button("Rename") {
-                                songPendingRename = song
-                                renameSongName = song.name
-                            }
-                            Button("Duplicate") {
-                                duplicateSong(song)
-                            }
-                            Divider()
-                            Button("Remove", role: .destructive) {
-                                songPendingDelete = song
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Songs")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button {
-                            newSongName = ""
-                            showingNewSongAlert = true
-                        } label: {
-                            Label("New Song", systemImage: "plus")
-                        }
+                    .padding(.top, 12)
 
-                        Button {
-                            showingFolderImporter = true
-                        } label: {
-                            Label("Import from Folder", systemImage: "folder")
-                        }
-                    } label: {
-                        Label("Add Song", systemImage: "plus")
+                    Spacer(minLength: 0)
+                } else if filteredSongs.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                        .padding(.top, 12)
+
+                    Spacer(minLength: 0)
+                } else {
+                    List(filteredSongs) { song in
+                        SongLibraryDragRow(song: song)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                onEdit(song)
+                            }
+                            .contextMenu {
+                                Button {
+                                    onEdit(song)
+                                } label: {
+                                    Label("Edit Song", systemImage: "pencil")
+                                }
+                                Button("Rename") {
+                                    songPendingRename = song
+                                    renameSongName = song.name
+                                }
+                                Button("Duplicate") {
+                                    duplicateSong(song)
+                                }
+                                Divider()
+                                Button("Remove", role: .destructive) {
+                                    songPendingDelete = song
+                                }
+                            }
                     }
+                    .listStyle(.plain)
                 }
             }
-            .fileImporter(
-                isPresented: $showingFolderImporter,
-                allowedContentTypes: [.folder],
-                allowsMultipleSelection: false
-            ) { result in
-                handleFolderImport(result)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(.background)
+        .fileImporter(
+            isPresented: $showingFolderImporter,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            handleFolderImport(result)
+        }
+        .alert("New Song", isPresented: $showingNewSongAlert) {
+            TextField("Song name", text: $newSongName)
+            Button("Create") {
+                createSong()
             }
-            .alert("New Song", isPresented: $showingNewSongAlert) {
-                TextField("Song name", text: $newSongName)
-                Button("Create") {
-                    createSong()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Enter a name, then import your stem files or choose a song folder.")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Enter a name, then import your stem files or choose a song folder.")
+        }
+        .alert("Import Complete", isPresented: Binding(
+            get: { folderImportSummary != nil },
+            set: { if !$0 { folderImportSummary = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(folderImportSummary ?? "")
+        }
+        .sheet(item: $songPendingImport) { song in
+            TrackImportView(song: song) { error in
+                importError = error
             }
-            .alert("Import Complete", isPresented: Binding(
-                get: { folderImportSummary != nil },
-                set: { if !$0 { folderImportSummary = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(folderImportSummary ?? "")
+        }
+        .alert("Import Failed", isPresented: Binding(
+            get: { importError != nil },
+            set: { if !$0 { importError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(importError ?? "")
+        }
+        .alert("Could Not Create Song", isPresented: Binding(
+            get: { createSongError != nil },
+            set: { if !$0 { createSongError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(createSongError ?? "")
+        }
+        .alert("Rename Song", isPresented: Binding(
+            get: { songPendingRename != nil },
+            set: { if !$0 { songPendingRename = nil } }
+        )) {
+            TextField("Song name", text: $renameSongName)
+            Button("Rename") {
+                renameSong()
             }
-            .sheet(item: $songPendingImport) { song in
-                TrackImportView(song: song) { error in
-                    importError = error
-                }
+            Button("Cancel", role: .cancel) {
+                songPendingRename = nil
             }
-            .alert("Import Failed", isPresented: Binding(
-                get: { importError != nil },
-                set: { if !$0 { importError = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(importError ?? "")
-            }
-            .alert("Could Not Create Song", isPresented: Binding(
-                get: { createSongError != nil },
-                set: { if !$0 { createSongError = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(createSongError ?? "")
-            }
-            .alert("Rename Song", isPresented: Binding(
-                get: { songPendingRename != nil },
-                set: { if !$0 { songPendingRename = nil } }
-            )) {
-                TextField("Song name", text: $renameSongName)
-                Button("Rename") {
-                    renameSong()
-                }
-                Button("Cancel", role: .cancel) {
-                    songPendingRename = nil
-                }
-            }
-            .confirmationDialog(
-                "Remove Song",
-                isPresented: Binding(
-                    get: { songPendingDelete != nil },
-                    set: { if !$0 { songPendingDelete = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("Remove", role: .destructive) {
-                    if let song = songPendingDelete {
-                        removeSong(song)
-                    }
-                    songPendingDelete = nil
-                }
-                Button("Cancel", role: .cancel) {
-                    songPendingDelete = nil
-                }
-            } message: {
+        }
+        .confirmationDialog(
+            "Remove Song",
+            isPresented: Binding(
+                get: { songPendingDelete != nil },
+                set: { if !$0 { songPendingDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
                 if let song = songPendingDelete {
-                    Text("\"\(song.name)\" and its tracks will be permanently deleted.")
+                    removeSong(song)
                 }
+                songPendingDelete = nil
             }
-            .alert("Could Not Update Song", isPresented: Binding(
-                get: { songActionError != nil },
-                set: { if !$0 { songActionError = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(songActionError ?? "")
+            Button("Cancel", role: .cancel) {
+                songPendingDelete = nil
             }
+        } message: {
+            if let song = songPendingDelete {
+                Text("\"\(song.name)\" and its tracks will be permanently deleted.")
+            }
+        }
+        .alert("Could Not Update Song", isPresented: Binding(
+            get: { songActionError != nil },
+            set: { if !$0 { songActionError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(songActionError ?? "")
         }
     }
 
@@ -316,7 +356,43 @@ struct SongLibraryView: View {
     }
 }
 
+private struct SongLibraryDragRow: View {
+    let song: Song
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(song.name)
+                    .font(.subheadline)
+                    .lineLimit(2)
+                Text("\(song.tracks.count) tracks")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+        .draggable(song.id.uuidString) {
+            HStack(spacing: 8) {
+                Image(systemName: "music.note")
+                Text(song.name)
+                    .lineLimit(1)
+            }
+            .font(.subheadline)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+}
+
 #Preview {
-    SongLibraryView()
+    SongLibraryPanel(onEdit: { _ in }, onDismiss: {})
+        .frame(width: 280)
         .modelContainer(for: [Song.self, AudioTrack.self], inMemory: true)
 }

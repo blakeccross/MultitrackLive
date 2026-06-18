@@ -3,18 +3,28 @@ import SwiftData
 
 @Model
 final class Setlist {
+    static let untitledName = "Untitled"
+
     var id: UUID
     var name: String
     var createdAt: Date
+    var isDraft: Bool
+    var lastOpenedAt: Date
 
     @Relationship(deleteRule: .cascade, inverse: \SetlistEntry.setlist)
     var entries: [SetlistEntry]
 
-    init(name: String) {
+    init(name: String, isDraft: Bool = false) {
         id = UUID()
         self.name = name
+        self.isDraft = isDraft
         createdAt = Date()
+        lastOpenedAt = Date()
         entries = []
+    }
+
+    static func untitledDraft() -> Setlist {
+        Setlist(name: untitledName, isDraft: true)
     }
 
     var sortedEntries: [SetlistEntry] {
