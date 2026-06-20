@@ -2,6 +2,8 @@ import Foundation
 
 /// Thread-safe cache of HQ-baked stem buffers keyed by source file + semitone shift.
 final class TrackBakeCache: @unchecked Sendable {
+    static let shared = TrackBakeCache()
+
     private struct Entry {
         let relativePath: String
         let sourceModificationDate: Date

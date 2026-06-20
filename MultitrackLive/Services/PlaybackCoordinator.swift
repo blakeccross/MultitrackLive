@@ -26,9 +26,14 @@ final class PlaybackCoordinator {
     private(set) var transitions: [SetlistTransition] = []
     private(set) var currentIndex = 0
     private(set) var isLoaded = false
+    private(set) var isLoadingSong = false
     private(set) var loadError: String?
     private(set) var currentWaveformSnapshot: LiveSongWaveformSnapshot?
     private(set) var nextWaveformSnapshot: LiveSongWaveformSnapshot?
+
+    private var loadedSongID: UUID?
+    private var loadTask: Task<Void, Never>?
+    private var loadGeneration = 0
 
     var routingProvider: (() -> OutputRoutingSnapshot)?
 
@@ -56,28 +61,21 @@ final class PlaybackCoordinator {
 
     init() {
         audioEngine.onPlaybackFinished = { [weak self] in
-            guard let self else { return }
-            let shouldAutoPlay = self.transitionAfterCurrentSong == .continue
-            self.advanceToNextSong(autoPlay: shouldAutoPlay)
+            Task { @MainActor in
+                self?.handlePlaybackFinished()
+            }
         }
     }
 
     func configure(setlist: Setlist) {
-        let entries = setlist.sortedEntries
-        songs = entries.compactMap(\.song)
-        transitions = entries.map(\.transition)
+        applySetlistEntries(setlist.sortedEntries)
         currentIndex = 0
         loadCurrentSong()
     }
 
     func syncSetlist(_ setlist: Setlist) {
-        let entries = setlist.sortedEntries
-        let newSongs = entries.compactMap(\.song)
-        let newTransitions = entries.map(\.transition)
         let currentSongID = currentSong?.id
-
-        songs = newSongs
-        transitions = newTransitions
+        applySetlistEntries(setlist.sortedEntries)
 
         if let currentSongID, let newIndex = songs.firstIndex(where: { $0.id == currentSongID }) {
             currentIndex = newIndex
@@ -87,38 +85,48 @@ final class PlaybackCoordinator {
             currentIndex = min(currentIndex, songs.count - 1)
         }
 
+        if let song = currentSong, song.id == loadedSongID, isLoaded {
+            refreshWaveformSnapshots()
+            return
+        }
+
         loadCurrentSong()
     }
 
     func updateTransitions(from setlist: Setlist) {
-        transitions = setlist.sortedEntries.map(\.transition)
+        let currentSongID = currentSong?.id
+        applySetlistEntries(setlist.sortedEntries)
+        if let currentSongID, let newIndex = songs.firstIndex(where: { $0.id == currentSongID }) {
+            currentIndex = newIndex
+        }
     }
 
-    func loadCurrentSong() {
-        guard let song = currentSong else {
-            isLoaded = false
-            currentWaveformSnapshot = nil
-            nextWaveformSnapshot = nil
-            loadError = songs.isEmpty ? "Setlist has no songs." : nil
-            return
+    private func applySetlistEntries(_ entries: [SetlistEntry]) {
+        var syncedSongs: [Song] = []
+        var syncedTransitions: [SetlistTransition] = []
+        for entry in entries {
+            guard let song = entry.song else { continue }
+            syncedSongs.append(song)
+            syncedTransitions.append(entry.transition)
         }
+        songs = syncedSongs
+        transitions = syncedTransitions
+    }
 
-        do {
-            try loadSong(song)
-            currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
-            nextWaveformSnapshot = nextSong.flatMap { Self.makeWaveformSnapshot(for: $0) }
-            isLoaded = true
-            loadError = nil
-        } catch {
-            currentWaveformSnapshot = nil
-            nextWaveformSnapshot = nil
-            isLoaded = false
-            loadError = error.localizedDescription
+    private func handlePlaybackFinished() {
+        guard transitionAfterCurrentSong == .continue else { return }
+        advanceToNextSong(autoPlay: true)
+    }
+
+    func loadCurrentSong(autoPlay: Bool = false, preservedTime: TimeInterval? = nil) {
+        loadTask?.cancel()
+        loadTask = Task { @MainActor in
+            await performLoadCurrentSong(autoPlay: autoPlay, preservedTime: preservedTime)
         }
     }
 
     func play() {
-        guard isLoaded else { return }
+        guard isLoaded, !isLoadingSong else { return }
         audioEngine.play()
     }
 
@@ -127,6 +135,7 @@ final class PlaybackCoordinator {
     }
 
     func stop() {
+        loadTask?.cancel()
         audioEngine.stop()
     }
 
@@ -174,10 +183,7 @@ final class PlaybackCoordinator {
     private func reloadAndMaybePlay(autoPlay: Bool) {
         audioEngine.cancelScheduledTransition()
         audioEngine.stop()
-        loadCurrentSong()
-        if autoPlay, isLoaded {
-            audioEngine.play()
-        }
+        loadCurrentSong(autoPlay: autoPlay)
     }
 
     func applyOutputRouting() {
@@ -186,26 +192,106 @@ final class PlaybackCoordinator {
         let preservedTime = audioEngine.currentTime
         audioEngine.cancelScheduledTransition()
         audioEngine.pause()
-        loadCurrentSong()
-        if wasPlaying, isLoaded {
-            audioEngine.seek(to: preservedTime)
-            audioEngine.play()
+        loadCurrentSong(autoPlay: wasPlaying, preservedTime: preservedTime)
+    }
+
+    @MainActor
+    private func performLoadCurrentSong(autoPlay: Bool, preservedTime: TimeInterval?) async {
+        loadGeneration += 1
+        let generation = loadGeneration
+        isLoadingSong = true
+        defer {
+            if generation == loadGeneration {
+                isLoadingSong = false
+                loadTask = nil
+            }
+        }
+
+        guard let song = currentSong else {
+            isLoaded = false
+            loadedSongID = nil
+            currentWaveformSnapshot = nil
+            nextWaveformSnapshot = nil
+            loadError = songs.isEmpty ? "Setlist has no songs." : nil
+            return
+        }
+
+        if song.id != loadedSongID {
+            isLoaded = false
+            currentWaveformSnapshot = nil
+        }
+
+        audioEngine.stop()
+
+        let trackInputs = SongTrackLoader.trackInputs(for: song)
+        let bakePitchShift = song.transposeHighQuality
+
+        let preparationResult: Result<[AudioEngineManager.PreparedTrackPayload], Error> =
+            await Task.detached(priority: .userInitiated) {
+                do {
+                    return .success(
+                        try await SongTrackLoader.loadPreparedTracks(
+                            trackInputs: trackInputs,
+                            bakePitchShift: bakePitchShift
+                        )
+                    )
+                } catch {
+                    return .failure(error)
+                }
+            }.value
+
+        guard generation == loadGeneration, !Task.isCancelled else { return }
+
+        switch preparationResult {
+        case .success(let prepared):
+            do {
+                let routing = routingProvider?()
+                try audioEngine.loadPreparedTracks(prepared, routing: routing)
+                applySongEngineState(for: song)
+                currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
+                nextWaveformSnapshot = nextSong.flatMap { Self.makeWaveformSnapshot(for: $0) }
+                loadedSongID = song.id
+                isLoaded = true
+                loadError = nil
+
+                if let preservedTime {
+                    audioEngine.seek(to: preservedTime)
+                }
+                if autoPlay {
+                    audioEngine.play()
+                }
+            } catch {
+                loadedSongID = nil
+                currentWaveformSnapshot = nil
+                nextWaveformSnapshot = nil
+                isLoaded = false
+                loadError = error.localizedDescription
+            }
+
+        case .failure(let error):
+            if error is CancellationError {
+                loadError = nil
+            } else {
+                loadedSongID = nil
+                currentWaveformSnapshot = nil
+                nextWaveformSnapshot = nil
+                isLoaded = false
+                loadError = error.localizedDescription
+            }
         }
     }
 
-    private func loadSong(_ song: Song) throws {
-        let trackPayload = song.sortedTracks.map { track -> (id: UUID, url: URL, settings: AudioEngineManager.TrackSettings, groupID: UUID?) in
-            let url = FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath)
-            return (track.id, url, AudioEngineManager.TrackSettings(track: track), track.group?.id)
+    private func refreshWaveformSnapshots() {
+        guard let song = currentSong else {
+            currentWaveformSnapshot = nil
+            nextWaveformSnapshot = nil
+            return
         }
+        currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
+        nextWaveformSnapshot = nextSong.flatMap { Self.makeWaveformSnapshot(for: $0) }
+    }
 
-        guard !trackPayload.isEmpty else {
-            throw PlaybackCoordinatorError.noTracks
-        }
-
-        let routing = routingProvider?()
-        try audioEngine.loadTracks(trackPayload, routing: routing, bakePitchShift: song.transposeHighQuality)
-
+    private func applySongEngineState(for song: Song) {
         let markers = ArrangementMarkerStore.load(for: song.id).sortedByTime
         let arrangement = SongArrangementStore.load(for: song.id, markers: markers)
         let trackIDs = song.sortedTracks.map(\.id)

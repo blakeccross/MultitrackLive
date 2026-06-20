@@ -78,7 +78,7 @@ struct LivePlaybackView: View {
                 tempoDisplay: currentSongTempoDisplay,
                 timeSignatureDisplay: currentSongTimeSignatureDisplay,
                 audioEngine: audioEngine,
-                isLoaded: coordinator.isLoaded,
+                isLoaded: coordinator.isLoaded && !coordinator.isLoadingSong,
                 onStop: stopPlayback,
                 onPlay: coordinator.play,
                 onPause: coordinator.pause,
@@ -275,6 +275,15 @@ struct LivePlaybackView: View {
                             onSeek: coordinator.seek,
                             onCueSection: cueSection
                         )
+                        .overlay {
+                            if coordinator.isLoadingSong {
+                                loadingOverlay
+                            }
+                        }
+                    } else if coordinator.isLoadingSong {
+                        LiveSetlistWaveformLoadingPlaceholder(
+                            message: loadingMessage(for: coordinator.currentSong)
+                        )
                     } else {
                         LiveSetlistWaveformLoadingPlaceholder()
                     }
@@ -296,7 +305,25 @@ struct LivePlaybackView: View {
         }
     }
 
+    private func loadingMessage(for song: Song?) -> String {
+        guard let song, song.transposeHighQuality, song.transposeSemitones != 0 else {
+            return "Loading audio…"
+        }
+        return "Processing audio…"
+    }
+
+    private var loadingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.12)
+            ProgressView(loadingMessage(for: coordinator.currentSong))
+                .padding(12)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
     private struct LiveSetlistWaveformLoadingPlaceholder: View {
+        var message: String?
+
         private let waveformHeight: CGFloat = 72
 
         private var laneHeight: CGFloat {
@@ -307,12 +334,16 @@ struct LivePlaybackView: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(.secondary.opacity(0.10))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    if let message {
+                        ProgressView(message)
+                    } else {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: laneHeight)
-                .redacted(reason: .placeholder)
+                .redacted(reason: message == nil ? .placeholder : [])
         }
     }
 
