@@ -59,7 +59,11 @@ final class PlaybackCoordinator {
         return transitions[currentIndex]
     }
 
-    init() {
+    /// Binds this coordinator as the owner of the shared engine's finished callback.
+    /// Must be called from a stable lifecycle point (not `init`), because SwiftUI
+    /// constructs throwaway `@State` default instances on every view re-render,
+    /// and an `init`-time assignment would let those throwaways clobber the callback.
+    private func bindPlaybackFinishedHandler() {
         audioEngine.onPlaybackFinished = { [weak self] in
             Task { @MainActor in
                 self?.handlePlaybackFinished()
@@ -68,6 +72,7 @@ final class PlaybackCoordinator {
     }
 
     func configure(setlist: Setlist) {
+        bindPlaybackFinishedHandler()
         applySetlistEntries(setlist.sortedEntries)
         currentIndex = 0
         loadCurrentSong()
