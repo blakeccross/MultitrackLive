@@ -11,14 +11,14 @@ final class TrackMemoryPlayer {
 
     private final class RenderContext: @unchecked Sendable {
         let transport: AudioPlaybackTransport
-        let buffer: DecodedStemBuffer
+        let buffer: any StemSampleSource
         let sampleRate: Double
         var mapper: ArrangementTimelineMapper
         var mix = MixState()
 
         init(
             transport: AudioPlaybackTransport,
-            buffer: DecodedStemBuffer,
+            buffer: any StemSampleSource,
             mapper: ArrangementTimelineMapper
         ) {
             self.transport = transport
@@ -332,17 +332,17 @@ final class TrackMemoryPlayer {
 
     let trackID: UUID
     let sourceNode: AVAudioSourceNode
-    let decodedBuffer: DecodedStemBuffer
+    let sampleSource: any StemSampleSource
     private let renderContext: RenderContext
 
     init(
         trackID: UUID,
-        buffer: DecodedStemBuffer,
+        buffer: any StemSampleSource,
         transport: AudioPlaybackTransport,
         mapper: ArrangementTimelineMapper
     ) {
         self.trackID = trackID
-        self.decodedBuffer = buffer
+        self.sampleSource = buffer
         self.renderContext = RenderContext(
             transport: transport,
             buffer: buffer,
@@ -371,5 +371,13 @@ final class TrackMemoryPlayer {
 
     func updateMix(volume: Float, pan: Float, isAudible: Bool) {
         renderContext.mix = MixState(volume: volume, pan: pan, isAudible: isAudible)
+    }
+
+    /// Warms the backing sample source for playback starting at the given master
+    /// timeline position, so streaming sources have audio resident before play.
+    func prewarm(atTimelineSeconds timeline: TimeInterval) {
+        let sourceSeconds = renderContext.mapper.sourceSeconds(atMasterTimeline: timeline) ?? 0
+        let sourceFrame = Int(sourceSeconds * renderContext.sampleRate)
+        renderContext.buffer.prewarm(aroundSourceFrame: sourceFrame)
     }
 }

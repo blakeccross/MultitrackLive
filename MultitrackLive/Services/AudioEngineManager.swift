@@ -19,7 +19,7 @@ final class AudioEngineManager {
 
     struct PreparedTrackPayload: Sendable {
         let id: UUID
-        let buffer: DecodedStemBuffer
+        let buffer: any StemSampleSource
         let settings: TrackSettings
         let groupID: UUID?
     }
@@ -336,6 +336,7 @@ final class AudioEngineManager {
 
         let startTime = quantizeTimelineTime(transport.pausedTimelineSeconds())
         applyTrackPitch(at: startTime)
+        prewarmTracks(atTimelineSeconds: startTime)
         transport.beginPlayback(from: startTime)
         isPlaying = true
         startTimer()
@@ -364,9 +365,16 @@ final class AudioEngineManager {
         currentTime = clamped
         transport.setPausedTimeline(clamped)
         applyTrackPitch(at: clamped)
+        prewarmTracks(atTimelineSeconds: clamped)
 
         if isPlaying {
             transport.beginPlayback(from: clamped)
+        }
+    }
+
+    private func prewarmTracks(atTimelineSeconds timeline: TimeInterval) {
+        for track in tracks.values {
+            track.memoryPlayer.prewarm(atTimelineSeconds: timeline)
         }
     }
 

@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 
 enum DecodedStemBufferError: Error {
     case unsupportedFormat
@@ -8,8 +9,38 @@ enum DecodedStemBufferError: Error {
     case pitchShiftFailed
 }
 
+/// Real-time sample provider for one track. Both the fully-in-memory
+/// `DecodedStemBuffer` and the disk-streaming `StreamingStemBuffer` conform,
+/// so the render path can read samples without knowing the backing storage.
+protocol StemSampleSource: AnyObject, Sendable {
+    var sampleRate: Double { get }
+    var channelCount: Int { get }
+    var frameCount: Int { get }
+    var audioFormat: AVAudioFormat { get }
+
+    @discardableResult
+    func copy(
+        channel: Int,
+        startingFrame: Int,
+        frameCount: Int,
+        into destination: UnsafeMutablePointer<Float>,
+        destinationOffset: Int,
+        gain: Float
+    ) -> Int
+
+    func interpolatedSample(channel: Int, frame: Double) -> Float
+
+    /// Hint that playback is about to read near `frame`; streaming sources use
+    /// this to warm their look-ahead window. In-memory sources ignore it.
+    func prewarm(aroundSourceFrame frame: Int)
+}
+
+extension StemSampleSource {
+    func prewarm(aroundSourceFrame frame: Int) {}
+}
+
 /// Float32 PCM decoded once at load time for real-time memory playback.
-final class DecodedStemBuffer: @unchecked Sendable {
+final class DecodedStemBuffer: StemSampleSource, @unchecked Sendable {
     static let engineSampleRate: Double = 48_000
 
     let sampleRate: Double
@@ -301,5 +332,244 @@ final class DecodedStemBuffer: @unchecked Sendable {
                 break
             }
         }
+    }
+}
+
+/// Disk-streaming sample provider. Instead of decoding an entire stem into RAM,
+/// it keeps a bounded sliding window of decoded pages around the playhead. A
+/// background timer reads ahead from the file so the real-time render thread
+/// only ever reads already-resident pages (never touching disk).
+final class StreamingStemBuffer: StemSampleSource, @unchecked Sendable {
+    let sampleRate: Double
+    let channelCount: Int
+    let frameCount: Int
+    let audioFormat: AVAudioFormat
+
+    private final class Page {
+        let channels: [UnsafeMutablePointer<Float>]
+        let validFrames: Int
+
+        init(channelCount: Int, capacity: Int, validFrames: Int) {
+            self.validFrames = validFrames
+            channels = (0..<channelCount).map { _ in
+                let pointer = UnsafeMutablePointer<Float>.allocate(capacity: capacity)
+                pointer.initialize(repeating: 0, count: capacity)
+                return pointer
+            }
+        }
+
+        deinit { channels.forEach { $0.deallocate() } }
+    }
+
+    private let pageFrames: Int
+    private let lookAheadPages: Int
+    private let lookBehindPages: Int
+
+    // Resident pages, guarded by `pageLock`. Touched by both render and reader.
+    private var pages: [Int: Page] = [:]
+    private var pageLock = os_unfair_lock()
+
+    // Latest source frame the render thread asked for, guarded by `centerLock`.
+    private var requestedCenterFrame = 0
+    private var centerLock = os_unfair_lock()
+
+    // File + scratch buffer are ONLY ever used on `readerQueue`.
+    private let readerQueue = DispatchQueue(label: "StreamingStemBuffer.reader", qos: .userInitiated)
+    private let reader: AVAudioFile
+    private let readBuffer: AVAudioPCMBuffer
+    private var timer: DispatchSourceTimer?
+
+    init(
+        url: URL,
+        pageFrames: Int = 16_384,
+        lookAheadSeconds: Double = 6,
+        lookBehindSeconds: Double = 1
+    ) throws {
+        let file = try AVAudioFile(forReading: url)
+        let format = file.processingFormat
+        guard format.channelCount > 0, file.length > 0 else {
+            throw DecodedStemBufferError.emptyFile
+        }
+        guard let scratch = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: AVAudioFrameCount(pageFrames)
+        ) else {
+            throw DecodedStemBufferError.unsupportedFormat
+        }
+
+        reader = file
+        readBuffer = scratch
+        audioFormat = format
+        sampleRate = format.sampleRate
+        channelCount = Int(format.channelCount)
+        frameCount = Int(file.length)
+        self.pageFrames = pageFrames
+        lookAheadPages = max(1, Int((lookAheadSeconds * format.sampleRate / Double(pageFrames)).rounded(.up)))
+        lookBehindPages = max(0, Int((lookBehindSeconds * format.sampleRate / Double(pageFrames)).rounded(.up)))
+
+        startReaderTimer()
+    }
+
+    deinit {
+        timer?.cancel()
+        timer = nil
+        pages.removeAll()
+    }
+
+    func prewarm(aroundSourceFrame frame: Int) {
+        let clamped = max(0, min(frame, max(0, frameCount - 1)))
+        os_unfair_lock_lock(&centerLock)
+        requestedCenterFrame = clamped
+        os_unfair_lock_unlock(&centerLock)
+        readerQueue.sync { self.fillWindow(around: clamped) }
+    }
+
+    @discardableResult
+    func copy(
+        channel: Int,
+        startingFrame: Int,
+        frameCount requestedFrames: Int,
+        into destination: UnsafeMutablePointer<Float>,
+        destinationOffset: Int,
+        gain: Float
+    ) -> Int {
+        guard channel >= 0, channel < channelCount else { return 0 }
+        guard startingFrame >= 0, startingFrame < frameCount else { return 0 }
+
+        let available = min(requestedFrames, frameCount - startingFrame)
+        guard available > 0 else { return 0 }
+
+        noteRequested(frame: startingFrame)
+
+        var written = 0
+        os_unfair_lock_lock(&pageLock)
+        while written < available {
+            let globalFrame = startingFrame + written
+            let pageIndex = globalFrame / pageFrames
+            let offsetInPage = globalFrame % pageFrames
+            let spanToPageEnd = min(pageFrames - offsetInPage, available - written)
+
+            // Copy whatever of this page span is resident; the rest stays silent
+            // (the destination is pre-zeroed by the caller before mixing).
+            if let page = pages[pageIndex], offsetInPage < page.validFrames {
+                let copyCount = min(page.validFrames - offsetInPage, spanToPageEnd)
+                let source = page.channels[channel].advanced(by: offsetInPage)
+                let target = destination.advanced(by: destinationOffset + written)
+                if gain == 1 {
+                    target.update(from: source, count: copyCount)
+                } else {
+                    for index in 0..<copyCount {
+                        target[index] = source[index] * gain
+                    }
+                }
+            }
+
+            written += spanToPageEnd
+        }
+        os_unfair_lock_unlock(&pageLock)
+
+        return available
+    }
+
+    func interpolatedSample(channel: Int, frame: Double) -> Float {
+        guard channel >= 0, channel < channelCount, frameCount > 0, frame >= 0 else { return 0 }
+
+        let baseFrame = frame >= Double(frameCount - 1) ? frameCount - 1 : Int(frame.rounded(.down))
+        noteRequested(frame: baseFrame)
+        let fraction = Float(frame - Double(baseFrame))
+
+        os_unfair_lock_lock(&pageLock)
+        defer { os_unfair_lock_unlock(&pageLock) }
+        let sampleA = unlockedSample(channel: channel, frame: baseFrame)
+        let sampleB = baseFrame + 1 < frameCount
+            ? unlockedSample(channel: channel, frame: baseFrame + 1)
+            : sampleA
+        return sampleA + (sampleB - sampleA) * fraction
+    }
+
+    /// Caller must hold `pageLock`.
+    private func unlockedSample(channel: Int, frame: Int) -> Float {
+        let pageIndex = frame / pageFrames
+        let offsetInPage = frame % pageFrames
+        guard let page = pages[pageIndex], offsetInPage < page.validFrames else { return 0 }
+        return page.channels[channel][offsetInPage]
+    }
+
+    private func noteRequested(frame: Int) {
+        // Never block the audio thread waiting on the reader.
+        guard os_unfair_lock_trylock(&centerLock) else { return }
+        requestedCenterFrame = frame
+        os_unfair_lock_unlock(&centerLock)
+    }
+
+    private func startReaderTimer() {
+        let source = DispatchSource.makeTimerSource(queue: readerQueue)
+        source.schedule(deadline: .now(), repeating: .milliseconds(40), leeway: .milliseconds(10))
+        source.setEventHandler { [weak self] in
+            guard let self else { return }
+            os_unfair_lock_lock(&self.centerLock)
+            let center = self.requestedCenterFrame
+            os_unfair_lock_unlock(&self.centerLock)
+            self.fillWindow(around: center)
+        }
+        timer = source
+        source.resume()
+    }
+
+    /// Runs on `readerQueue`. Evicts out-of-window pages and decodes missing ones.
+    private func fillWindow(around centerFrame: Int) {
+        let centerPage = centerFrame / pageFrames
+        let lowest = max(0, centerPage - lookBehindPages)
+        let highest = centerPage + lookAheadPages
+
+        os_unfair_lock_lock(&pageLock)
+        let residentIndices = Array(pages.keys)
+        os_unfair_lock_unlock(&pageLock)
+
+        for index in residentIndices where index < lowest || index > highest {
+            os_unfair_lock_lock(&pageLock)
+            pages[index] = nil
+            os_unfair_lock_unlock(&pageLock)
+        }
+
+        var index = lowest
+        while index <= highest {
+            guard index * pageFrames < frameCount else { break }
+
+            os_unfair_lock_lock(&pageLock)
+            let alreadyResident = pages[index] != nil
+            os_unfair_lock_unlock(&pageLock)
+
+            if !alreadyResident, let page = decodePage(index) {
+                os_unfair_lock_lock(&pageLock)
+                pages[index] = page
+                os_unfair_lock_unlock(&pageLock)
+            }
+            index += 1
+        }
+    }
+
+    /// Runs on `readerQueue`. Reads one page worth of frames from disk.
+    private func decodePage(_ index: Int) -> Page? {
+        let startFrame = index * pageFrames
+        guard startFrame < frameCount else { return nil }
+        let framesToRead = min(pageFrames, frameCount - startFrame)
+
+        do {
+            reader.framePosition = AVAudioFramePosition(startFrame)
+            readBuffer.frameLength = 0
+            try reader.read(into: readBuffer, frameCount: AVAudioFrameCount(framesToRead))
+        } catch {
+            return nil
+        }
+
+        let framesRead = Int(readBuffer.frameLength)
+        guard framesRead > 0, let channelData = readBuffer.floatChannelData else { return nil }
+
+        let page = Page(channelCount: channelCount, capacity: pageFrames, validFrames: framesRead)
+        for channel in 0..<channelCount {
+            page.channels[channel].update(from: channelData[channel], count: framesRead)
+        }
+        return page
     }
 }

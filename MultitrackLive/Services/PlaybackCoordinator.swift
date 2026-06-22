@@ -229,16 +229,12 @@ final class PlaybackCoordinator {
         audioEngine.stop()
 
         let trackInputs = SongTrackLoader.trackInputs(for: song)
-        let bakePitchShift = song.transposeHighQuality
 
         let preparationResult: Result<[AudioEngineManager.PreparedTrackPayload], Error> =
             await Task.detached(priority: .userInitiated) {
                 do {
                     return .success(
-                        try await SongTrackLoader.loadPreparedTracks(
-                            trackInputs: trackInputs,
-                            bakePitchShift: bakePitchShift
-                        )
+                        try SongTrackLoader.streamingPayloads(trackInputs: trackInputs)
                     )
                 } catch {
                     return .failure(error)

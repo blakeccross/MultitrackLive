@@ -139,13 +139,16 @@ enum SongTrackLoader {
                             bakePitchShift: bakePitchShift
                         )
 
-                        if bakePitchShift, semitones != 0, !input.settings.excludeFromTranspose {
+                        if bakePitchShift,
+                           semitones != 0,
+                           !input.settings.excludeFromTranspose,
+                           let bakedBuffer = prepared.buffer as? DecodedStemBuffer {
                             bakeCache.store(
                                 trackID: input.id,
                                 relativePath: input.relativePath,
                                 sourceModificationDate: modificationDate,
                                 semitones: semitones,
-                                buffer: prepared.buffer
+                                buffer: bakedBuffer
                             )
                         }
 
@@ -178,25 +181,32 @@ enum SongTrackLoader {
         }
     }
 
-    static func loadPreparedTracks(
-        trackInputs: [TrackInput],
-        bakePitchShift: Bool
-    ) async throws -> [AudioEngineManager.PreparedTrackPayload] {
+    /// Builds payloads that stream their audio from disk on demand instead of
+    /// decoding the entire stem into memory. This is cheap (it only opens each
+    /// file and reads its header), so songs become near-instant to load.
+    ///
+    /// Pitch is applied in real time by the engine's time-pitch node rather than
+    /// being baked offline, so high-quality transpose isn't pre-rendered here.
+    static func streamingPayloads(
+        trackInputs: [TrackInput]
+    ) throws -> [AudioEngineManager.PreparedTrackPayload] {
         guard !trackInputs.isEmpty else {
             throw PlaybackCoordinatorError.noTracks
         }
 
-        let sourceModificationDates = sourceModificationDates(for: trackInputs)
-        let decodedBuffers = try await decodeTracks(
-            inputs: trackInputs,
-            sourceModificationDates: sourceModificationDates
-        )
-
-        return try await prepareTrackPayloads(
-            inputs: trackInputs,
-            decodedBuffers: decodedBuffers,
-            sourceModificationDates: sourceModificationDates,
-            bakePitchShift: bakePitchShift
-        )
+        return try trackInputs.map { input in
+            let buffer = try StreamingStemBuffer(url: input.url)
+            var settings = input.settings
+            if settings.trimEnd == nil {
+                settings.trimEnd = Double(buffer.frameCount) / buffer.sampleRate
+            }
+            return AudioEngineManager.PreparedTrackPayload(
+                id: input.id,
+                buffer: buffer,
+                settings: settings,
+                groupID: input.groupID
+            )
+        }
     }
+
 }
