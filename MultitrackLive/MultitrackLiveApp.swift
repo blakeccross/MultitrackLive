@@ -21,10 +21,18 @@ struct MultitrackLiveApp: App {
         #if os(macOS)
         .windowToolbarStyle(.expanded)
         .commands {
+            FileMenuCommands()
             SongMenuCommands()
         }
         #endif
     }
+}
+
+struct LiveSetlistActions {
+    var canSave = false
+    var save: () -> Void = {}
+    var canNew = false
+    var newSetlist: () -> Void = {}
 }
 
 struct SongEditorActions {
@@ -33,12 +41,22 @@ struct SongEditorActions {
     var importAbleton: () -> Void = {}
 }
 
+private struct LiveSetlistActionsKey: FocusedValueKey {
+    typealias Value = LiveSetlistActions
+    static var defaultValue: Value? { nil }
+}
+
 private struct SongEditorActionsKey: FocusedValueKey {
     typealias Value = SongEditorActions
     static var defaultValue: Value? { nil }
 }
 
 extension FocusedValues {
+    var liveSetlistActions: LiveSetlistActions? {
+        get { self[LiveSetlistActionsKey.self] }
+        set { self[LiveSetlistActionsKey.self] = newValue }
+    }
+
     var songEditorActions: SongEditorActions? {
         get { self[SongEditorActionsKey.self] }
         set { self[SongEditorActionsKey.self] = newValue }
@@ -46,6 +64,28 @@ extension FocusedValues {
 }
 
 #if os(macOS)
+struct FileMenuCommands: Commands {
+    @FocusedValue(\.liveSetlistActions) private var actions
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New") {
+                actions?.newSetlist()
+            }
+            .keyboardShortcut("n", modifiers: .command)
+            .disabled(actions?.canNew != true)
+        }
+
+        CommandGroup(replacing: .saveItem) {
+            Button("Save") {
+                actions?.save()
+            }
+            .keyboardShortcut("s", modifiers: .command)
+            .disabled(actions?.canSave != true)
+        }
+    }
+}
+
 struct SongMenuCommands: Commands {
     @FocusedValue(\.songEditorActions) private var actions
 

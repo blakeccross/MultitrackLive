@@ -29,6 +29,8 @@ struct LivePlaybackView: View {
     @State private var clearDropTargetTask: Task<Void, Never>?
     @State private var songToEditID: UUID?
     @State private var showingManageOutputs = false
+    @State private var showingSaveSetlistAlert = false
+    @State private var saveSetlistName = ""
 
     private var activeSetlist: Setlist? {
         if let activeSetlistID,
@@ -56,6 +58,21 @@ struct LivePlaybackView: View {
                         bootstrapSetlistIfNeeded()
                     }
             }
+        }
+        .focusedValue(\.liveSetlistActions, LiveSetlistActions(
+            canSave: activeSetlist != nil,
+            save: presentSave,
+            canNew: activeSetlist != nil,
+            newSetlist: createUntitledSetlist
+        ))
+        .alert("Save Setlist", isPresented: $showingSaveSetlistAlert) {
+            TextField("Setlist name", text: $saveSetlistName)
+            Button("Save") {
+                saveSetlist()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Enter a name for this setlist.")
         }
     }
 
@@ -248,6 +265,24 @@ struct LivePlaybackView: View {
         activeLoopSectionID = nil
         suppressedLoopSectionIDs.removeAll()
         coordinator.stop()
+    }
+
+    private func presentSave() {
+        if workingSetlist.isDraft {
+            saveSetlistName = ""
+            showingSaveSetlistAlert = true
+        } else {
+            try? modelContext.save()
+        }
+    }
+
+    private func saveSetlist() {
+        let trimmed = saveSetlistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        workingSetlist.name = trimmed
+        workingSetlist.isDraft = false
+        try? modelContext.save()
     }
 
     private func createUntitledSetlist() {
@@ -928,10 +963,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
 
     @ToolbarContentBuilder
     var body: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            setlistSwitcher
-        }
-
         #if os(macOS)
         if #available(macOS 26.0, *) {
             ToolbarItem(placement: .navigation) {
@@ -964,6 +995,11 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
 
             ToolbarItem(placement: .primaryAction) {
                 songsButton
+            }
+            .sharedBackgroundVisibility(.hidden)
+
+            ToolbarItem(placement: .automatic) {
+                setlistSwitcher
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -1001,6 +1037,10 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             }
 
             ToolbarItem(placement: .automatic) {
+                setlistSwitcher
+            }
+
+            ToolbarItem(placement: .automatic) {
                 manageOutputsButton
             }
         }
@@ -1031,6 +1071,10 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
 
         ToolbarItem(placement: .primaryAction) {
             songsButton
+        }
+
+        ToolbarItem(placement: .automatic) {
+            setlistSwitcher
         }
 
         ToolbarItem(placement: .automatic) {
