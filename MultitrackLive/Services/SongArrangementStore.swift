@@ -468,19 +468,20 @@ enum SongArrangementStore {
         slots: [ArrangementSlot],
         inputs: ArrangementLayoutInputs
     ) -> [ArrangementColumn] {
+        let usesSourceTimeline = usesSourceTimelineLayout(slots: slots, inputs: inputs)
         var masterTimeline: TimeInterval = 0
         var columns: [ArrangementColumn] = []
 
         for slot in slots {
             guard let marker = inputs.markersByID[slot.markerID] else { continue }
 
-            let columnStart = masterTimeline
             let columnWidth = slotColumnWidth(
                 marker: marker,
                 sortedMarkers: inputs.sortedMarkers,
                 trackIDs: inputs.trackIDs,
                 sourceDurationForTrack: inputs.sourceDurationForTrack
             )
+            let columnStart = usesSourceTimeline ? marker.startSeconds : masterTimeline
             columns.append(
                 ArrangementColumn(
                     slot: slot,
@@ -489,10 +490,30 @@ enum SongArrangementStore {
                     columnWidth: columnWidth
                 )
             )
-            masterTimeline += columnWidth
+            if !usesSourceTimeline {
+                masterTimeline += columnWidth
+            }
         }
 
         return columns
+    }
+
+    /// Fresh Ableton imports use one slot per marker in source-time order. Lay those out at
+    /// absolute source positions. Reordered or duplicated slots use packed performance layout.
+    private static func usesSourceTimelineLayout(
+        slots: [ArrangementSlot],
+        inputs: ArrangementLayoutInputs
+    ) -> Bool {
+        let sortedMarkers = inputs.sortedMarkers
+        guard !slots.isEmpty, slots.count == sortedMarkers.count else { return false }
+
+        var seenMarkerIDs = Set<UUID>()
+        for (slot, marker) in zip(slots, sortedMarkers) {
+            guard slot.markerID == marker.id, seenMarkerIDs.insert(slot.markerID).inserted else {
+                return false
+            }
+        }
+        return true
     }
 
     private static func slotColumnWidth(

@@ -120,3 +120,12 @@ struct ArrangementDisplaySection: Identifiable, Hashable {
         columnEndSeconds - columnStartSeconds
     }
 }
+
+extension Array where Element == ArrangementDisplaySection {
+    /// True when timeline positions match source positions (e.g. fresh Ableton import).
+    var usesSourceLinearTimeline: Bool {
+        !isEmpty && allSatisfy {
+            abs($0.columnStartSeconds - $0.sourceStartSeconds) < 0.001
+        }
+    }
+}

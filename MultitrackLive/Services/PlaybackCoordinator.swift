@@ -380,7 +380,10 @@ final class PlaybackCoordinator {
             inputs: inputs
         )
 
-        let timelineDuration = layout.rulerSections.last?.timelineEndSeconds ?? fileDuration
+        let timelineDuration = max(
+            layout.rulerSections.last?.timelineEndSeconds ?? fileDuration,
+            fileDuration
+        )
 
         return LiveSongWaveformSnapshot(
             songID: song.id,

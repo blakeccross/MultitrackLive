@@ -251,9 +251,20 @@ struct EditView: View {
         rulerSections
     }
 
+    /// Fresh Ableton imports align markers to source time; tracks stay continuous.
+    private var usesSourceLinearRulerLayout: Bool {
+        rulerSections.usesSourceLinearTimeline
+    }
+
+    private func trackLaneSections(for track: AudioTrack) -> [ArrangementDisplaySection] {
+        guard !usesSourceLinearRulerLayout else { return [] }
+        return trackSections(for: track)
+    }
+
     private var timelineDuration: TimeInterval {
         if !displaySections.isEmpty {
-            return max(displaySections.last?.timelineEndSeconds ?? 1, 1)
+            let arrangedEnd = displaySections.last?.timelineEndSeconds ?? 1
+            return max(max(arrangedEnd, 1), sourceDuration)
         }
         return max(sourceDuration, AudioEngineManager.shared.duration, 1)
     }
@@ -669,7 +680,7 @@ struct EditView: View {
                     fileDuration: viewModel.fileDuration(for: track),
                     timelineDuration: timelineDuration,
                     timelineContentWidth: timelineContentWidth,
-                    arrangementSections: trackSections(for: track),
+                    arrangementSections: trackLaneSections(for: track),
                     arrangementSlots: $arrangementSlots,
                     clipTrims: $clipTrims,
                     selectedClip: $selectedClip,

@@ -493,7 +493,14 @@ final class AudioEngineManager {
 
     private func calculateEffectiveDuration() -> TimeInterval {
         if usesArrangement {
-            return masterArrangementSections.last?.timelineEndSeconds ?? 0
+            let arrangedEnd = masterArrangementSections.last?.timelineEndSeconds ?? 0
+            if masterArrangementSections.usesSourceLinearTimeline {
+                let sourceEnd = tracks.values.map { track in
+                    track.settings.trimEnd ?? track.fileDuration
+                }.max() ?? 0
+                return max(arrangedEnd, sourceEnd)
+            }
+            return arrangedEnd
         }
 
         return tracks.values.map { track in

@@ -250,25 +250,33 @@ struct WaveformLaneView: View {
         !arrangementSections.isEmpty
     }
 
+    private var usesSourceLinearTimeline: Bool {
+        arrangementSections.usesSourceLinearTimeline
+    }
+
+    private var showsFullSourceWaveform: Bool {
+        !usesArrangementLayout || usesSourceLinearTimeline
+    }
+
     private var displayPeaksCacheKey: String {
         let sectionKey = arrangementSections
             .map { "\($0.id.uuidString)|\($0.timelineStartSeconds)|\($0.timelineEndSeconds)" }
             .joined(separator: ",")
-        return "\(timelineContentWidth)|\(timelineDuration)|\(fileDuration)|\(sourcePeaks.count)|\(sectionKey)|\(usesArrangementLayout)"
+        return "\(timelineContentWidth)|\(timelineDuration)|\(fileDuration)|\(sourcePeaks.count)|\(sectionKey)|\(usesArrangementLayout)|\(usesSourceLinearTimeline)"
     }
 
     private func refreshCachedDisplayPeaks() {
-        if usesArrangementLayout {
+        if showsFullSourceWaveform {
+            cachedDisplayPeaks = WaveformPeakResampler.displayPeaks(
+                from: sourcePeaks,
+                contentWidth: timelineContentWidth
+            )
+        } else {
             cachedDisplayPeaks = WaveformPeakResampler.arrangedDisplayPeaks(
                 from: sourcePeaks,
                 fileDuration: fileDuration,
                 sections: arrangementSections,
                 timelineDuration: safeTimelineDuration,
-                contentWidth: timelineContentWidth
-            )
-        } else {
-            cachedDisplayPeaks = WaveformPeakResampler.displayPeaks(
-                from: sourcePeaks,
                 contentWidth: timelineContentWidth
             )
         }
@@ -296,7 +304,7 @@ struct WaveformLaneView: View {
     }
 
     private var clipBaselineRanges: [ClosedRange<CGFloat>] {
-        if usesArrangementLayout {
+        if usesArrangementLayout && !usesSourceLinearTimeline {
             arrangementSections.map { section in
                 let bounds = clipTimelineBounds(for: section)
                 let startX = TimelineLayout.xPosition(
@@ -320,7 +328,7 @@ struct WaveformLaneView: View {
         ZStack(alignment: .leading) {
             WaveformBarsCanvas(
                 bars: cachedDisplayPeaks,
-                showsEmptyBaseline: !usesArrangementLayout,
+                showsEmptyBaseline: showsFullSourceWaveform,
                 baselineRanges: clipBaselineRanges
             )
                 .equatable()

@@ -67,6 +67,7 @@
 		AA0000010000000000000044 /* click-accent.wav in Resources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000044 /* click-accent.wav */; };
 		AA0000010000000000000045 /* click-normal.wav in Resources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000045 /* click-normal.wav */; };
 		AA0000010000000000000046 /* ClickTrackGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000046 /* ClickTrackGeneratorTests.swift */; };
+		AA0000010000000000000049 /* SongArrangementLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000049 /* SongArrangementLayoutTests.swift */; };
 		AA0000010000000000000047 /* ClickTrackSubdivision.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000047 /* ClickTrackSubdivision.swift */; };
 		AA000001000000000000003B /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003D /* Accelerate.framework */; };
 /* End PBXBuildFile section */
@@ -133,6 +134,7 @@
 		AA0000020000000000000044 /* click-accent.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "click-accent.wav"; sourceTree = "<group>"; };
 		AA0000020000000000000045 /* click-normal.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "click-normal.wav"; sourceTree = "<group>"; };
 		AA0000020000000000000046 /* ClickTrackGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackGeneratorTests.swift; sourceTree = "<group>"; };
+		AA0000020000000000000049 /* SongArrangementLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongArrangementLayoutTests.swift; sourceTree = "<group>"; };
 		AA0000020000000000000047 /* ClickTrackSubdivision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackSubdivision.swift; sourceTree = "<group>"; };
 		AA0000030000000000000002 /* MultitrackLiveTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MultitrackLiveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000002000000000000003B /* MultitrackLive-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "MultitrackLive-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -200,6 +202,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000020000000000000046 /* ClickTrackGeneratorTests.swift */,
+				AA0000020000000000000049 /* SongArrangementLayoutTests.swift */,
 			);
 			path = MultitrackLiveTests;
 			sourceTree = "<group>";
@@ -506,6 +509,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA0000010000000000000046 /* ClickTrackGeneratorTests.swift in Sources */,
+				AA0000010000000000000049 /* SongArrangementLayoutTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

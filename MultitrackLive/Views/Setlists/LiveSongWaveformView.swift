@@ -44,6 +44,14 @@ struct LiveSongWaveformView: View {
         !sections.isEmpty
     }
 
+    private var usesSourceLinearTimeline: Bool {
+        sections.usesSourceLinearTimeline
+    }
+
+    private var showsFullSourceWaveform: Bool {
+        !usesArrangementLayout || usesSourceLinearTimeline
+    }
+
     private var trackSourcesKey: String {
         trackSources
             .map { "\($0.url.path)|\($0.duration)" }
@@ -83,7 +91,7 @@ struct LiveSongWaveformView: View {
                     sections: sections,
                     timelineDuration: safeTimelineDuration,
                     contentWidth: contentWidth,
-                    showsEmptyBaseline: isLoadingWaveform,
+                    showsEmptyBaseline: isLoadingWaveform || showsFullSourceWaveform,
                     baselineRanges: waveformBaselineRanges
                 )
                 .frame(width: contentWidth, height: waveformHeight)
@@ -105,7 +113,7 @@ struct LiveSongWaveformView: View {
                 .stroke(Color.primary.opacity(0.1), lineWidth: 1)
         }
         .modifier(WaveformSeekGestureModifier(
-            isEnabled: isInteractive && !usesArrangementLayout,
+            isEnabled: isInteractive && (!usesArrangementLayout || usesSourceLinearTimeline),
             contentWidth: contentWidth,
             duration: safeTimelineDuration,
             onSeek: onSeek
@@ -287,17 +295,17 @@ struct LiveSongWaveformView: View {
     private func refreshDisplayPeaks(contentWidth: CGFloat) {
         guard contentWidth > 0 else { return }
 
-        if usesArrangementLayout {
+        if showsFullSourceWaveform {
+            cachedDisplayPeaks = WaveformPeakResampler.displayPeaks(
+                from: sourcePeaks,
+                contentWidth: contentWidth
+            )
+        } else {
             cachedDisplayPeaks = WaveformPeakResampler.arrangedDisplayPeaks(
                 from: sourcePeaks,
                 fileDuration: fileDuration,
                 sections: sections,
                 timelineDuration: safeTimelineDuration,
-                contentWidth: contentWidth
-            )
-        } else {
-            cachedDisplayPeaks = WaveformPeakResampler.displayPeaks(
-                from: sourcePeaks,
                 contentWidth: contentWidth
             )
         }
