@@ -58,25 +58,6 @@ struct LiveSongWaveformView: View {
             .joined(separator: ";")
     }
 
-    private var waveformBaselineRanges: [ClosedRange<CGFloat>] {
-        if usesArrangementLayout {
-            return sections.map { section in
-                let startX = TimelineLayout.xPosition(
-                    for: section.timelineStartSeconds,
-                    duration: safeTimelineDuration,
-                    contentWidth: contentWidth
-                )
-                let endX = TimelineLayout.xPosition(
-                    for: section.timelineEndSeconds,
-                    duration: safeTimelineDuration,
-                    contentWidth: contentWidth
-                )
-                return startX...endX
-            }
-        }
-        return [0...contentWidth]
-    }
-
     private var isLoadingWaveform: Bool {
         !trackSources.isEmpty && cachedDisplayPeaks.isEmpty
     }
@@ -84,19 +65,6 @@ struct LiveSongWaveformView: View {
     var body: some View {
         ZStack(alignment: .leading) {
             sectionBackgrounds(contentWidth: contentWidth)
-
-            if !cachedDisplayPeaks.isEmpty || isLoadingWaveform {
-                LiveSectionWaveformCanvas(
-                    bars: cachedDisplayPeaks,
-                    sections: sections,
-                    timelineDuration: safeTimelineDuration,
-                    contentWidth: contentWidth,
-                    showsEmptyBaseline: isLoadingWaveform || showsFullSourceWaveform,
-                    baselineRanges: waveformBaselineRanges
-                )
-                .frame(width: contentWidth, height: waveformHeight)
-                .allowsHitTesting(false)
-            }
 
             if isInteractive {
                 sectionTapTargets(contentWidth: contentWidth)
@@ -172,6 +140,12 @@ struct LiveSongWaveformView: View {
                         Rectangle()
                             .fill(palette.background.opacity(isCued && cueFlashPhase ? 1 : 0.85))
 
+                        sectionWaveform(
+                            for: section,
+                            accentColor: palette.accent,
+                            segmentWidth: segmentWidth
+                        )
+
                         HStack(spacing: 3) {
                             if isLoopSection {
                                 Image(systemName: "repeat")
@@ -213,9 +187,52 @@ struct LiveSongWaveformView: View {
                 }
             }
         } else {
-            Rectangle()
-                .fill(Color.dawLaneBackground)
+            ZStack {
+                Rectangle()
+                    .fill(Color.dawLaneBackground)
+
+                if !cachedDisplayPeaks.isEmpty || isLoadingWaveform {
+                    WaveformBarsCanvas(
+                        bars: cachedDisplayPeaks,
+                        showsEmptyBaseline: isLoadingWaveform || showsFullSourceWaveform
+                    )
+                    .frame(width: contentWidth, height: waveformHeight)
+                    .allowsHitTesting(false)
+                }
+            }
         }
+    }
+
+    @ViewBuilder
+    private func sectionWaveform(
+        for section: ArrangementDisplaySection,
+        accentColor: Color,
+        segmentWidth: CGFloat
+    ) -> some View {
+        if !cachedDisplayPeaks.isEmpty || isLoadingWaveform {
+            WaveformBarsCanvas(
+                bars: sectionDisplayPeaks(
+                    timelineStart: section.timelineStartSeconds,
+                    timelineEnd: section.timelineEndSeconds
+                ),
+                showsEmptyBaseline: isLoadingWaveform || showsFullSourceWaveform,
+                fillColor: accentColor.opacity(0.82)
+            )
+            .frame(width: segmentWidth, height: waveformHeight)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private func sectionDisplayPeaks(
+        timelineStart: TimeInterval,
+        timelineEnd: TimeInterval
+    ) -> [Float] {
+        WaveformPeakResampler.peaksSlice(
+            from: cachedDisplayPeaks,
+            timelineStart: timelineStart,
+            timelineEnd: timelineEnd,
+            timelineDuration: safeTimelineDuration
+        )
     }
 
     @ViewBuilder
@@ -446,99 +463,5 @@ private struct WaveformSeekGestureModifier: ViewModifier {
         } else {
             content
         }
-    }
-}
-
-private struct LiveSectionWaveformCanvas: View {
-    let bars: [Float]
-    let sections: [ArrangementDisplaySection]
-    let timelineDuration: TimeInterval
-    let contentWidth: CGFloat
-    var showsEmptyBaseline = false
-    var baselineRanges: [ClosedRange<CGFloat>] = []
-
-    private let minBarHeight: CGFloat = 1.0
-
-    var body: some View {
-        Canvas { context, size in
-            drawWaveform(in: &context, size: size)
-        }
-        .drawingGroup()
-    }
-
-    private func drawWaveform(in context: inout GraphicsContext, size: CGSize) {
-        guard !bars.isEmpty else {
-            guard showsEmptyBaseline else { return }
-
-            let midY = size.height / 2
-            let fillColor = Color.dawWaveformFill.opacity(0.35)
-            let ranges = baselineRanges.isEmpty ? [0...size.width] : baselineRanges
-
-            for range in ranges {
-                let startX = max(0, range.lowerBound)
-                let endX = min(size.width, range.upperBound)
-                drawSilentSegment(in: &context, startX: startX, endX: endX, midY: midY, fillColor: fillColor)
-            }
-            return
-        }
-
-        let midY = size.height / 2
-        let barWidth = size.width / CGFloat(bars.count)
-        let maxBarHeight = midY * 0.88
-        let sortedSections = sections.sorted { $0.timelineStartSeconds < $1.timelineStartSeconds }
-        let usesSections = !sortedSections.isEmpty
-
-        for barIndex in 0..<bars.count {
-            let barCenterX = CGFloat(barIndex) * barWidth + barWidth * 0.5
-            let barHeight = max(minBarHeight, CGFloat(bars[barIndex]) * maxBarHeight)
-
-            let fillColor: Color
-            if usesSections {
-                let arrangementTime = timelineDuration * (Double(barIndex) + 0.5) / Double(bars.count)
-                let sectionIndex = sectionIndex(containing: arrangementTime, in: sortedSections)
-                fillColor = ArrangementSectionPalette.colors(for: sectionIndex).accent.opacity(0.85)
-            } else {
-                fillColor = Color.dawWaveformFill
-            }
-
-            var path = Path()
-            let leftX = barCenterX - barWidth * 0.45
-            let rightX = barCenterX + barWidth * 0.45
-
-            path.move(to: CGPoint(x: leftX, y: midY))
-            path.addLine(to: CGPoint(x: barCenterX, y: midY - barHeight))
-            path.addLine(to: CGPoint(x: rightX, y: midY))
-            path.addLine(to: CGPoint(x: barCenterX, y: midY + barHeight))
-            path.closeSubpath()
-
-            context.fill(path, with: .color(fillColor))
-        }
-    }
-
-    private func sectionIndex(
-        containing time: TimeInterval,
-        in sections: [ArrangementDisplaySection]
-    ) -> Int {
-        for (index, section) in sections.enumerated() {
-            if time >= section.timelineStartSeconds, time < section.timelineEndSeconds {
-                return index
-            }
-        }
-        return 0
-    }
-
-    private func drawSilentSegment(
-        in context: inout GraphicsContext,
-        startX: CGFloat,
-        endX: CGFloat,
-        midY: CGFloat,
-        fillColor: Color
-    ) {
-        guard endX > startX else { return }
-
-        var path = Path()
-        path.move(to: CGPoint(x: startX, y: midY))
-        path.addLine(to: CGPoint(x: endX, y: midY))
-        context.stroke(path, with: .color(fillColor), lineWidth: 1)
     }
 }

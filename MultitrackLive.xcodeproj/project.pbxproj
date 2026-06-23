@@ -71,6 +71,7 @@
 		AA0000010000000000000049 /* SongArrangementLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000049 /* SongArrangementLayoutTests.swift */; };
 		AA000001000000000000004B /* ClipRegionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004B /* ClipRegionStoreTests.swift */; };
 		AA000001000000000000004C /* SectionLoopController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004C /* SectionLoopController.swift */; };
+		AA000001000000000000004D /* WaveformBarsCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004D /* WaveformBarsCanvas.swift */; };
 		AA0000010000000000000047 /* ClickTrackSubdivision.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000047 /* ClickTrackSubdivision.swift */; };
 		AA000001000000000000003B /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003D /* Accelerate.framework */; };
 /* End PBXBuildFile section */
@@ -141,6 +142,7 @@
 		AA0000020000000000000049 /* SongArrangementLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongArrangementLayoutTests.swift; sourceTree = "<group>"; };
 		AA000002000000000000004B /* ClipRegionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipRegionStoreTests.swift; sourceTree = "<group>"; };
 		AA000002000000000000004C /* SectionLoopController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionLoopController.swift; sourceTree = "<group>"; };
+		AA000002000000000000004D /* WaveformBarsCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsCanvas.swift; sourceTree = "<group>"; };
 		AA0000020000000000000047 /* ClickTrackSubdivision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackSubdivision.swift; sourceTree = "<group>"; };
 		AA0000030000000000000002 /* MultitrackLiveTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MultitrackLiveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000002000000000000003B /* MultitrackLive-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "MultitrackLive-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -325,6 +327,7 @@
 				AA0000020000000000000033 /* ManageOutputsView.swift */,
 				AA000002000000000000001D /* TimelineLayout.swift */,
 				AA0000020000000000000017 /* WaveformLaneView.swift */,
+				AA000002000000000000004D /* WaveformBarsCanvas.swift */,
 				AA0000020000000000000024 /* TimelinePlayheadOverlay.swift */,
 				AA0000020000000000000018 /* DAWColors.swift */,
 				AA0000020000000000000010 /* TrackImportView.swift */,
@@ -473,6 +476,7 @@
 				AA0000010000000000000042 /* LiveSetlistNowPlayingInfoView.swift in Sources */,
 				AA0000010000000000000015 /* WaveformLoader.swift in Sources */,
 				AA0000010000000000000016 /* WaveformLaneView.swift in Sources */,
+				AA000001000000000000004D /* WaveformBarsCanvas.swift in Sources */,
 				AA0000010000000000000017 /* DAWColors.swift in Sources */,
 				AA0000010000000000000018 /* ArrangementMarker.swift in Sources */,
 				AA0000010000000000000035 /* TimeSignatureChange.swift in Sources */,
