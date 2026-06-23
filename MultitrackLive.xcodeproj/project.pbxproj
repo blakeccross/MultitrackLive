@@ -62,6 +62,7 @@
 		AA000001000000000000003D /* TempoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003F /* TempoStore.swift */; };
 		AA0000010000000000000040 /* TrackBakeCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000040 /* TrackBakeCache.swift */; };
 		AA0000010000000000000041 /* SongTrackLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000041 /* SongTrackLoader.swift */; };
+		AA0000010000000000000042 /* LiveSetlistNowPlayingInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000042 /* LiveSetlistNowPlayingInfoView.swift */; };
 		AA000001000000000000003B /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003D /* Accelerate.framework */; };
 /* End PBXBuildFile section */
 
@@ -122,6 +123,7 @@
 		AA000002000000000000003F /* TempoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoStore.swift; sourceTree = "<group>"; };
 		AA0000020000000000000040 /* TrackBakeCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackBakeCache.swift; sourceTree = "<group>"; };
 		AA0000020000000000000041 /* SongTrackLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongTrackLoader.swift; sourceTree = "<group>"; };
+		AA0000020000000000000042 /* LiveSetlistNowPlayingInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSetlistNowPlayingInfoView.swift; sourceTree = "<group>"; };
 		AA000002000000000000003B /* MultitrackLive-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "MultitrackLive-Bridging-Header.h"; sourceTree = "<group>"; };
 		AA000002000000000000003C /* RubberBandSingle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = RubberBandSingle.cpp; path = ThirdParty/rubberband/single/RubberBandSingle.cpp; sourceTree = SOURCE_ROOT; };
 		AA000002000000000000003D /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
@@ -274,6 +276,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000020000000000000013 /* LivePlaybackView.swift */,
+				AA0000020000000000000042 /* LiveSetlistNowPlayingInfoView.swift */,
 				AA0000020000000000000028 /* LiveSongWaveformView.swift */,
 			);
 			path = Setlists;
@@ -364,6 +367,7 @@
 				AA000001000000000000000F /* EditView.swift in Sources */,
 				AA0000010000000000000010 /* TrackImportView.swift in Sources */,
 				AA0000010000000000000013 /* LivePlaybackView.swift in Sources */,
+				AA0000010000000000000042 /* LiveSetlistNowPlayingInfoView.swift in Sources */,
 				AA0000010000000000000015 /* WaveformLoader.swift in Sources */,
 				AA0000010000000000000016 /* WaveformLaneView.swift in Sources */,
 				AA0000010000000000000017 /* DAWColors.swift in Sources */,

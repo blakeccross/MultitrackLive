@@ -85,15 +85,16 @@ struct LivePlaybackView: View {
 
             setlistSection
         }
+        #if os(macOS)
+        .navigationTitle("")
+        #else
         .navigationTitle(setlistDisplayName(for: setlist))
-        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             LiveSetlistToolbarContent(
                 setlistSwitcher: { setlistSwitcherMenu(for: setlist) },
-                tempoDisplay: currentSongTempoDisplay,
-                timeSignatureDisplay: currentSongTimeSignatureDisplay,
+                coordinator: coordinator,
                 audioEngine: audioEngine,
                 isLoaded: coordinator.isLoaded && !coordinator.isLoadingSong,
                 onStop: stopPlayback,
@@ -178,20 +179,6 @@ struct LivePlaybackView: View {
     private func setlistDisplayName(for setlist: Setlist) -> String {
         let trimmed = setlist.name.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Setlist" : trimmed
-    }
-
-    private var currentSongTempoDisplay: String {
-        guard let song = coordinator.currentSong else { return "-" }
-        let tempoChanges = TempoStore.loadOrMigrate(for: song)
-        let normalized = tempoChanges.normalizedEnsuringInitialMarker(
-            defaultBPM: song.bpm ?? TempoChange.defaultBPM
-        )
-        return String(format: "%.0f BPM", normalized.referenceBPM)
-    }
-
-    private var currentSongTimeSignatureDisplay: String {
-        guard let song = coordinator.currentSong else { return "-" }
-        return song.timeSignatureDisplay ?? "4/4"
     }
 
     private func setlistSwitcherMenu(for setlist: Setlist) -> some View {
@@ -324,9 +311,6 @@ struct LivePlaybackView: View {
                     }
                 }
             }
-
-            TransportElapsedTimeLabel(audioEngine: audioEngine, duration: audioEngine.duration)
-                .frame(maxWidth: .infinity)
 
             if activeLoopSectionID != nil {
                 Button {
@@ -950,8 +934,7 @@ private struct SetlistDropSlotListRowStyle: ViewModifier {
 
 private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @ViewBuilder let setlistSwitcher: Switcher
-    let tempoDisplay: String
-    let timeSignatureDisplay: String
+    let coordinator: PlaybackCoordinator
     @Bindable var audioEngine: AudioEngineManager
     let isLoaded: Bool
     let onStop: () -> Void
@@ -965,33 +948,10 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     var body: some ToolbarContent {
         #if os(macOS)
         if #available(macOS 26.0, *) {
-            ToolbarItem(placement: .navigation) {
-                tempoLabel
+            ToolbarItem(placement: .principal) {
+                nowPlayingInfo
             }
             .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .navigation) {
-                timeSignatureLabel
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem {
-                Spacer(minLength: 0)
-            }
-
-            ToolbarItem {
-                transportStopButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem {
-                transportPlayButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem {
-                Spacer(minLength: 0)
-            }
 
             ToolbarItem(placement: .primaryAction) {
                 songsButton
@@ -1008,28 +968,8 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             }
             .sharedBackgroundVisibility(.hidden)
         } else {
-            ToolbarItem(placement: .navigation) {
-                tempoLabel
-            }
-
-            ToolbarItem(placement: .navigation) {
-                timeSignatureLabel
-            }
-
-            ToolbarItem {
-                Spacer(minLength: 0)
-            }
-
-            ToolbarItem {
-                transportStopButton
-            }
-
-            ToolbarItem {
-                transportPlayButton
-            }
-
-            ToolbarItem {
-                Spacer(minLength: 0)
+            ToolbarItem(placement: .principal) {
+                nowPlayingInfo
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -1045,28 +985,8 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             }
         }
         #else
-        ToolbarItem(placement: .navigation) {
-            tempoLabel
-        }
-
-        ToolbarItem(placement: .navigation) {
-            timeSignatureLabel
-        }
-
-        ToolbarItem {
-            Spacer(minLength: 0)
-        }
-
-        ToolbarItem {
-            transportStopButton
-        }
-
-        ToolbarItem {
-            transportPlayButton
-        }
-
-        ToolbarItem {
-            Spacer(minLength: 0)
+        ToolbarItem(placement: .principal) {
+            nowPlayingInfo
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -1087,30 +1007,15 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         #endif
     }
 
-    private var tempoLabel: some View {
-        ReadOnlyToolbarLabel(title: tempoDisplay, systemImage: "metronome")
-    }
-
-    private var timeSignatureLabel: some View {
-        ReadOnlyToolbarLabel(title: timeSignatureDisplay, systemImage: "music.quarternote.3")
-    }
-
-    private var transportStopButton: some View {
-        Button(action: onStop) {
-            Image(systemName: "stop.fill")
-                .font(.title2)
-        }
-        .buttonStyle(.plain)
-        .disabled(!isLoaded)
-    }
-
-    private var transportPlayButton: some View {
-        Button(action: audioEngine.isPlaying ? onPause : onPlay) {
-            Image(systemName: audioEngine.isPlaying ? "pause.fill" : "play.fill")
-                .font(.title2)
-        }
-        .buttonStyle(.plain)
-        .disabled(!isLoaded)
+    private var nowPlayingInfo: some View {
+        LiveSetlistNowPlayingInfoView(
+            coordinator: coordinator,
+            audioEngine: audioEngine,
+            isLoaded: isLoaded,
+            onStop: onStop,
+            onPlay: onPlay,
+            onPause: onPause
+        )
     }
 
     private var songsButton: some View {
@@ -1137,16 +1042,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         Button("Manage Outputs") {
             showingManageOutputs = true
         }
-    }
-}
-
-private struct ReadOnlyToolbarLabel: View {
-    let title: String
-    let systemImage: String
-
-    var body: some View {
-        Label(title, systemImage: systemImage)
-            .labelStyle(.titleAndIcon)
     }
 }
 

@@ -321,6 +321,62 @@ enum MeasureTiming {
         }
         return (nextMeasure, nextStart)
     }
+
+    struct MeasurePosition: Equatable {
+        let bar: Int
+        let beat: Int
+        let subdivision: Int
+    }
+
+    static func position(
+        at time: TimeInterval,
+        tempoChanges: [TempoChange],
+        timeSignatureChanges: [TimeSignatureChange]
+    ) -> MeasurePosition {
+        guard time > 0, !tempoChanges.isEmpty else {
+            return MeasurePosition(bar: 1, beat: 1, subdivision: 1)
+        }
+
+        let bar = measureIndex(
+            at: time,
+            tempoChanges: tempoChanges,
+            timeSignatureChanges: timeSignatureChanges
+        )
+        let measureStart = timeAtStartOfMeasure(
+            bar,
+            tempoChanges: tempoChanges,
+            timeSignatureChanges: timeSignatureChanges
+        )
+        let timeInMeasure = max(0, time - measureStart)
+        let bpm = bpmForMeasure(bar, tempoChanges: tempoChanges)
+        let signature = numeratorDenominatorForMeasure(bar, changes: timeSignatureChanges)
+        let beatsInMeasure = beatsPerMeasure(
+            numerator: signature.numerator,
+            denominator: signature.denominator
+        )
+
+        let beatsElapsed = timeInMeasure * bpm / 60.0
+        let wholeBeats = Int(floor(beatsElapsed))
+        let maxBeat = max(1, Int(beatsInMeasure.rounded(.down)))
+        let beat = min(max(wholeBeats + 1, 1), maxBeat)
+
+        let fractionalPart = beatsElapsed - floor(beatsElapsed)
+        let subdivision = min(4, max(1, Int(floor(fractionalPart * 4)) + 1))
+
+        return MeasurePosition(bar: bar, beat: beat, subdivision: subdivision)
+    }
+
+    static func formatPosition(_ position: MeasurePosition) -> String {
+        "\(position.bar).\(position.beat).\(position.subdivision)"
+    }
+
+    static func formatElapsedTime(_ value: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(value))
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+    }
 }
 
 /// Precomputed tempo segments for O(markers) playback integration on the audio thread.
