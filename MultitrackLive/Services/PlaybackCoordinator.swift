@@ -144,6 +144,13 @@ final class PlaybackCoordinator {
         audioEngine.stop()
     }
 
+    /// Reloads arrangement and waveform metadata for the already-loaded current song.
+    func refreshCurrentSongState() {
+        guard let song = currentSong, song.id == loadedSongID, isLoaded else { return }
+        refreshWaveformSnapshots()
+        applySongEngineState(for: song)
+    }
+
     func seek(to time: TimeInterval) {
         audioEngine.seek(to: time)
     }
@@ -325,10 +332,19 @@ final class PlaybackCoordinator {
             trackIDs: trackIDs,
             sourceDurationForTrack: sourceDuration
         )
-        let layout = SongArrangementStore.buildLayoutSnapshot(
+        let layout = SongArrangementStore.playbackLayoutSnapshot(
             slots: arrangement.slots,
             clipTrims: arrangement.clipTrims,
             removedClips: arrangement.removedClips,
+            clipGaps: arrangement.clipGaps,
+            clipRegions: arrangement.clipRegions,
+            tracks: song.sortedTracks.map { track in
+                (
+                    id: track.id,
+                    trimStart: track.trimStartSeconds,
+                    trimEnd: track.trimEndSeconds ?? sourceDuration(for: track.id)
+                )
+            },
             inputs: inputs
         )
 
@@ -377,6 +393,8 @@ final class PlaybackCoordinator {
             slots: arrangement.slots,
             clipTrims: arrangement.clipTrims,
             removedClips: arrangement.removedClips,
+            clipGaps: arrangement.clipGaps,
+            clipRegions: arrangement.clipRegions,
             inputs: inputs
         )
 

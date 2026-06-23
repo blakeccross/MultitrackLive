@@ -40,16 +40,60 @@ struct ArrangementRemovedClip: Codable, Hashable {
     let trackID: UUID
 }
 
+struct ArrangementClipGap: Codable, Hashable {
+    let slotID: UUID
+    let trackID: UUID
+    var sourceStartSeconds: TimeInterval
+    var sourceEndSeconds: TimeInterval
+}
+
+/// First-class clip region with explicit source and timeline bounds.
+struct ClipRegion: Codable, Hashable, Identifiable {
+    let id: UUID
+    let slotID: UUID
+    let trackID: UUID
+    let markerID: UUID
+    var sourceStartSeconds: TimeInterval
+    var sourceEndSeconds: TimeInterval
+    var timelineStartSeconds: TimeInterval
+    var timelineEndSeconds: TimeInterval
+
+    init(
+        id: UUID = UUID(),
+        slotID: UUID,
+        trackID: UUID,
+        markerID: UUID,
+        sourceStartSeconds: TimeInterval,
+        sourceEndSeconds: TimeInterval,
+        timelineStartSeconds: TimeInterval,
+        timelineEndSeconds: TimeInterval
+    ) {
+        self.id = id
+        self.slotID = slotID
+        self.trackID = trackID
+        self.markerID = markerID
+        self.sourceStartSeconds = sourceStartSeconds
+        self.sourceEndSeconds = sourceEndSeconds
+        self.timelineStartSeconds = timelineStartSeconds
+        self.timelineEndSeconds = timelineEndSeconds
+    }
+}
+
 struct SongArrangement: Codable {
     var slots: [ArrangementSlot]
     var clipTrims: [ArrangementClipTrim]
     var removedClips: [ArrangementRemovedClip]
+    /// Legacy gap storage; migrated to `clipRegions` on load when possible.
+    var clipGaps: [ArrangementClipGap]
+    var clipRegions: [ClipRegion]
     var loopSlotIDs: Set<UUID>
 
     enum CodingKeys: String, CodingKey {
         case slots
         case clipTrims
         case removedClips
+        case clipGaps
+        case clipRegions
         case loopSlotIDs
     }
 
@@ -57,11 +101,15 @@ struct SongArrangement: Codable {
         slots: [ArrangementSlot],
         clipTrims: [ArrangementClipTrim] = [],
         removedClips: [ArrangementRemovedClip] = [],
+        clipGaps: [ArrangementClipGap] = [],
+        clipRegions: [ClipRegion] = [],
         loopSlotIDs: Set<UUID> = []
     ) {
         self.slots = slots
         self.clipTrims = clipTrims
         self.removedClips = removedClips
+        self.clipGaps = clipGaps
+        self.clipRegions = clipRegions
         self.loopSlotIDs = loopSlotIDs
     }
 
@@ -70,6 +118,8 @@ struct SongArrangement: Codable {
         slots = try container.decode([ArrangementSlot].self, forKey: .slots)
         clipTrims = try container.decodeIfPresent([ArrangementClipTrim].self, forKey: .clipTrims) ?? []
         removedClips = try container.decodeIfPresent([ArrangementRemovedClip].self, forKey: .removedClips) ?? []
+        clipGaps = try container.decodeIfPresent([ArrangementClipGap].self, forKey: .clipGaps) ?? []
+        clipRegions = try container.decodeIfPresent([ClipRegion].self, forKey: .clipRegions) ?? []
         loopSlotIDs = Set(try container.decodeIfPresent([UUID].self, forKey: .loopSlotIDs) ?? [])
     }
 
@@ -78,6 +128,8 @@ struct SongArrangement: Codable {
         try container.encode(slots, forKey: .slots)
         try container.encode(clipTrims, forKey: .clipTrims)
         try container.encode(removedClips, forKey: .removedClips)
+        try container.encode(clipGaps, forKey: .clipGaps)
+        try container.encode(clipRegions, forKey: .clipRegions)
         try container.encode(Array(loopSlotIDs), forKey: .loopSlotIDs)
     }
 }
@@ -85,6 +137,44 @@ struct SongArrangement: Codable {
 struct SelectedArrangementClip: Equatable, Hashable {
     let slotID: UUID
     let trackID: UUID
+}
+
+enum TimelineClipSelection: Equatable, Hashable {
+    /// `clipID` identifies the visible clip segment; `slotID` is the parent arrangement slot.
+    /// `editTime` is the grid-snapped split cursor when the user clicks inside the clip body.
+    case whole(clipID: UUID, slotID: UUID, trackID: UUID, editTime: TimeInterval? = nil)
+    case range(clipID: UUID, slotID: UUID, trackID: UUID, start: TimeInterval, end: TimeInterval)
+
+    var clipID: UUID {
+        switch self {
+        case .whole(let clipID, _, _, _), .range(let clipID, _, _, _, _):
+            clipID
+        }
+    }
+
+    var slotID: UUID {
+        switch self {
+        case .whole(_, let slotID, _, _), .range(_, let slotID, _, _, _):
+            slotID
+        }
+    }
+
+    var trackID: UUID {
+        switch self {
+        case .whole(_, _, let trackID, _), .range(_, _, let trackID, _, _):
+            trackID
+        }
+    }
+
+    var editTime: TimeInterval? {
+        if case .whole(_, _, _, let editTime) = self { return editTime }
+        return nil
+    }
+
+    var isWholeClip: Bool {
+        if case .whole = self { return true }
+        return false
+    }
 }
 
 struct ArrangementLayoutInputs {
@@ -101,6 +191,8 @@ struct ArrangementLayoutSnapshot {
 
 struct ArrangementDisplaySection: Identifiable, Hashable {
     let id: UUID
+    /// Parent arrangement slot. Matches `id` for unsplit clips.
+    let slotID: UUID
     let markerID: UUID
     let name: String
     let sourceStartSeconds: TimeInterval
@@ -119,13 +211,45 @@ struct ArrangementDisplaySection: Identifiable, Hashable {
     var columnDuration: TimeInterval {
         columnEndSeconds - columnStartSeconds
     }
+
+    func containsTimelineTime(_ time: TimeInterval) -> Bool {
+        time >= timelineStartSeconds && time < timelineEndSeconds
+    }
 }
 
 extension Array where Element == ArrangementDisplaySection {
-    /// True when timeline positions match source positions (e.g. fresh Ableton import).
-    var usesSourceLinearTimeline: Bool {
-        !isEmpty && allSatisfy {
-            abs($0.columnStartSeconds - $0.sourceStartSeconds) < 0.001
+    func section(atTimeline time: TimeInterval) -> ArrangementDisplaySection? {
+        first { $0.containsTimelineTime(time) }
+    }
+
+    func loopSectionCandidate(
+        at time: TimeInterval,
+        loopSlotIDs: Set<UUID>,
+        suppressedSectionIDs: Set<UUID>
+    ) -> ArrangementDisplaySection? {
+        first {
+            loopSlotIDs.contains($0.id)
+                && !suppressedSectionIDs.contains($0.id)
+                && $0.containsTimelineTime(time)
         }
+    }
+
+    /// True when timeline positions match source positions with no gaps (e.g. fresh Ableton import).
+    var usesSourceLinearTimeline: Bool {
+        guard !isEmpty else { return false }
+
+        let sorted = sorted { $0.timelineStartSeconds < $1.timelineStartSeconds }
+        guard sorted.allSatisfy({
+            abs($0.columnStartSeconds - $0.sourceStartSeconds) < 0.001
+        }) else {
+            return false
+        }
+
+        for index in 0..<(sorted.count - 1) {
+            if sorted[index + 1].timelineStartSeconds - sorted[index].timelineEndSeconds > 0.001 {
+                return false
+            }
+        }
+        return true
     }
 }

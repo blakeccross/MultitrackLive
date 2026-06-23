@@ -466,11 +466,12 @@ final class AudioEngineManager {
         fileDuration: TimeInterval
     ) -> ArrangementTimelineMapper {
         let sections = arrangementSectionsByTrack[trackID] ?? []
+        let trackUsesArrangement = usesArrangement || !sections.isEmpty
         return ArrangementTimelineMapper(
             sections: sections,
             trimStart: settings.trimStart,
             trimEnd: settings.trimEnd ?? fileDuration,
-            usesArrangement: usesArrangement
+            usesArrangement: trackUsesArrangement
         )
     }
 

@@ -28,18 +28,58 @@ struct TimelinePlayheadOverlay: View {
 
     @ViewBuilder
     private func playheadLine(at time: TimeInterval) -> some View {
-        if time > 0 {
-            let x = TimelineLayout.xPosition(
-                for: min(time, safeDuration),
-                duration: safeDuration,
-                contentWidth: contentWidth
-            )
+        let x = TimelineLayout.xPosition(
+            for: min(max(0, time), safeDuration),
+            duration: safeDuration,
+            contentWidth: contentWidth
+        )
 
-            Rectangle()
-                .fill(Color.orange)
-                .frame(width: 2, height: height)
-                .offset(x: x - 1)
+        Rectangle()
+            .fill(Color.orange)
+            .frame(width: 2, height: height)
+            .offset(x: x - 1)
+    }
+}
+
+/// Wires section-loop monitoring and playback-time handling into a timeline view.
+struct SectionLoopPlaybackSupport: View {
+    @Bindable private var audioEngine = AudioEngineManager.shared
+    @Bindable var loopController: SectionLoopController
+    let sections: [ArrangementDisplaySection]
+    let loopSlotIDs: Set<UUID>
+    let onLoop: (ArrangementDisplaySection) -> Void
+    let onLoopActivated: () -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .background {
+                SectionLoopMonitor(
+                    activeLoopSection: loopController.activeSection(
+                        in: sections,
+                        loopSlotIDs: loopSlotIDs
+                    ),
+                    onLoop: fireLoopIfNeeded
+                )
+            }
+            .onChange(of: audioEngine.currentTime) { _, time in
+                loopController.handlePlaybackTimeChange(
+                    at: time,
+                    sections: sections,
+                    loopSlotIDs: loopSlotIDs,
+                    onActivate: onLoopActivated
+                )
+            }
+            .onChange(of: loopSlotIDs) { _, newLoopSlotIDs in
+                loopController.handleLoopSlotIDsChange(newLoopSlotIDs)
+            }
+    }
+
+    private func fireLoopIfNeeded() {
+        guard let section = loopController.activeSection(in: sections, loopSlotIDs: loopSlotIDs) else {
+            return
         }
+        onLoop(section)
     }
 }
 

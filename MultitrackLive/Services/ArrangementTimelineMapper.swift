@@ -66,7 +66,11 @@ struct ArrangementTimelineMapper: Sendable {
 
         if usesArrangement {
             guard let section = section(containing: master) else {
-                return min(limit, 0.001)
+                if let next = sections.first(where: { $0.timelineStartSeconds > master }) {
+                    let gapRemaining = next.timelineStartSeconds - master
+                    return max(0, min(limit, gapRemaining))
+                }
+                return 0
             }
 
             let sectionRemaining = section.timelineEndSeconds - master

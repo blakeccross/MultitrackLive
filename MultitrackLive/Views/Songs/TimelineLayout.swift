@@ -46,6 +46,7 @@ enum TimelineLayout {
     }
 
     static let laneHeight: CGFloat = 104
+    static let clipHeaderHeight: CGFloat = 16
     static let laneSpacing: CGFloat = 4
     static let sectionMarkerHeight: CGFloat = 22
     static let timeSignatureRulerHeight: CGFloat = 24
@@ -292,6 +293,59 @@ enum MeasureTiming {
             timeSignatureChanges: timeSignatureChanges
         )
         return bpmForMeasure(measure, tempoChanges: tempoChanges)
+    }
+
+    /// Snaps a timeline time to the nearest beat grid line.
+    static func snapToNearestBeat(
+        _ time: TimeInterval,
+        tempoChanges: [TempoChange],
+        timeSignatureChanges: [TimeSignatureChange]
+    ) -> TimeInterval {
+        guard time > 0, !tempoChanges.isEmpty else { return max(0, time) }
+
+        let measure = measureIndex(
+            at: time,
+            tempoChanges: tempoChanges,
+            timeSignatureChanges: timeSignatureChanges
+        )
+        let measureStart = timeAtStartOfMeasure(
+            measure,
+            tempoChanges: tempoChanges,
+            timeSignatureChanges: timeSignatureChanges
+        )
+        let bpm = bpmForMeasure(measure, tempoChanges: tempoChanges)
+        let signature = numeratorDenominatorForMeasure(measure, changes: timeSignatureChanges)
+        let beatsInMeasure = beatsPerMeasure(
+            numerator: signature.numerator,
+            denominator: signature.denominator
+        )
+        let beatDuration = measureDuration(
+            bpm: bpm,
+            numerator: signature.numerator,
+            denominator: signature.denominator
+        ) / beatsInMeasure
+
+        guard beatDuration > 0 else { return max(0, time) }
+
+        let timeInMeasure = max(0, time - measureStart)
+        let beatIndex = (timeInMeasure / beatDuration).rounded()
+        let maxBeatIndex = max(0, Int(beatsInMeasure.rounded(.down)))
+        let clampedBeatIndex = min(max(0, Int(beatIndex)), maxBeatIndex)
+        return measureStart + TimeInterval(clampedBeatIndex) * beatDuration
+    }
+
+    static func snapTimelineRangeToGrid(
+        start: TimeInterval,
+        end: TimeInterval,
+        tempoChanges: [TempoChange],
+        timeSignatureChanges: [TimeSignatureChange]
+    ) -> (start: TimeInterval, end: TimeInterval) {
+        let snappedStart = snapToNearestBeat(start, tempoChanges: tempoChanges, timeSignatureChanges: timeSignatureChanges)
+        let snappedEnd = snapToNearestBeat(end, tempoChanges: tempoChanges, timeSignatureChanges: timeSignatureChanges)
+        if snappedStart <= snappedEnd {
+            return (snappedStart, snappedEnd)
+        }
+        return (snappedEnd, snappedStart)
     }
 
     static func nearestMeasureBoundary(

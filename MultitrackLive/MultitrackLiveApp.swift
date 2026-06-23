@@ -23,6 +23,7 @@ struct MultitrackLiveApp: App {
         .commands {
             FileMenuCommands()
             SongMenuCommands()
+            ClipEditorCommands()
         }
         #endif
     }
@@ -41,6 +42,13 @@ struct SongEditorActions {
     var importAbleton: () -> Void = {}
 }
 
+struct ClipEditorActions {
+    var canSplit = false
+    var canJoin = false
+    var split: () -> Void = {}
+    var join: () -> Void = {}
+}
+
 private struct LiveSetlistActionsKey: FocusedValueKey {
     typealias Value = LiveSetlistActions
     static var defaultValue: Value? { nil }
@@ -48,6 +56,11 @@ private struct LiveSetlistActionsKey: FocusedValueKey {
 
 private struct SongEditorActionsKey: FocusedValueKey {
     typealias Value = SongEditorActions
+    static var defaultValue: Value? { nil }
+}
+
+private struct ClipEditorActionsKey: FocusedValueKey {
+    typealias Value = ClipEditorActions
     static var defaultValue: Value? { nil }
 }
 
@@ -60,6 +73,11 @@ extension FocusedValues {
     var songEditorActions: SongEditorActions? {
         get { self[SongEditorActionsKey.self] }
         set { self[SongEditorActionsKey.self] = newValue }
+    }
+
+    var clipEditorActions: ClipEditorActions? {
+        get { self[ClipEditorActionsKey.self] }
+        set { self[ClipEditorActionsKey.self] = newValue }
     }
 }
 
@@ -102,6 +120,26 @@ struct SongMenuCommands: Commands {
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])
             .disabled(actions == nil)
+        }
+    }
+}
+
+struct ClipEditorCommands: Commands {
+    @FocusedValue(\.clipEditorActions) private var actions
+
+    var body: some Commands {
+        CommandGroup(after: .pasteboard) {
+            Button("Split at Edit Point") {
+                actions?.split()
+            }
+            .keyboardShortcut("t", modifiers: .command)
+            .disabled(actions?.canSplit != true)
+
+            Button("Join with Next Region") {
+                actions?.join()
+            }
+            .keyboardShortcut("j", modifiers: .command)
+            .disabled(actions?.canJoin != true)
         }
     }
 }

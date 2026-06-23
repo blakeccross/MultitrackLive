@@ -22,8 +22,7 @@ struct LivePlaybackView: View {
     @State private var cuedSectionID: UUID?
     @State private var cueFireTime: TimeInterval?
     @State private var cueFlashPhase = false
-    @State private var activeLoopSectionID: UUID?
-    @State private var suppressedLoopSectionIDs: Set<UUID> = []
+    @State private var sectionLoop = SectionLoopController()
     @State private var showingSongLibrary = false
     @State private var songDropInsertionIndex: Int?
     @State private var clearDropTargetTask: Task<Void, Never>?
@@ -92,18 +91,7 @@ struct LivePlaybackView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
-            LiveSetlistToolbarContent(
-                setlistSwitcher: { setlistSwitcherMenu(for: setlist) },
-                coordinator: coordinator,
-                audioEngine: audioEngine,
-                isLoaded: coordinator.isLoaded && !coordinator.isLoadingSong,
-                onStop: stopPlayback,
-                onPlay: coordinator.play,
-                onPause: coordinator.pause,
-                showingSongLibrary: $showingSongLibrary,
-                showingManageOutputs: $showingManageOutputs,
-                onEditSong: { songToEditID = $0.id }
-            )
+            playbackToolbar(for: setlist)
         }
         #if os(macOS)
         .toolbarBackground(.bar, for: .windowToolbar)
@@ -115,15 +103,7 @@ struct LivePlaybackView: View {
             }
         }
         .background {
-            SectionCueMonitor(
-                cuedSectionID: cuedSectionID,
-                cueFireTime: cueFireTime,
-                onFire: fireMarkerCue
-            )
-            SectionLoopMonitor(
-                activeLoopSection: activeLoopSection,
-                onLoop: fireSectionLoop
-            )
+            playbackMonitorSupport
         }
         .task(id: cuedSectionID) {
             guard cuedSectionID != nil else {
@@ -138,12 +118,7 @@ struct LivePlaybackView: View {
         }
         .onChange(of: coordinator.currentSong?.id) { _, _ in
             clearMarkerCue()
-            activeLoopSectionID = nil
-            suppressedLoopSectionIDs.removeAll()
-        }
-        .onChange(of: audioEngine.currentTime) { _, time in
-            clearSuppressedLoopsIfLeftSection(at: time)
-            activateLoopIfNeeded(at: time)
+            sectionLoop.reset()
         }
         .onAppear {
             if activeSetlistID == nil {
@@ -166,14 +141,64 @@ struct LivePlaybackView: View {
         .onDisappear {
             stopPlayback()
         }
-        .navigationDestination(isPresented: Binding(
+        .onChange(of: songToEditID) { _, newValue in
+            handleSongEditorDismissed(newValue)
+        }
+        .navigationDestination(isPresented: songEditorDestination) {
+            songEditorDestinationContent(for: setlist)
+        }
+    }
+
+    private var songEditorDestination: Binding<Bool> {
+        Binding(
             get: { songToEditID != nil },
             set: { if !$0 { songToEditID = nil } }
-        )) {
-            if let songToEditID, let song = songForEditing(id: songToEditID) {
-                SongDetailView(song: song, setlistName: setlistDisplayName(for: setlist))
-            }
+        )
+    }
+
+    @ToolbarContentBuilder
+    private func playbackToolbar(for setlist: Setlist) -> some ToolbarContent {
+        LiveSetlistToolbarContent(
+            setlistSwitcher: { setlistSwitcherMenu(for: setlist) },
+            coordinator: coordinator,
+            audioEngine: audioEngine,
+            isLoaded: coordinator.isLoaded && !coordinator.isLoadingSong,
+            onStop: stopPlayback,
+            onPlay: coordinator.play,
+            onPause: coordinator.pause,
+            showingSongLibrary: $showingSongLibrary,
+            showingManageOutputs: $showingManageOutputs,
+            onEditSong: { songToEditID = $0.id }
+        )
+    }
+
+    private var playbackMonitorSupport: some View {
+        LivePlaybackMonitorSupport(
+            cuedSectionID: cuedSectionID,
+            cueFireTime: cueFireTime,
+            onFireMarkerCue: fireMarkerCue,
+            sectionLoop: sectionLoop,
+            loopSections: loopSections,
+            loopSlotIDs: loopSlotIDs,
+            onLoop: snapToLoopSectionStart,
+            onLoopActivated: { clearMarkerCue() }
+        )
+    }
+
+    private func snapToLoopSectionStart(_ section: ArrangementDisplaySection) {
+        coordinator.snapToScheduledSection(section.timelineStartSeconds)
+    }
+
+    @ViewBuilder
+    private func songEditorDestinationContent(for setlist: Setlist) -> some View {
+        if let songToEditID, let song = songForEditing(id: songToEditID) {
+            SongDetailView(song: song, setlistName: setlistDisplayName(for: setlist))
         }
+    }
+
+    private func handleSongEditorDismissed(_ songToEditID: UUID?) {
+        guard songToEditID == nil else { return }
+        coordinator.refreshCurrentSongState()
     }
 
     private func setlistDisplayName(for setlist: Setlist) -> String {
@@ -234,8 +259,7 @@ struct LivePlaybackView: View {
         guard setlist.id != activeSetlistID else { return }
 
         clearMarkerCue()
-        activeLoopSectionID = nil
-        suppressedLoopSectionIDs.removeAll()
+        sectionLoop.reset()
         coordinator.stop()
         activeSetlistID = setlist.id
         markSetlistOpened(setlist)
@@ -249,8 +273,7 @@ struct LivePlaybackView: View {
 
     private func stopPlayback() {
         clearMarkerCue()
-        activeLoopSectionID = nil
-        suppressedLoopSectionIDs.removeAll()
+        sectionLoop.reset()
         coordinator.stop()
     }
 
@@ -312,9 +335,9 @@ struct LivePlaybackView: View {
                 }
             }
 
-            if activeLoopSectionID != nil {
+            if sectionLoop.isLooping {
                 Button {
-                    endLoop()
+                    sectionLoop.endLoop()
                 } label: {
                     Label("End Loop", systemImage: "repeat.circle.fill")
                 }
@@ -557,53 +580,8 @@ struct LivePlaybackView: View {
         coordinator.currentWaveformSnapshot?.loopSlotIDs ?? []
     }
 
-    private var activeLoopSection: ArrangementDisplaySection? {
-        guard let activeLoopSectionID else { return nil }
-        return coordinator.currentWaveformSnapshot?.sections.first(where: { $0.id == activeLoopSectionID })
-    }
-
-    private func clearSuppressedLoopsIfLeftSection(at time: TimeInterval) {
-        guard !suppressedLoopSectionIDs.isEmpty else { return }
-        guard let sections = coordinator.currentWaveformSnapshot?.sections else { return }
-
-        for sectionID in suppressedLoopSectionIDs {
-            guard let section = sections.first(where: { $0.id == sectionID }) else {
-                suppressedLoopSectionIDs.remove(sectionID)
-                continue
-            }
-            let inSection = time >= section.timelineStartSeconds && time < section.timelineEndSeconds
-            if !inSection {
-                suppressedLoopSectionIDs.remove(sectionID)
-            }
-        }
-    }
-
-    private func activateLoopIfNeeded(at time: TimeInterval) {
-        guard activeLoopSectionID == nil else { return }
-        guard !loopSlotIDs.isEmpty else { return }
-        guard let sections = coordinator.currentWaveformSnapshot?.sections else { return }
-
-        if let section = sections.first(where: {
-            loopSlotIDs.contains($0.id)
-                && !suppressedLoopSectionIDs.contains($0.id)
-                && time >= $0.timelineStartSeconds
-                && time < $0.timelineEndSeconds
-        }) {
-            activeLoopSectionID = section.id
-            clearMarkerCue()
-        }
-    }
-
-    private func fireSectionLoop() {
-        guard let section = activeLoopSection else { return }
-        coordinator.snapToScheduledSection(section.timelineStartSeconds)
-    }
-
-    private func endLoop() {
-        if let activeLoopSectionID {
-            suppressedLoopSectionIDs.insert(activeLoopSectionID)
-        }
-        activeLoopSectionID = nil
+    private var loopSections: [ArrangementDisplaySection] {
+        coordinator.currentWaveformSnapshot?.sections ?? []
     }
 
     private func clearMarkerCue(cancellingScheduledTransition: Bool = true) {
@@ -616,9 +594,7 @@ struct LivePlaybackView: View {
     }
 
     private func cueSection(_ section: ArrangementDisplaySection) {
-        if activeLoopSectionID != nil {
-            endLoop()
-        }
+        sectionLoop.endLoopIfActive()
 
         if !audioEngine.isPlaying {
             clearMarkerCue()
@@ -637,12 +613,9 @@ struct LivePlaybackView: View {
     }
 
     private func sectionCueFireTime(for cuedSection: ArrangementDisplaySection) -> TimeInterval {
-        let sections = coordinator.currentWaveformSnapshot?.sections ?? []
+        let sections = loopSections
 
-        if let currentSection = sections.first(where: {
-            audioEngine.currentTime >= $0.timelineStartSeconds
-                && audioEngine.currentTime < $0.timelineEndSeconds
-        }) {
+        if let currentSection = sections.section(atTimeline: audioEngine.currentTime) {
             return currentSection.timelineEndSeconds
         }
 
@@ -662,6 +635,32 @@ struct LivePlaybackView: View {
 
         coordinator.snapToScheduledSection(section.timelineStartSeconds)
         clearMarkerCue(cancellingScheduledTransition: false)
+    }
+}
+
+private struct LivePlaybackMonitorSupport: View {
+    let cuedSectionID: UUID?
+    let cueFireTime: TimeInterval?
+    let onFireMarkerCue: () -> Void
+    @Bindable var sectionLoop: SectionLoopController
+    let loopSections: [ArrangementDisplaySection]
+    let loopSlotIDs: Set<UUID>
+    let onLoop: (ArrangementDisplaySection) -> Void
+    let onLoopActivated: () -> Void
+
+    var body: some View {
+        SectionCueMonitor(
+            cuedSectionID: cuedSectionID,
+            cueFireTime: cueFireTime,
+            onFire: onFireMarkerCue
+        )
+        SectionLoopPlaybackSupport(
+            loopController: sectionLoop,
+            sections: loopSections,
+            loopSlotIDs: loopSlotIDs,
+            onLoop: onLoop,
+            onLoopActivated: onLoopActivated
+        )
     }
 }
 

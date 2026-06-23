@@ -46,6 +46,7 @@ final class SongArrangementLayoutTests: XCTestCase {
         let sections = [
             ArrangementDisplaySection(
                 id: UUID(),
+                slotID: UUID(),
                 markerID: UUID(),
                 name: "Intro",
                 sourceStartSeconds: 8,
@@ -102,5 +103,80 @@ final class SongArrangementLayoutTests: XCTestCase {
         // Editor omits per-marker track segments when the ruler uses source-linear layout.
         let laneSections = rulerSections.usesSourceLinearTimeline ? [] : trackSections
         XCTAssertTrue(laneSections.isEmpty)
+    }
+
+    func testPlaybackSectionsSilenceDeletedGapOnSourceLinearSong() {
+        let markers = [
+            ArrangementMarker(name: "INTRO", startSeconds: 0, sortOrder: 0),
+        ]
+        let slots = SongArrangementStore.defaultSlots(from: markers)
+        let trackID = UUID()
+        let inputs = SongArrangementStore.makeLayoutInputs(
+            markers: markers,
+            trackIDs: [trackID],
+            sourceDurationForTrack: { _ in 60 }
+        )
+        let layout = SongArrangementStore.buildLayoutSnapshot(
+            slots: slots,
+            clipTrims: [],
+            removedClips: [],
+            inputs: inputs
+        )
+        XCTAssertTrue(layout.rulerSections.usesSourceLinearTimeline)
+
+        var regions = [
+            ClipRegion(
+                id: trackID,
+                slotID: trackID,
+                trackID: trackID,
+                markerID: trackID,
+                sourceStartSeconds: 0,
+                sourceEndSeconds: 30,
+                timelineStartSeconds: 0,
+                timelineEndSeconds: 30
+            ),
+        ]
+        _ = ClipRegionStore.deleteTimelineRange(
+            slotID: trackID,
+            trackID: trackID,
+            rangeStart: 10,
+            rangeEnd: 20,
+            tempoChanges: [TempoChange(startMeasure: 1, bpm: 120)],
+            timeSignatureChanges: [
+                TimeSignatureChange(numerator: 4, denominator: 4, startMeasure: 1, sortOrder: 0),
+            ],
+            in: &regions
+        )
+
+        let playbackSections = SongArrangementStore.playbackTrackSections(
+            for: trackID,
+            trimStart: 0,
+            trimEnd: 60,
+            slots: slots,
+            clipTrims: [],
+            removedClips: [],
+            clipRegions: regions,
+            inputs: inputs,
+            rulerSections: layout.rulerSections
+        )
+
+        XCTAssertEqual(playbackSections.count, 2)
+        XCTAssertFalse(playbackSections.usesSourceLinearTimeline)
+
+        let mapper = ArrangementTimelineMapper(
+            sections: playbackSections,
+            trimStart: 0,
+            trimEnd: 60,
+            usesArrangement: true
+        )
+
+        XCTAssertEqual(mapper.sourceSeconds(atMasterTimeline: 5) ?? -1, 5, accuracy: 0.001)
+        XCTAssertNil(mapper.sourceSeconds(atMasterTimeline: 15))
+        XCTAssertEqual(mapper.sourceSeconds(atMasterTimeline: 25) ?? -1, 25, accuracy: 0.001)
+        XCTAssertEqual(
+            mapper.regionRemainingSeconds(fromMasterTimeline: 15, bufferLimit: 10),
+            5,
+            accuracy: 0.001
+        )
     }
 }

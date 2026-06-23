@@ -13,6 +13,8 @@ struct EditView: View {
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
     @Binding var removedClips: [ArrangementRemovedClip]
+    @Binding var clipGaps: [ArrangementClipGap]
+    @Binding var clipRegions: [ClipRegion]
     @Binding var loopSlotIDs: Set<UUID>
     @Binding var tempoChanges: [TempoChange]
     @Binding var timeSignatureChanges: [TimeSignatureChange]
@@ -24,6 +26,8 @@ struct EditView: View {
     @State private var cuedSectionID: UUID?
     @State private var cueFireTime: TimeInterval?
     @State private var cueFlashPhase = false
+    @State private var sectionLoop = SectionLoopController()
+    @Bindable private var audioEngine = AudioEngineManager.shared
     @State private var showingArrangementEditor = false
     @State private var showingTimeSignatureEditor = false
     @State private var showingGroupEditor = false
@@ -32,7 +36,7 @@ struct EditView: View {
     @State private var editingTempoMarkerID: UUID?
     @State private var showingTimeSignatureMarkerEditor = false
     @State private var editingTimeSignatureMarkerID: UUID?
-    @State private var selectedClip: SelectedArrangementClip?
+    @State private var clipSelection: TimelineClipSelection?
     @FocusState private var isTimelineFocused: Bool
     @State private var cachedRulerSections: [ArrangementDisplaySection] = []
     @State private var cachedTrackSections: [UUID: [ArrangementDisplaySection]] = [:]
@@ -196,7 +200,9 @@ struct EditView: View {
             markers: markers,
             slots: arrangementSlots,
             clipTrims: clipTrims,
-            removedClips: removedClips
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions
         )
         cachedRulerSections = layout.rulerSections
         cachedTrackSections = layout.trackSections
@@ -209,6 +215,8 @@ struct EditView: View {
             slots: arrangementSlots,
             clipTrims: clipTrims,
             removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions,
             inputs: inputs
         )
     }
@@ -218,6 +226,8 @@ struct EditView: View {
             slots: arrangementSlots,
             clipTrims: clipTrims,
             removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions,
             loopSlotIDs: loopSlotIDs,
             for: song.id
         )
@@ -228,7 +238,9 @@ struct EditView: View {
             markers: markers,
             slots: arrangementSlots,
             clipTrims: clipTrims,
-            removedClips: removedClips
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions
         )
     }
 
@@ -238,7 +250,10 @@ struct EditView: View {
             markers: markers,
             slots: arrangementSlots,
             clipTrims: clipTrims,
-            removedClips: removedClips
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions,
+            track: song.sortedTracks.first(where: { $0.id == trackID })
         )
     }
 
@@ -259,6 +274,29 @@ struct EditView: View {
     private func trackLaneSections(for track: AudioTrack) -> [ArrangementDisplaySection] {
         guard !usesSourceLinearRulerLayout else { return [] }
         return trackSections(for: track)
+    }
+
+    private func clipDisplaySections(for track: AudioTrack) -> [ArrangementDisplaySection] {
+        let laneSections = trackLaneSections(for: track)
+        if !laneSections.isEmpty {
+            return laneSections
+        }
+        return SongArrangementStore.sourceTrackDisplaySections(
+            trackID: track.id,
+            trimStart: track.trimStartSeconds,
+            trimEnd: track.trimEndSeconds ?? viewModel.fileDuration(for: track),
+            clipGaps: clipGaps,
+            clipRegions: clipRegions
+        )
+    }
+
+    private var clipEditorActions: ClipEditorActions {
+        ClipEditorActions(
+            canSplit: clipSelection != nil,
+            canJoin: clipSelection?.isWholeClip == true,
+            split: { splitSelectedClipAtPlayhead() },
+            join: { joinSelectedClipWithNext() }
+        )
     }
 
     private var timelineDuration: TimeInterval {
@@ -304,6 +342,7 @@ struct EditView: View {
         .focusable()
         .focused($isTimelineFocused)
         .focusEffectDisabled()
+        .focusedValue(\.clipEditorActions, clipEditorActions)
         .onAppear {
             refreshTimelineLayout()
             isTimelineFocused = true
@@ -311,7 +350,7 @@ struct EditView: View {
             timeSignatureChanges = normalizedTimeSignatureChanges
             viewModel.syncTempoMap(tempoChanges, timeSignatureChanges: timeSignatureChanges)
         }
-        .onChange(of: selectedClip) { _, newValue in
+        .onChange(of: clipSelection) { _, newValue in
             if newValue != nil {
                 isTimelineFocused = true
             }
@@ -335,6 +374,15 @@ struct EditView: View {
                 cueFireTime: cueFireTime,
                 onFire: fireMarkerCue
             )
+            SectionLoopPlaybackSupport(
+                loopController: sectionLoop,
+                sections: displaySections,
+                loopSlotIDs: loopSlotIDs,
+                onLoop: { section in
+                    viewModel.snapToScheduledSection(section.timelineStartSeconds)
+                },
+                onLoopActivated: { clearMarkerCue() }
+            )
         }
         .task(id: cuedSectionID) {
             guard cuedSectionID != nil else {
@@ -348,7 +396,7 @@ struct EditView: View {
             }
         }
         .onDeleteCommand {
-            removeSelectedClip()
+            removeClipSelection()
         }
         .sheet(isPresented: $showingGroupEditor) {
             TrackGroupEditorView()
@@ -374,6 +422,8 @@ struct EditView: View {
                 arrangementSlots: $arrangementSlots,
                 clipTrims: $clipTrims,
                 removedClips: $removedClips,
+                clipGaps: $clipGaps,
+                clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
                 onClearMarkerCue: { clearMarkerCue() }
             )
@@ -383,19 +433,368 @@ struct EditView: View {
 #endif
     }
 
-    private func removeSelectedClip() {
-        guard let selectedClip else { return }
-        let trackID = selectedClip.trackID
-        SongArrangementStore.removeClip(
-            slotID: selectedClip.slotID,
-            trackID: trackID,
-            clipTrims: &clipTrims,
-            removedClips: &removedClips
-        )
-        self.selectedClip = nil
+    private func removeClipSelection() {
+        guard let clipSelection else { return }
+        let trackID = clipSelection.trackID
+
+        switch clipSelection {
+        case .whole(let clipID, let slotID, let trackID, _):
+            deleteWholeClip(clipID: clipID, slotID: slotID, trackID: trackID)
+        case .range(_, let slotID, let trackID, let start, let end):
+            if !displaySections.isEmpty,
+               let track = song.sortedTracks.first(where: { $0.id == trackID }),
+               let slot = arrangementSlots.first(where: { $0.id == slotID }),
+               let marker = markers.first(where: { $0.id == slot.markerID }),
+               let section = trackLaneSections(for: track).first(where: { $0.slotID == slotID }) {
+                SongArrangementStore.deleteVisibleRange(
+                    slotID: slotID,
+                    trackID: trackID,
+                    rangeStart: start,
+                    rangeEnd: end,
+                    sections: trackLaneSections(for: track),
+                    marker: marker,
+                    markers: markers,
+                    tempoChanges: normalizedTempoChanges,
+                    timeSignatureChanges: normalizedTimeSignatureChanges,
+                    sourceDuration: viewModel.fileDuration(for: track),
+                    clipTrims: &clipTrims,
+                    removedClips: &removedClips,
+                    clipGaps: &clipGaps,
+                    clipRegions: &clipRegions,
+                    columnStart: section.columnStartSeconds
+                )
+            } else if let track = song.sortedTracks.first(where: { $0.id == trackID }) {
+                deleteSourceTrackRange(track: track, rangeStart: start, rangeEnd: end)
+            }
+        }
+
+        self.clipSelection = nil
         clearMarkerCue(cancellingScheduledTransition: false)
         persistArrangement()
         commitTrackArrangementChange(for: trackID)
+    }
+
+    private func deleteWholeClip(clipID: UUID, slotID: UUID, trackID: UUID) {
+        guard let track = song.sortedTracks.first(where: { $0.id == trackID }) else { return }
+
+        let visibleSections = !displaySections.isEmpty
+            ? trackLaneSections(for: track)
+            : SongArrangementStore.sourceTrackDisplaySections(
+                trackID: trackID,
+                trimStart: track.trimStartSeconds,
+                trimEnd: track.trimEndSeconds ?? viewModel.fileDuration(for: track),
+                clipGaps: clipGaps,
+                clipRegions: clipRegions
+            )
+
+        guard let section = visibleSections.first(where: { $0.id == clipID }) else { return }
+        let siblingSections = visibleSections.filter { $0.slotID == slotID }
+
+        if siblingSections.count > 1 {
+            if !displaySections.isEmpty,
+               let slot = arrangementSlots.first(where: { $0.id == slotID }),
+               let marker = markers.first(where: { $0.id == slot.markerID }),
+               let sourceRange = SongArrangementStore.trimmedSourceRange(
+                   slot: slot,
+                   trackID: trackID,
+                   marker: marker,
+                   markers: markers,
+                   clipTrims: clipTrims,
+                   sourceDuration: viewModel.fileDuration(for: track)
+               ) {
+                let bounds = SongArrangementStore.markerSourceRange(
+                    for: marker,
+                    markers: markers,
+                    sourceDuration: viewModel.fileDuration(for: track)
+                )
+                SongArrangementStore.ensureClipRegions(
+                    slotID: slotID,
+                    trackID: trackID,
+                    markerID: marker.id,
+                    sourceRange: sourceRange,
+                    boundsStart: bounds.start,
+                    columnStart: section.columnStartSeconds,
+                    clipGaps: clipGaps,
+                    clipRegions: &clipRegions
+                )
+            } else {
+                SongArrangementStore.ensureSourceTrackRegions(
+                    trackID: track.id,
+                    trimStart: track.trimStartSeconds,
+                    trimEnd: track.trimEndSeconds ?? viewModel.fileDuration(for: track),
+                    clipGaps: clipGaps,
+                    clipRegions: &clipRegions
+                )
+            }
+            clipGaps.removeAll { $0.slotID == slotID && $0.trackID == trackID }
+            _ = SongArrangementStore.deleteRegion(
+                regionID: clipID,
+                slotID: slotID,
+                trackID: trackID,
+                clipTrims: &clipTrims,
+                removedClips: &removedClips,
+                clipGaps: &clipGaps,
+                clipRegions: &clipRegions
+            )
+        } else if !displaySections.isEmpty {
+            SongArrangementStore.removeClip(
+                slotID: slotID,
+                trackID: trackID,
+                clipTrims: &clipTrims,
+                removedClips: &removedClips,
+                clipGaps: &clipGaps,
+                clipRegions: &clipRegions
+            )
+        } else {
+            deleteSourceTrackRange(
+                track: track,
+                rangeStart: section.sourceStartSeconds,
+                rangeEnd: section.sourceEndSeconds
+            )
+        }
+    }
+
+    private func deleteSourceTrackRange(
+        track: AudioTrack,
+        rangeStart: TimeInterval,
+        rangeEnd: TimeInterval
+    ) {
+        let fileDuration = viewModel.fileDuration(for: track)
+        let clipStart = track.trimStartSeconds
+        let clipEnd = track.trimEndSeconds ?? fileDuration
+        let snapped = MeasureTiming.snapTimelineRangeToGrid(
+            start: rangeStart,
+            end: rangeEnd,
+            tempoChanges: normalizedTempoChanges,
+            timeSignatureChanges: normalizedTimeSignatureChanges
+        )
+        let selectionStart = max(snapped.start, clipStart)
+        let selectionEnd = min(snapped.end, clipEnd)
+        let minGap: TimeInterval = 0.1
+        guard selectionEnd - selectionStart >= minGap else { return }
+
+        let tolerance: TimeInterval = 0.02
+        if selectionStart <= clipStart + tolerance, selectionEnd >= clipEnd - tolerance {
+            track.trimEndSeconds = clipStart + minGap
+        } else if selectionStart <= clipStart + tolerance {
+            track.trimStartSeconds = min(selectionEnd, clipEnd - minGap)
+        } else if selectionEnd >= clipEnd - tolerance {
+            track.trimEndSeconds = max(selectionStart, clipStart + minGap)
+        } else {
+            SongArrangementStore.ensureSourceTrackRegions(
+                trackID: track.id,
+                trimStart: clipStart,
+                trimEnd: clipEnd,
+                clipGaps: clipGaps,
+                clipRegions: &clipRegions
+            )
+            clipGaps.removeAll { $0.slotID == track.id && $0.trackID == track.id }
+            _ = ClipRegionStore.deleteTimelineRange(
+                slotID: track.id,
+                trackID: track.id,
+                rangeStart: selectionStart,
+                rangeEnd: selectionEnd,
+                tempoChanges: normalizedTempoChanges,
+                timeSignatureChanges: normalizedTimeSignatureChanges,
+                in: &clipRegions
+            )
+        }
+        viewModel.updateTrim(for: track, context: modelContext)
+    }
+
+    private func splitSelectedClipAtPlayhead() {
+        guard let selection = clipSelection else { return }
+        let trackID = selection.trackID
+
+        switch selection {
+        case .range(let clipID, let slotID, _, let start, let end):
+            let minDuration = SongArrangementStore.minimumClipDuration
+            if end - start < minDuration {
+                if let rightID = performSplit(
+                    clipID: clipID,
+                    slotID: slotID,
+                    trackID: trackID,
+                    at: start
+                ) {
+                    clipSelection = .whole(clipID: rightID, slotID: slotID, trackID: trackID, editTime: nil)
+                    finalizeSplit(trackID: trackID)
+                }
+                return
+            }
+
+            _ = performSplit(clipID: clipID, slotID: slotID, trackID: trackID, at: end)
+            if let rightID = performSplit(clipID: clipID, slotID: slotID, trackID: trackID, at: start) {
+                clipSelection = .whole(clipID: rightID, slotID: slotID, trackID: trackID, editTime: nil)
+            }
+            finalizeSplit(trackID: trackID)
+
+        case .whole(let clipID, let slotID, _, let editTime):
+            let splitTime = editTime ?? AudioEngineManager.shared.currentTime
+            if let rightID = performSplit(
+                clipID: clipID,
+                slotID: slotID,
+                trackID: trackID,
+                at: splitTime
+            ) {
+                clipSelection = .whole(clipID: rightID, slotID: slotID, trackID: trackID, editTime: nil)
+                finalizeSplit(trackID: trackID)
+            }
+        }
+    }
+
+    @discardableResult
+    private func performSplit(
+        clipID: UUID,
+        slotID: UUID,
+        trackID: UUID,
+        at splitTime: TimeInterval
+    ) -> UUID? {
+        guard let track = song.sortedTracks.first(where: { $0.id == trackID }) else { return nil }
+
+        let sections = clipDisplaySections(for: track)
+        guard let section = sections.first(where: { $0.id == clipID })
+            ?? sections.first(where: {
+                splitTime >= $0.timelineStartSeconds + 0.02
+                    && splitTime <= $0.timelineEndSeconds - 0.02
+                    && $0.slotID == slotID
+            }) else { return nil }
+        guard splitTime > section.timelineStartSeconds + 0.02,
+              splitTime < section.timelineEndSeconds - 0.02 else { return nil }
+
+        if trackLaneSections(for: track).isEmpty {
+            SongArrangementStore.ensureSourceTrackRegions(
+                trackID: track.id,
+                trimStart: track.trimStartSeconds,
+                trimEnd: track.trimEndSeconds ?? viewModel.fileDuration(for: track),
+                clipGaps: clipGaps,
+                clipRegions: &clipRegions
+            )
+            clipGaps.removeAll { $0.slotID == track.id && $0.trackID == track.id }
+        } else {
+            materializeRegionsIfNeeded(
+                slotID: slotID,
+                trackID: trackID,
+                section: section,
+                track: track
+            )
+        }
+
+        let regionID = ClipRegionStore.regions(slotID: slotID, trackID: trackID, in: clipRegions)
+            .first(where: {
+                splitTime > $0.timelineStartSeconds + 0.02
+                    && splitTime < $0.timelineEndSeconds - 0.02
+            })?.id ?? section.id
+
+        return SongArrangementStore.splitRegion(
+            regionID: regionID,
+            at: splitTime,
+            tempoChanges: normalizedTempoChanges,
+            timeSignatureChanges: normalizedTimeSignatureChanges,
+            clipRegions: &clipRegions
+        )
+    }
+
+    private func materializeRegionsIfNeeded(
+        slotID: UUID,
+        trackID: UUID,
+        section: ArrangementDisplaySection,
+        track: AudioTrack
+    ) {
+        guard !ClipRegionStore.hasStoredRegions(slotID: slotID, trackID: trackID, in: clipRegions),
+              let slot = arrangementSlots.first(where: { $0.id == slotID }),
+              let marker = markers.first(where: { $0.id == slot.markerID }),
+              let sourceRange = SongArrangementStore.trimmedSourceRange(
+                  slot: slot,
+                  trackID: trackID,
+                  marker: marker,
+                  markers: markers,
+                  clipTrims: clipTrims,
+                  sourceDuration: viewModel.fileDuration(for: track)
+              ) else { return }
+
+        let bounds = SongArrangementStore.markerSourceRange(
+            for: marker,
+            markers: markers,
+            sourceDuration: viewModel.fileDuration(for: track)
+        )
+        SongArrangementStore.ensureClipRegions(
+            slotID: slotID,
+            trackID: trackID,
+            markerID: marker.id,
+            sourceRange: sourceRange,
+            boundsStart: bounds.start,
+            columnStart: section.columnStartSeconds,
+            clipGaps: clipGaps,
+            clipRegions: &clipRegions
+        )
+        clipGaps.removeAll { $0.slotID == slotID && $0.trackID == trackID }
+    }
+
+    private func finalizeSplit(trackID: UUID) {
+        refreshTimelineLayout()
+        persistArrangement()
+        commitTrackArrangementChange(for: trackID)
+        syncPlayback()
+    }
+
+    private func joinSelectedClipWithNext() {
+        guard case .whole(let clipID, let slotID, let trackID, _) = clipSelection else { return }
+        guard let track = song.sortedTracks.first(where: { $0.id == trackID }) else { return }
+
+        let sections = clipDisplaySections(for: track)
+            .filter { $0.slotID == slotID }
+            .sorted { $0.timelineStartSeconds < $1.timelineStartSeconds }
+
+        guard let index = sections.firstIndex(where: { $0.id == clipID }),
+              index + 1 < sections.count else { return }
+
+        let nextID = sections[index + 1].id
+
+        if let firstSection = sections.first, !trackLaneSections(for: track).isEmpty,
+           let slot = arrangementSlots.first(where: { $0.id == slotID }),
+           let marker = markers.first(where: { $0.id == slot.markerID }),
+           let sourceRange = SongArrangementStore.trimmedSourceRange(
+               slot: slot,
+               trackID: trackID,
+               marker: marker,
+               markers: markers,
+               clipTrims: clipTrims,
+               sourceDuration: viewModel.fileDuration(for: track)
+           ) {
+            let bounds = SongArrangementStore.markerSourceRange(
+                for: marker,
+                markers: markers,
+                sourceDuration: viewModel.fileDuration(for: track)
+            )
+            SongArrangementStore.ensureClipRegions(
+                slotID: slotID,
+                trackID: trackID,
+                markerID: marker.id,
+                sourceRange: sourceRange,
+                boundsStart: bounds.start,
+                columnStart: firstSection.columnStartSeconds,
+                clipGaps: clipGaps,
+                clipRegions: &clipRegions
+            )
+        } else {
+            SongArrangementStore.ensureSourceTrackRegions(
+                trackID: track.id,
+                trimStart: track.trimStartSeconds,
+                trimEnd: track.trimEndSeconds ?? viewModel.fileDuration(for: track),
+                clipGaps: clipGaps,
+                clipRegions: &clipRegions
+            )
+        }
+        clipGaps.removeAll { $0.slotID == slotID && $0.trackID == trackID }
+
+        if SongArrangementStore.joinRegions(
+            firstID: clipID,
+            secondID: nextID,
+            clipRegions: &clipRegions
+        ) != nil {
+            persistArrangement()
+            commitTrackArrangementChange(for: trackID)
+        }
     }
 
     private func clearMarkerCue(cancellingScheduledTransition: Bool = true) {
@@ -408,13 +807,11 @@ struct EditView: View {
     }
 
     private func cueSection(_ section: ArrangementDisplaySection) {
-        cuedSectionID = section.id
-        let audioEngine = AudioEngineManager.shared
+        sectionLoop.endLoopIfActive()
 
-        if let currentSection = displaySections.first(where: {
-            audioEngine.currentTime >= $0.timelineStartSeconds
-                && audioEngine.currentTime < $0.timelineEndSeconds
-        }) {
+        cuedSectionID = section.id
+
+        if let currentSection = displaySections.section(atTimeline: audioEngine.currentTime) {
             cueFireTime = currentSection.timelineEndSeconds
         } else {
             cueFireTime = section.timelineEndSeconds
@@ -432,8 +829,7 @@ struct EditView: View {
 
     private func fireMarkerCue() {
         guard let cueFireTime, let cuedSectionID else { return }
-        let time = AudioEngineManager.shared.currentTime
-        guard time >= cueFireTime else { return }
+        guard audioEngine.currentTime >= cueFireTime else { return }
         guard let section = displaySections.first(where: { $0.id == cuedSectionID }) else {
             clearMarkerCue(cancellingScheduledTransition: false)
             return
@@ -444,11 +840,7 @@ struct EditView: View {
     }
 
     private func toggleLoopSection(_ section: ArrangementDisplaySection) {
-        if loopSlotIDs.contains(section.id) {
-            loopSlotIDs.remove(section.id)
-        } else {
-            loopSlotIDs.insert(section.id)
-        }
+        sectionLoop.toggleLoop(on: section.id, loopSlotIDs: &loopSlotIDs)
         persistArrangement()
     }
 
@@ -484,6 +876,8 @@ struct EditView: View {
             arrangementSlots: $arrangementSlots,
             clipTrims: $clipTrims,
             removedClips: $removedClips,
+            clipGaps: $clipGaps,
+            clipRegions: $clipRegions,
             loopSlotIDs: $loopSlotIDs,
             onClearMarkerCue: { clearMarkerCue() }
         )
@@ -670,7 +1064,7 @@ struct EditView: View {
 
     private var trackLanesContent: some View {
         VStack(spacing: TimelineLayout.laneSpacing) {
-            ForEach(song.sortedTracks) { track in
+            ForEach(Array(song.sortedTracks.enumerated()), id: \.element.id) { index, track in
                 WaveformLaneView(
                     track: track,
                     fileURL: FileStore.trackURL(
@@ -683,9 +1077,14 @@ struct EditView: View {
                     arrangementSections: trackLaneSections(for: track),
                     arrangementSlots: $arrangementSlots,
                     clipTrims: $clipTrims,
-                    selectedClip: $selectedClip,
+                    clipGaps: $clipGaps,
+                    clipRegions: $clipRegions,
+                    clipSelection: $clipSelection,
                     markers: markers,
+                    tempoChanges: normalizedTempoChanges,
+                    timeSignatureChanges: normalizedTimeSignatureChanges,
                     laneHeight: TimelineLayout.laneHeight,
+                    trackColorIndex: index,
                     onTrimChange: {
                         viewModel.updateTrim(for: track, context: modelContext)
                     },
@@ -695,6 +1094,9 @@ struct EditView: View {
                     onClipTrimCommitted: {
                         persistArrangement()
                         commitTrackArrangementChange(for: track.id)
+                    },
+                    onSeek: { time in
+                        AudioEngineManager.shared.seek(to: time)
                     }
                 )
             }
@@ -869,6 +1271,8 @@ private struct EditSongToolbarContent: ToolbarContent {
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
     @Binding var removedClips: [ArrangementRemovedClip]
+    @Binding var clipGaps: [ArrangementClipGap]
+    @Binding var clipRegions: [ClipRegion]
     @Binding var loopSlotIDs: Set<UUID>
     let onClearMarkerCue: () -> Void
 
@@ -1065,6 +1469,8 @@ private struct EditSongToolbarContent: ToolbarContent {
                 slots: $arrangementSlots,
                 clipTrims: $clipTrims,
                 removedClips: $removedClips,
+                clipGaps: $clipGaps,
+                clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
                 markers: markers,
                 songID: song.id
@@ -1090,6 +1496,8 @@ private struct EditTransportBar: View {
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
     @Binding var removedClips: [ArrangementRemovedClip]
+    @Binding var clipGaps: [ArrangementClipGap]
+    @Binding var clipRegions: [ClipRegion]
     @Binding var loopSlotIDs: Set<UUID>
     let onClearMarkerCue: () -> Void
 
@@ -1226,6 +1634,8 @@ private struct EditTransportBar: View {
                 slots: $arrangementSlots,
                 clipTrims: $clipTrims,
                 removedClips: $removedClips,
+                clipGaps: $clipGaps,
+                clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
                 markers: markers,
                 songID: song.id
@@ -2289,6 +2699,8 @@ private struct ClickTrackEditorMenu: View {
         arrangementSlots: .constant([]),
         clipTrims: .constant([]),
         removedClips: .constant([]),
+        clipGaps: .constant([]),
+        clipRegions: .constant([]),
         loopSlotIDs: .constant([]),
         tempoChanges: .constant([TempoChange(startMeasure: 1, bpm: 120)]),
         timeSignatureChanges: .constant([

@@ -195,6 +195,29 @@ enum WaveformPeakResampler {
         return result
     }
 
+    /// Extracts the display-peak slice for a timeline range from a full-lane peak array.
+    static func peaksSlice(
+        from bars: [Float],
+        timelineStart: TimeInterval,
+        timelineEnd: TimeInterval,
+        timelineDuration: TimeInterval
+    ) -> [Float] {
+        guard !bars.isEmpty, timelineEnd > timelineStart else { return [] }
+
+        let safeDuration = max(timelineDuration, 0.001)
+        let count = bars.count
+        let startIndex = min(
+            count - 1,
+            max(0, Int(floor(timelineStart / safeDuration * Double(count))))
+        )
+        let endIndex = min(
+            count,
+            max(startIndex + 1, Int(ceil(timelineEnd / safeDuration * Double(count))))
+        )
+        guard startIndex < endIndex else { return [] }
+        return Array(bars[startIndex..<endIndex])
+    }
+
     private static func section(
         containing time: TimeInterval,
         in sections: [ArrangementDisplaySection]

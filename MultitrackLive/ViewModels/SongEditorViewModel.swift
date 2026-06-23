@@ -309,17 +309,37 @@ final class SongEditorViewModel {
         markers: [ArrangementMarker],
         slots: [ArrangementSlot],
         clipTrims: [ArrangementClipTrim],
-        removedClips: [ArrangementRemovedClip]
+        removedClips: [ArrangementRemovedClip],
+        clipGaps: [ArrangementClipGap] = [],
+        clipRegions: [ClipRegion] = [],
+        track: AudioTrack? = nil
     ) {
         guard isLoaded else { return }
 
         let inputs = arrangementLayoutInputs(markers: markers)
-        let sections = SongArrangementStore.trackDisplaySections(
+        let rulerSections = SongArrangementStore.rulerDisplaySections(
+            slots: slots,
+            markers: markers,
+            clipTrims: clipTrims,
+            trackIDs: inputs.trackIDs,
+            sourceDurationForTrack: inputs.sourceDurationForTrack
+        )
+        let resolvedTrack = track ?? song.sortedTracks.first(where: { $0.id == trackID })
+        let trimEnd = resolvedTrack.map { $0.trimEndSeconds ?? fileDuration(for: $0) }
+            ?? inputs.sourceDurationForTrack(trackID)
+        let trimStart = resolvedTrack?.trimStartSeconds ?? 0
+
+        let sections = SongArrangementStore.playbackTrackSections(
             for: trackID,
+            trimStart: trimStart,
+            trimEnd: trimEnd,
             slots: slots,
             clipTrims: clipTrims,
             removedClips: removedClips,
-            inputs: inputs
+            clipGaps: clipGaps,
+            clipRegions: clipRegions,
+            inputs: inputs,
+            rulerSections: rulerSections
         )
         audioEngine.updateTrackArrangement(
             trackID: trackID,
@@ -332,13 +352,44 @@ final class SongEditorViewModel {
         markers: [ArrangementMarker],
         slots: [ArrangementSlot],
         clipTrims: [ArrangementClipTrim],
-        removedClips: [ArrangementRemovedClip]
+        removedClips: [ArrangementRemovedClip],
+        clipGaps: [ArrangementClipGap] = [],
+        clipRegions: [ClipRegion] = []
     ) -> ArrangementLayoutSnapshot {
         SongArrangementStore.buildLayoutSnapshot(
             slots: slots,
             clipTrims: clipTrims,
             removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions,
             inputs: arrangementLayoutInputs(markers: markers)
+        )
+    }
+
+    func buildPlaybackLayout(
+        markers: [ArrangementMarker],
+        slots: [ArrangementSlot],
+        clipTrims: [ArrangementClipTrim],
+        removedClips: [ArrangementRemovedClip],
+        clipGaps: [ArrangementClipGap] = [],
+        clipRegions: [ClipRegion] = []
+    ) -> ArrangementLayoutSnapshot {
+        let inputs = arrangementLayoutInputs(markers: markers)
+        let tracks = song.sortedTracks.map { track in
+            (
+                id: track.id,
+                trimStart: track.trimStartSeconds,
+                trimEnd: track.trimEndSeconds ?? fileDuration(for: track)
+            )
+        }
+        return SongArrangementStore.playbackLayoutSnapshot(
+            slots: slots,
+            clipTrims: clipTrims,
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions,
+            tracks: tracks,
+            inputs: inputs
         )
     }
 
@@ -346,15 +397,19 @@ final class SongEditorViewModel {
         markers: [ArrangementMarker],
         slots: [ArrangementSlot],
         clipTrims: [ArrangementClipTrim],
-        removedClips: [ArrangementRemovedClip]
+        removedClips: [ArrangementRemovedClip],
+        clipGaps: [ArrangementClipGap] = [],
+        clipRegions: [ClipRegion] = []
     ) {
         guard isLoaded else { return }
         applyArrangementLayout(
-            buildArrangementLayout(
+            buildPlaybackLayout(
                 markers: markers,
                 slots: slots,
                 clipTrims: clipTrims,
-                removedClips: removedClips
+                removedClips: removedClips,
+                clipGaps: clipGaps,
+                clipRegions: clipRegions
             ),
             removedClips: removedClips
         )

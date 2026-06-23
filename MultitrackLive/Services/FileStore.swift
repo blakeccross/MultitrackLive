@@ -126,6 +126,26 @@ enum FileStore {
                 trackID: trackIDMap[removed.trackID] ?? removed.trackID
             )
         }
+        arrangement.clipGaps = arrangement.clipGaps.map { gap in
+            ArrangementClipGap(
+                slotID: gap.slotID,
+                trackID: trackIDMap[gap.trackID] ?? gap.trackID,
+                sourceStartSeconds: gap.sourceStartSeconds,
+                sourceEndSeconds: gap.sourceEndSeconds
+            )
+        }
+        arrangement.clipRegions = arrangement.clipRegions.map { region in
+            ClipRegion(
+                id: region.id,
+                slotID: region.slotID,
+                trackID: trackIDMap[region.trackID] ?? region.trackID,
+                markerID: region.markerID,
+                sourceStartSeconds: region.sourceStartSeconds,
+                sourceEndSeconds: region.sourceEndSeconds,
+                timelineStartSeconds: region.timelineStartSeconds,
+                timelineEndSeconds: region.timelineEndSeconds
+            )
+        }
         try SongArrangementStore.save(arrangement, for: destinationSongID)
     }
 

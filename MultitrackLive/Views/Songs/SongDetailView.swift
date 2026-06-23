@@ -16,6 +16,8 @@ struct SongDetailView: View {
     @State private var arrangementSlots: [ArrangementSlot] = []
     @State private var clipTrims: [ArrangementClipTrim] = []
     @State private var removedClips: [ArrangementRemovedClip] = []
+    @State private var clipGaps: [ArrangementClipGap] = []
+    @State private var clipRegions: [ClipRegion] = []
     @State private var loopSlotIDs: Set<UUID> = []
     @State private var tempoChanges: [TempoChange] = []
     @State private var timeSignatureChanges: [TimeSignatureChange] = []
@@ -70,6 +72,8 @@ struct SongDetailView: View {
                     slots: arrangementSlots,
                     clipTrims: clipTrims,
                     removedClips: removedClips,
+                    clipGaps: clipGaps,
+                    clipRegions: clipRegions,
                     loopSlotIDs: loopSlotIDs,
                     for: song.id
                 )
@@ -104,6 +108,8 @@ struct SongDetailView: View {
                         arrangementSlots: $arrangementSlots,
                         clipTrims: $clipTrims,
                         removedClips: $removedClips,
+                        clipGaps: $clipGaps,
+                    clipRegions: $clipRegions,
                         loopSlotIDs: $loopSlotIDs,
                         tempoChanges: $tempoChanges,
                         timeSignatureChanges: $timeSignatureChanges
@@ -187,7 +193,47 @@ struct SongDetailView: View {
         arrangementSlots = arrangement.slots
         clipTrims = arrangement.clipTrims
         removedClips = arrangement.removedClips
+        clipGaps = arrangement.clipGaps
+        clipRegions = arrangement.clipRegions
         loopSlotIDs = arrangement.loopSlotIDs
+        migrateLegacyClipGapsIfNeeded()
+    }
+
+    private func migrateLegacyClipGapsIfNeeded() {
+        guard clipRegions.isEmpty, !clipGaps.isEmpty else { return }
+        let inputs = SongArrangementStore.makeLayoutInputs(
+            markers: arrangementMarkers,
+            trackIDs: song.sortedTracks.map(\.id),
+            sourceDurationForTrack: { trackID in
+                song.sortedTracks.first(where: { $0.id == trackID })
+                    .map { viewModel?.fileDuration(for: $0) ?? 0 } ?? 0
+            }
+        )
+        let sourceTracks = song.sortedTracks.map { track in
+            (
+                trackID: track.id,
+                trimStart: track.trimStartSeconds,
+                trimEnd: track.trimEndSeconds ?? (viewModel?.fileDuration(for: track) ?? 0)
+            )
+        }
+        clipRegions = SongArrangementStore.migrateClipGapsToRegions(
+            slots: arrangementSlots,
+            clipTrims: clipTrims,
+            clipGaps: clipGaps,
+            removedClips: removedClips,
+            inputs: inputs,
+            sourceTracks: sourceTracks
+        )
+        clipGaps = []
+        try? SongArrangementStore.save(
+            slots: arrangementSlots,
+            clipTrims: clipTrims,
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions,
+            loopSlotIDs: loopSlotIDs,
+            for: song.id
+        )
     }
 
     private func syncArrangementPlayback() {
@@ -196,7 +242,9 @@ struct SongDetailView: View {
             markers: arrangementMarkers,
             slots: arrangementSlots,
             clipTrims: clipTrims,
-            removedClips: removedClips
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions
         )
     }
 
@@ -224,11 +272,15 @@ struct SongDetailView: View {
                 arrangementSlots = SongArrangementStore.defaultSlots(from: markers)
                 clipTrims = []
                 removedClips = []
+                clipGaps = []
+                clipRegions = []
                 loopSlotIDs = []
                 try SongArrangementStore.save(
                     slots: arrangementSlots,
                     clipTrims: clipTrims,
                     removedClips: removedClips,
+                    clipGaps: clipGaps,
+                    clipRegions: clipRegions,
                     loopSlotIDs: loopSlotIDs,
                     for: song.id
                 )

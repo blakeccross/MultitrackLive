@@ -180,6 +180,10 @@ private struct TrackMixSliderRow: View {
 }
 
 struct WaveformLaneView: View {
+    private enum TimelineDragSpace {
+        static let name = "waveformLaneTimeline"
+    }
+
     @Bindable var track: AudioTrack
 
     let fileURL: URL
@@ -189,22 +193,38 @@ struct WaveformLaneView: View {
     let arrangementSections: [ArrangementDisplaySection]
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
-    @Binding var selectedClip: SelectedArrangementClip?
+    @Binding var clipGaps: [ArrangementClipGap]
+    @Binding var clipRegions: [ClipRegion]
+    @Binding var clipSelection: TimelineClipSelection?
     let markers: [ArrangementMarker]
+    let tempoChanges: [TempoChange]
+    let timeSignatureChanges: [TimeSignatureChange]
     let laneHeight: CGFloat
+    let trackColorIndex: Int
     let onTrimChange: () -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
     let loopSlotIDs: Set<UUID>
     let onToggleLoopSection: (ArrangementDisplaySection) -> Void
     let onClipTrimCommitted: () -> Void
+    let onSeek: (TimeInterval) -> Void
 
+    @Bindable private var audioEngine = AudioEngineManager.shared
     @State private var sourcePeaks: [Float] = []
     @State private var cachedDisplayPeaks: [Float] = []
     @State private var activeHandle: TrimHandle?
-    @State private var dragStartTime: TimeInterval?
     @State private var activeClipTrim: ActiveClipTrim?
     @State private var clipTrimDragStart: ClipTrimDragStart?
     @State private var previewClipTrims: PreviewClipTrims?
+    @State private var activeClipRegionTrim: (regionID: UUID, edge: ClipRegionStore.RegionTrimEdge)?
+    @State private var clipRegionTrimBaseline: ClipRegion?
+    @State private var previewClipRegion: ClipRegion?
+    @State private var activeClipDragSelection: ClipDragSelection?
+
+    private struct ClipDragSelection: Equatable {
+        let clipID: UUID
+        let startX: CGFloat
+        var currentX: CGFloat
+    }
 
     private struct ActiveClipTrim: Equatable {
         let slotID: UUID
@@ -227,15 +247,13 @@ struct WaveformLaneView: View {
         case trailing
     }
 
-    private let clipEdgeHitWidth: CGFloat = 10
-
     private enum TrimHandle {
         case start
         case end
     }
 
-    private var waveformDrawHeight: CGFloat {
-        laneHeight
+    private var clipBodyHeight: CGFloat {
+        max(0, laneHeight - TimelineLayout.clipHeaderHeight)
     }
 
     private var effectiveEnd: TimeInterval {
@@ -262,7 +280,15 @@ struct WaveformLaneView: View {
         let sectionKey = arrangementSections
             .map { "\($0.id.uuidString)|\($0.timelineStartSeconds)|\($0.timelineEndSeconds)" }
             .joined(separator: ",")
-        return "\(timelineContentWidth)|\(timelineDuration)|\(fileDuration)|\(sourcePeaks.count)|\(sectionKey)|\(usesArrangementLayout)|\(usesSourceLinearTimeline)"
+        let gapKey = clipGaps
+            .filter { $0.trackID == track.id }
+            .map { "\($0.sourceStartSeconds)|\($0.sourceEndSeconds)" }
+            .joined(separator: ",")
+        let regionKey = clipRegions
+            .filter { $0.trackID == track.id }
+            .map { "\($0.id.uuidString)|\($0.timelineStartSeconds)|\($0.timelineEndSeconds)" }
+            .joined(separator: ",")
+        return "\(timelineContentWidth)|\(timelineDuration)|\(fileDuration)|\(sourcePeaks.count)|\(sectionKey)|\(gapKey)|\(regionKey)|\(usesArrangementLayout)|\(usesSourceLinearTimeline)"
     }
 
     private func refreshCachedDisplayPeaks() {
@@ -303,43 +329,33 @@ struct WaveformLaneView: View {
             }
     }
 
-    private var clipBaselineRanges: [ClosedRange<CGFloat>] {
-        if usesArrangementLayout && !usesSourceLinearTimeline {
-            arrangementSections.map { section in
-                let bounds = clipTimelineBounds(for: section)
-                let startX = TimelineLayout.xPosition(
-                    for: bounds.start,
-                    duration: safeTimelineDuration,
-                    contentWidth: timelineContentWidth
-                )
-                let endX = TimelineLayout.xPosition(
-                    for: bounds.end,
-                    duration: safeTimelineDuration,
-                    contentWidth: timelineContentWidth
-                )
-                return startX...endX
-            }
-        } else {
-            [trimStartX...trimEndX]
-        }
+    private func clipDisplayPeaks(timelineStart: TimeInterval, timelineEnd: TimeInterval) -> [Float] {
+        WaveformPeakResampler.peaksSlice(
+            from: cachedDisplayPeaks,
+            timelineStart: timelineStart,
+            timelineEnd: timelineEnd,
+            timelineDuration: safeTimelineDuration
+        )
     }
 
     private var waveformArea: some View {
         ZStack(alignment: .leading) {
-            WaveformBarsCanvas(
-                bars: cachedDisplayPeaks,
-                showsEmptyBaseline: showsFullSourceWaveform,
-                baselineRanges: clipBaselineRanges
-            )
-                .equatable()
-
             if !usesArrangementLayout {
                 trimOverlay
             }
 
             clipLayer
         }
-        .frame(width: timelineContentWidth, height: waveformDrawHeight)
+        .frame(width: timelineContentWidth, height: laneHeight)
+        .coordinateSpace(name: TimelineDragSpace.name)
+    }
+
+    private func timelineTime(atContentX x: CGFloat) -> TimeInterval {
+        TimelineLayout.time(
+            at: x,
+            duration: safeTimelineDuration,
+            contentWidth: timelineContentWidth
+        )
     }
 
     private var trimStartX: CGFloat {
@@ -376,47 +392,96 @@ struct WaveformLaneView: View {
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        if selectedClip?.trackID == track.id {
-                            selectedClip = nil
-                        }
+                        clipSelection = nil
                     }
 
-                ForEach(arrangementSections) { section in
-                    arrangementClip(for: section)
+                ForEach(Array(arrangementSections.enumerated()), id: \.element.id) { index, section in
+                    arrangementClip(for: section, sectionIndex: index)
                 }
             } else {
-                sourceTrackClip
+                ForEach(sourceTrackClipSegments, id: \.id) { segment in
+                    sourceTrackClipSegment(segment)
+                }
             }
         }
     }
 
-    private var sourceTrackClip: some View {
-        let clipWidth = max(0, trimEndX - trimStartX)
-        let isSelected = selectedClip == SelectedArrangementClip(slotID: track.id, trackID: track.id)
+    private struct SourceClipSegment: Identifiable {
+        let id: UUID
+        let slotID: UUID
+        let timelineStart: TimeInterval
+        let timelineEnd: TimeInterval
+        let sourceStart: TimeInterval
+        let sourceEnd: TimeInterval
+    }
 
-        return ZStack(alignment: .leading) {
-            Rectangle()
-                .fill(isSelected ? Color.dawClipBackgroundSelected : Color.dawClipBackground)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    selectedClip = SelectedArrangementClip(slotID: track.id, trackID: track.id)
-                }
-
-            if isSelected {
-                Rectangle()
-                    .stroke(Color.dawClipBorder, lineWidth: 2)
-            }
-
-            trimHandle(at: trimStartX, handle: .start)
-            trimHandle(at: trimEndX, handle: .end)
+    private var sourceTrackClipSegments: [SourceClipSegment] {
+        let sections = SongArrangementStore.sourceTrackDisplaySections(
+            trackID: track.id,
+            trimStart: track.trimStartSeconds,
+            trimEnd: effectiveEnd,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions
+        )
+        if sections.isEmpty {
+            return [
+                SourceClipSegment(
+                    id: track.id,
+                    slotID: track.id,
+                    timelineStart: track.trimStartSeconds,
+                    timelineEnd: effectiveEnd,
+                    sourceStart: track.trimStartSeconds,
+                    sourceEnd: effectiveEnd
+                ),
+            ]
         }
-        .frame(width: clipWidth, height: laneHeight)
-        .overlay { ClipSideBorders() }
-        .offset(x: trimStartX)
+        return sections.map { section in
+            SourceClipSegment(
+                id: section.id,
+                slotID: section.slotID,
+                timelineStart: section.timelineStartSeconds,
+                timelineEnd: section.timelineEndSeconds,
+                sourceStart: section.sourceStartSeconds,
+                sourceEnd: section.sourceEndSeconds
+            )
+        }
+    }
+
+    private func sourceTrackClipSegment(_ segment: SourceClipSegment) -> some View {
+        let bounds = resolvedClipBounds(clipID: segment.id, fallbackStart: segment.timelineStart, fallbackEnd: segment.timelineEnd)
+        let startX = TimelineLayout.xPosition(
+            for: bounds.start,
+            duration: safeTimelineDuration,
+            contentWidth: timelineContentWidth
+        )
+        let endX = TimelineLayout.xPosition(
+            for: bounds.end,
+            duration: safeTimelineDuration,
+            contentWidth: timelineContentWidth
+        )
+        let clipWidth = max(0, endX - startX)
+
+        return clipChrome(
+            clipID: segment.id,
+            slotID: segment.slotID,
+            title: track.displayName,
+            colorIndex: trackColorIndex,
+            clipWidth: clipWidth,
+            timelineStart: bounds.start,
+            timelineEnd: bounds.end,
+            regionTrimBoundsStart: track.trimStartSeconds,
+            regionTrimBoundsEnd: effectiveEnd,
+            arrangementSection: nil,
+            sourceTrimLeading: resolvedClipRegion(clipID: segment.id) == nil
+                && segment.id == sourceTrackClipSegments.first?.id,
+            sourceTrimTrailing: resolvedClipRegion(clipID: segment.id) == nil
+                && segment.id == sourceTrackClipSegments.last?.id
+        )
+        .offset(x: startX)
     }
 
     @ViewBuilder
-    private func arrangementClip(for section: ArrangementDisplaySection) -> some View {
+    private func arrangementClip(for section: ArrangementDisplaySection, sectionIndex: Int) -> some View {
         let bounds = clipTimelineBounds(for: section)
         let startX = TimelineLayout.xPosition(
             for: bounds.start,
@@ -429,84 +494,479 @@ struct WaveformLaneView: View {
             contentWidth: timelineContentWidth
         )
         let clipWidth = max(0, endX - startX)
-        let isSelected = selectedClip == SelectedArrangementClip(
-            slotID: section.id,
-            trackID: track.id
+
+        clipChrome(
+            clipID: section.id,
+            slotID: section.slotID,
+            title: section.name,
+            colorIndex: sectionIndex,
+            clipWidth: clipWidth,
+            timelineStart: bounds.start,
+            timelineEnd: bounds.end,
+            regionTrimBoundsStart: section.columnStartSeconds,
+            regionTrimBoundsEnd: section.columnEndSeconds,
+            arrangementSection: resolvedClipRegion(clipID: section.id) == nil ? section : nil,
+            sourceTrimLeading: false,
+            sourceTrimTrailing: false
         )
-
-        ZStack(alignment: .leading) {
-            Rectangle()
-                .fill(isSelected ? Color.dawClipBackgroundSelected : Color.dawClipBackground)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    selectedClip = SelectedArrangementClip(slotID: section.id, trackID: track.id)
-                }
-                .contextMenu {
-                    Button("Cue Section") {
-                        onCueSection(section)
-                    }
-                    if loopSlotIDs.contains(section.id) {
-                        Button("Remove Loop") {
-                            onToggleLoopSection(section)
-                        }
-                    } else {
-                        Button("Loop Section") {
-                            onToggleLoopSection(section)
-                        }
-                    }
-                }
-
-            if isSelected {
-                Rectangle()
-                    .stroke(Color.dawClipBorder, lineWidth: 2)
+        .contextMenu {
+            Button("Cue Section") {
+                onCueSection(section)
             }
-
-            clipTrimHandle(section: section, edge: .leading, clipWidth: clipWidth, isSelected: isSelected)
-            clipTrimHandle(section: section, edge: .trailing, clipWidth: clipWidth, isSelected: isSelected)
+            if loopSlotIDs.contains(section.id) {
+                Button("Remove Loop") {
+                    onToggleLoopSection(section)
+                }
+            } else {
+                Button("Loop Section") {
+                    onToggleLoopSection(section)
+                }
+            }
         }
-        .frame(width: clipWidth, height: laneHeight)
-        .overlay { ClipSideBorders() }
         .offset(x: startX)
     }
 
-    private func clipTrimHandle(
-        section: ArrangementDisplaySection,
-        edge: ArrangementClipTrimEdge,
+    private func clipChrome(
+        clipID: UUID,
+        slotID: UUID,
+        title: String,
+        colorIndex: Int,
         clipWidth: CGFloat,
-        isSelected: Bool
+        timelineStart: TimeInterval,
+        timelineEnd: TimeInterval,
+        regionTrimBoundsStart: TimeInterval,
+        regionTrimBoundsEnd: TimeInterval,
+        arrangementSection: ArrangementDisplaySection?,
+        sourceTrimLeading: Bool,
+        sourceTrimTrailing: Bool
     ) -> some View {
-        let handleWidth = min(clipEdgeHitWidth, max(4, clipWidth / 3))
+        let palette = TrackClipPalette.colors(for: colorIndex)
+        let isWholeSelected = isWholeClipSelected(clipID: clipID)
+        let editTime = clipEditTime(clipID: clipID)
+        let committedRange = committedSelectionRange(
+            clipID: clipID,
+            timelineStart: timelineStart,
+            timelineEnd: timelineEnd
+        )
+        let dragRange = activeClipDragSelection.flatMap { drag in
+            drag.clipID == clipID ? dragSelectionRange(
+                drag: drag,
+                clipWidth: clipWidth,
+                timelineStart: timelineStart,
+                timelineEnd: timelineEnd
+            ) : nil
+        }
 
-        return Rectangle()
-            .fill(Color.white.opacity(0.001))
-            .frame(width: handleWidth, height: laneHeight)
-            .overlay(alignment: edge == .leading ? .leading : .trailing) {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.dawClipBorder.opacity(isClipTrimActive(sectionID: section.id, edge: edge) ? 1 : 0.85))
-                    .frame(width: 3, height: laneHeight * 0.55)
-                    .padding(.horizontal, 1)
-                    .opacity(isSelected || isClipTrimActive(sectionID: section.id, edge: edge) ? 1 : 0)
-            }
-            .frame(maxWidth: .infinity, alignment: edge == .leading ? .leading : .trailing)
-            .gesture(clipTrimDragGesture(for: section, edge: edge, clipWidth: clipWidth))
-            #if os(macOS)
-            .onContinuousHover { phase in
-                switch phase {
-                case .active:
-                    NSCursor.resizeLeftRight.push()
-                case .ended:
-                    NSCursor.pop()
+        return VStack(spacing: 0) {
+            clipHeader(
+                title: title,
+                headerColor: palette.header,
+                clipID: clipID,
+                slotID: slotID,
+                clipWidth: clipWidth,
+                arrangementSection: arrangementSection,
+                regionTrimBoundsStart: regionTrimBoundsStart,
+                regionTrimBoundsEnd: regionTrimBoundsEnd,
+                sourceTrimLeading: sourceTrimLeading,
+                sourceTrimTrailing: sourceTrimTrailing
+            )
+            .frame(width: clipWidth, height: TimelineLayout.clipHeaderHeight)
+
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(
+                        isWholeSelected
+                            ? palette.body.opacity(0.95)
+                            : palette.body.opacity(0.72)
+                    )
+
+                WaveformBarsCanvas(
+                    bars: clipDisplayPeaks(timelineStart: timelineStart, timelineEnd: timelineEnd),
+                    showsEmptyBaseline: showsFullSourceWaveform,
+                    fillColor: palette.header.opacity(0.82)
+                )
+                .allowsHitTesting(false)
+
+                if let dragRange {
+                    selectionOverlay(
+                        range: dragRange,
+                        clipWidth: clipWidth,
+                        timelineStart: timelineStart,
+                        timelineEnd: timelineEnd
+                    )
+                } else if let committedRange, !isWholeSelected {
+                    selectionOverlay(
+                        range: committedRange,
+                        clipWidth: clipWidth,
+                        timelineStart: timelineStart,
+                        timelineEnd: timelineEnd
+                    )
+                }
+
+                if isWholeSelected {
+                    Rectangle()
+                        .stroke(Color.dawClipBorder, lineWidth: 2)
+                }
+
+                if let editTime {
+                    editCursorOverlay(
+                        time: editTime,
+                        clipWidth: clipWidth,
+                        timelineStart: timelineStart,
+                        timelineEnd: timelineEnd
+                    )
                 }
             }
-            #endif
+            .frame(width: clipWidth, height: clipBodyHeight)
+            .overlay { ClipSideBorders() }
+            .contentShape(Rectangle())
+            .gesture(
+                clipBodySelectionGesture(
+                    clipID: clipID,
+                    slotID: slotID,
+                    clipWidth: clipWidth,
+                    timelineStart: timelineStart,
+                    timelineEnd: timelineEnd
+                )
+            )
+        }
+        .frame(width: clipWidth, height: laneHeight, alignment: .topLeading)
+    }
+
+    private func clipHeader(
+        title: String,
+        headerColor: Color,
+        clipID: UUID,
+        slotID: UUID,
+        clipWidth: CGFloat,
+        arrangementSection: ArrangementDisplaySection?,
+        regionTrimBoundsStart: TimeInterval,
+        regionTrimBoundsEnd: TimeInterval,
+        sourceTrimLeading: Bool,
+        sourceTrimTrailing: Bool
+    ) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(headerColor)
+
+            Text(title)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.95))
+                .lineLimit(1)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .allowsHitTesting(false)
+
+            HStack(spacing: 0) {
+                if let region = resolvedClipRegion(clipID: clipID) {
+                    clipHeaderTrimHandle(
+                        icon: "[",
+                        isActive: isClipRegionTrimActive(regionID: region.id, edge: .leading),
+                        clipWidth: clipWidth,
+                        gesture: clipRegionTrimDragGesture(
+                            for: region,
+                            edge: .leading,
+                            boundsStart: regionTrimBoundsStart,
+                            boundsEnd: regionTrimBoundsEnd
+                        )
+                    )
+                } else if let arrangementSection {
+                    clipHeaderTrimHandle(
+                        icon: "[",
+                        isActive: isClipTrimActive(sectionID: arrangementSection.id, edge: .leading),
+                        clipWidth: clipWidth,
+                        gesture: clipTrimDragGesture(
+                            for: arrangementSection,
+                            edge: .leading
+                        )
+                    )
+                } else if sourceTrimLeading {
+                    clipHeaderTrimHandle(
+                        icon: "[",
+                        isActive: activeHandle == .start,
+                        clipWidth: clipWidth,
+                        gesture: sourceTrackTrimDragGesture(handle: .start)
+                    )
+                }
+
+                Spacer(minLength: 0)
+
+                if let region = resolvedClipRegion(clipID: clipID) {
+                    clipHeaderTrimHandle(
+                        icon: "]",
+                        isActive: isClipRegionTrimActive(regionID: region.id, edge: .trailing),
+                        clipWidth: clipWidth,
+                        gesture: clipRegionTrimDragGesture(
+                            for: region,
+                            edge: .trailing,
+                            boundsStart: regionTrimBoundsStart,
+                            boundsEnd: regionTrimBoundsEnd
+                        )
+                    )
+                } else if let arrangementSection {
+                    clipHeaderTrimHandle(
+                        icon: "]",
+                        isActive: isClipTrimActive(sectionID: arrangementSection.id, edge: .trailing),
+                        clipWidth: clipWidth,
+                        gesture: clipTrimDragGesture(
+                            for: arrangementSection,
+                            edge: .trailing
+                        )
+                    )
+                } else if sourceTrimTrailing {
+                    clipHeaderTrimHandle(
+                        icon: "]",
+                        isActive: activeHandle == .end,
+                        clipWidth: clipWidth,
+                        gesture: sourceTrackTrimDragGesture(handle: .end)
+                    )
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectWholeClip(clipID: clipID, slotID: slotID)
+        }
+    }
+
+    private func clipHeaderTrimHandle<G: Gesture>(
+        icon: String,
+        isActive: Bool,
+        clipWidth: CGFloat,
+        gesture: G
+    ) -> some View {
+        ClipHeaderEdgeTrimControl(
+            icon: icon,
+            isActive: isActive,
+            isEnabled: clipWidth >= 12,
+            gesture: gesture
+        )
+    }
+
+    private func selectionOverlay(
+        range: ClosedRange<TimeInterval>,
+        clipWidth: CGFloat,
+        timelineStart: TimeInterval,
+        timelineEnd: TimeInterval
+    ) -> some View {
+        let duration = max(timelineEnd - timelineStart, 0.001)
+        let startX = clipWidth * CGFloat((range.lowerBound - timelineStart) / duration)
+        let endX = clipWidth * CGFloat((range.upperBound - timelineStart) / duration)
+        let width = max(0, endX - startX)
+
+        return ZStack(alignment: .leading) {
+            Rectangle()
+                .fill(Color.white.opacity(0.18))
+                .frame(width: width, height: clipBodyHeight)
+                .offset(x: startX)
+
+            Rectangle()
+                .stroke(Color.white.opacity(0.9), lineWidth: 1)
+                .frame(width: width, height: clipBodyHeight)
+                .offset(x: startX)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func editCursorOverlay(
+        time: TimeInterval,
+        clipWidth: CGFloat,
+        timelineStart: TimeInterval,
+        timelineEnd: TimeInterval
+    ) -> some View {
+        let duration = max(timelineEnd - timelineStart, 0.001)
+        let x = clipWidth * CGFloat((time - timelineStart) / duration)
+
+        return ZStack(alignment: .top) {
+            Rectangle()
+                .fill(Color.white)
+                .frame(width: 2, height: clipBodyHeight)
+                .shadow(color: .black.opacity(0.45), radius: 1, x: 0, y: 0)
+
+            Triangle()
+                .fill(Color.white)
+                .frame(width: 8, height: 6)
+                .shadow(color: .black.opacity(0.35), radius: 1, x: 0, y: 0)
+                .offset(y: -1)
+        }
+        .offset(x: x - 1)
+        .allowsHitTesting(false)
+    }
+
+    private struct Triangle: Shape {
+        func path(in rect: CGRect) -> Path {
+            var path = Path()
+            path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            path.closeSubpath()
+            return path
+        }
+    }
+
+    private func clipBodySelectionGesture(
+        clipID: UUID,
+        slotID: UUID,
+        clipWidth: CGFloat,
+        timelineStart: TimeInterval,
+        timelineEnd: TimeInterval
+    ) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                let startX = min(max(0, value.startLocation.x), clipWidth)
+                let currentX = min(max(0, value.location.x), clipWidth)
+                guard abs(currentX - startX) >= 4 else {
+                    activeClipDragSelection = nil
+                    return
+                }
+                if activeClipDragSelection?.clipID != clipID {
+                    activeClipDragSelection = ClipDragSelection(
+                        clipID: clipID,
+                        startX: startX,
+                        currentX: currentX
+                    )
+                } else if var drag = activeClipDragSelection {
+                    drag.currentX = currentX
+                    activeClipDragSelection = drag
+                }
+            }
+            .onEnded { value in
+                defer { activeClipDragSelection = nil }
+
+                guard clipWidth > 0 else { return }
+                let startX = min(max(0, value.startLocation.x), clipWidth)
+                let endX = min(max(0, value.location.x), clipWidth)
+                let minX = min(startX, endX)
+                let maxX = max(startX, endX)
+
+                if maxX - minX >= 4,
+                   let range = dragSelectionRange(
+                       drag: ClipDragSelection(clipID: clipID, startX: minX, currentX: maxX),
+                       clipWidth: clipWidth,
+                       timelineStart: timelineStart,
+                       timelineEnd: timelineEnd
+                   ) {
+                    clipSelection = .range(
+                        clipID: clipID,
+                        slotID: slotID,
+                        trackID: track.id,
+                        start: range.lowerBound,
+                        end: range.upperBound
+                    )
+                } else {
+                    let time = snappedTimelineTime(
+                        atX: startX,
+                        clipWidth: clipWidth,
+                        timelineStart: timelineStart,
+                        timelineEnd: timelineEnd
+                    )
+                    if !audioEngine.isPlaying {
+                        onSeek(time)
+                    }
+                    selectWholeClip(clipID: clipID, slotID: slotID, editTime: time)
+                }
+            }
+    }
+
+    private func snappedTimelineTime(
+        atX x: CGFloat,
+        clipWidth: CGFloat,
+        timelineStart: TimeInterval,
+        timelineEnd: TimeInterval
+    ) -> TimeInterval {
+        guard clipWidth > 0 else { return timelineStart }
+        let duration = max(timelineEnd - timelineStart, 0.001)
+        let clampedX = min(max(0, x), clipWidth)
+        let raw = timelineStart + duration * TimeInterval(clampedX / clipWidth)
+        let snapped = MeasureTiming.snapToNearestBeat(
+            raw,
+            tempoChanges: tempoChanges,
+            timeSignatureChanges: timeSignatureChanges
+        )
+        return min(max(snapped, timelineStart), timelineEnd)
+    }
+
+    private func dragSelectionRange(
+        drag: ClipDragSelection,
+        clipWidth: CGFloat,
+        timelineStart: TimeInterval,
+        timelineEnd: TimeInterval
+    ) -> ClosedRange<TimeInterval>? {
+        guard clipWidth > 0 else { return nil }
+        let duration = max(timelineEnd - timelineStart, 0.001)
+        let minX = min(drag.startX, drag.currentX)
+        let maxX = max(drag.startX, drag.currentX)
+        let rawStart = timelineStart + duration * TimeInterval(minX / clipWidth)
+        let rawEnd = timelineStart + duration * TimeInterval(maxX / clipWidth)
+        let snapped = MeasureTiming.snapTimelineRangeToGrid(
+            start: rawStart,
+            end: rawEnd,
+            tempoChanges: tempoChanges,
+            timeSignatureChanges: timeSignatureChanges
+        )
+        let start = max(timelineStart, snapped.start)
+        let end = min(timelineEnd, snapped.end)
+        guard end - start >= 0.05 else { return nil }
+        return start...end
+    }
+
+    private func committedSelectionRange(
+        clipID: UUID,
+        timelineStart: TimeInterval,
+        timelineEnd: TimeInterval
+    ) -> ClosedRange<TimeInterval>? {
+        guard let clipSelection,
+              clipSelection.clipID == clipID,
+              clipSelection.trackID == track.id,
+              case .range(_, _, _, let start, let end) = clipSelection else {
+            return nil
+        }
+        let overlapStart = max(start, timelineStart)
+        let overlapEnd = min(end, timelineEnd)
+        guard overlapEnd - overlapStart >= 0.05 else { return nil }
+        return overlapStart...overlapEnd
+    }
+
+    private func isWholeClipSelected(clipID: UUID) -> Bool {
+        guard let clipSelection,
+              clipSelection.clipID == clipID,
+              clipSelection.trackID == track.id else {
+            return false
+        }
+        return clipSelection.isWholeClip
+    }
+
+    private func clipEditTime(clipID: UUID) -> TimeInterval? {
+        guard let clipSelection,
+              clipSelection.clipID == clipID,
+              clipSelection.trackID == track.id,
+              let editTime = clipSelection.editTime else {
+            return nil
+        }
+        return editTime
+    }
+
+    private func selectWholeClip(clipID: UUID, slotID: UUID, editTime: TimeInterval? = nil) {
+        clipSelection = .whole(clipID: clipID, slotID: slotID, trackID: track.id, editTime: editTime)
+    }
+
+    private func sourceTrackTrimDragGesture(handle: TrimHandle) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named(TimelineDragSpace.name))
+            .onChanged { value in
+                activeHandle = handle
+                applyTrimTime(handle: handle, time: timelineTime(atContentX: value.location.x))
+            }
+            .onEnded { _ in
+                activeHandle = nil
+                onTrimChange()
+            }
     }
 
     private func clipTrimDragGesture(
         for section: ArrangementDisplaySection,
-        edge: ArrangementClipTrimEdge,
-        clipWidth: CGFloat
+        edge: ArrangementClipTrimEdge
     ) -> some Gesture {
-        DragGesture(minimumDistance: 2)
+        DragGesture(minimumDistance: 2, coordinateSpace: .named(TimelineDragSpace.name))
             .onChanged { value in
                 if activeClipTrim?.slotID != section.id || activeClipTrim?.edge != edge {
                     activeClipTrim = ActiveClipTrim(slotID: section.id, edge: edge)
@@ -522,20 +982,27 @@ struct WaveformLaneView: View {
                 }
 
                 guard let clipTrimDragStart,
-                      let slot = arrangementSlots.first(where: { $0.id == section.id }),
-                      let marker = markers.first(where: { $0.id == slot.markerID }),
-                      clipWidth > 0,
-                      section.duration > 0 else { return }
+                      let slot = arrangementSlots.first(where: { $0.id == section.slotID }),
+                      let marker = markers.first(where: { $0.id == slot.markerID }) else { return }
 
-                let deltaSource = TimeInterval(value.translation.width / clipWidth) * section.duration
+                let committed = SongArrangementStore.trims(
+                    slotID: section.id,
+                    trackID: track.id,
+                    in: clipTrims
+                )
+                let untrimmedDuration = section.timelineEndSeconds
+                    + committed.trailing
+                    - section.columnStartSeconds
+                let timelineTime = timelineTime(atContentX: value.location.x)
+
                 var leading = clipTrimDragStart.leadingTrim
                 var trailing = clipTrimDragStart.trailingTrim
 
                 switch edge {
                 case .leading:
-                    leading += deltaSource
+                    leading = timelineTime - section.columnStartSeconds
                 case .trailing:
-                    trailing -= deltaSource
+                    trailing = section.columnStartSeconds + untrimmedDuration - timelineTime
                 }
 
                 let clamped: (leading: TimeInterval, trailing: TimeInterval) = {
@@ -582,7 +1049,86 @@ struct WaveformLaneView: View {
             }
     }
 
+    private func resolvedClipRegion(clipID: UUID) -> ClipRegion? {
+        if let previewClipRegion, previewClipRegion.id == clipID {
+            return previewClipRegion
+        }
+        return ClipRegionStore.region(id: clipID, in: clipRegions)
+    }
+
+    private func resolvedClipBounds(
+        clipID: UUID,
+        fallbackStart: TimeInterval,
+        fallbackEnd: TimeInterval
+    ) -> (start: TimeInterval, end: TimeInterval) {
+        guard let region = resolvedClipRegion(clipID: clipID) else {
+            return (fallbackStart, fallbackEnd)
+        }
+        return (region.timelineStartSeconds, region.timelineEndSeconds)
+    }
+
+    private func isClipRegionTrimActive(
+        regionID: UUID,
+        edge: ClipRegionStore.RegionTrimEdge
+    ) -> Bool {
+        activeClipRegionTrim?.regionID == regionID && activeClipRegionTrim?.edge == edge
+    }
+
+    private func clipRegionTrimDragGesture(
+        for region: ClipRegion,
+        edge: ClipRegionStore.RegionTrimEdge,
+        boundsStart: TimeInterval,
+        boundsEnd: TimeInterval
+    ) -> some Gesture {
+        DragGesture(minimumDistance: 2, coordinateSpace: .named(TimelineDragSpace.name))
+            .onChanged { value in
+                if activeClipRegionTrim?.regionID != region.id || activeClipRegionTrim?.edge != edge {
+                    activeClipRegionTrim = (region.id, edge)
+                    clipRegionTrimBaseline = ClipRegionStore.region(id: region.id, in: clipRegions) ?? region
+                }
+
+                guard let clipRegionTrimBaseline else { return }
+
+                let timelineTime = timelineTime(atContentX: value.location.x)
+                let timelineOffset: TimeInterval
+                switch edge {
+                case .leading:
+                    timelineOffset = timelineTime - clipRegionTrimBaseline.timelineStartSeconds
+                case .trailing:
+                    timelineOffset = timelineTime - clipRegionTrimBaseline.timelineEndSeconds
+                }
+
+                previewClipRegion = ClipRegionStore.regionByTrimmingEdge(
+                    clipRegionTrimBaseline,
+                    edge: edge,
+                    timelineOffset: timelineOffset,
+                    in: clipRegions,
+                    boundsStart: boundsStart,
+                    boundsEnd: boundsEnd
+                )
+            }
+            .onEnded { _ in
+                defer {
+                    activeClipRegionTrim = nil
+                    clipRegionTrimBaseline = nil
+                    previewClipRegion = nil
+                }
+
+                guard let previewClipRegion,
+                      let index = clipRegions.firstIndex(where: { $0.id == previewClipRegion.id }) else {
+                    return
+                }
+
+                clipRegions[index] = previewClipRegion
+                onClipTrimCommitted()
+            }
+    }
+
     private func clipTimelineBounds(for section: ArrangementDisplaySection) -> (start: TimeInterval, end: TimeInterval) {
+        if let region = resolvedClipRegion(clipID: section.id) {
+            return (region.timelineStartSeconds, region.timelineEndSeconds)
+        }
+
         guard let previewClipTrims, previewClipTrims.slotID == section.id else {
             return (section.timelineStartSeconds, section.timelineEndSeconds)
         }
@@ -612,35 +1158,6 @@ struct WaveformLaneView: View {
         }
     }
 
-    private func trimHandle(at x: CGFloat, handle: TrimHandle) -> some View {
-        RoundedRectangle(cornerRadius: 2)
-            .fill(handle == activeHandle ? Color.dawClipBorder : Color.dawClipBorder.opacity(0.85))
-            .frame(width: 8, height: laneHeight - 8)
-            .overlay {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.white.opacity(0.7))
-                    .frame(width: 2, height: (laneHeight - 8) * 0.35)
-            }
-            .offset(x: x - 4, y: 4)
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        activeHandle = handle
-                        if dragStartTime == nil {
-                            dragStartTime = handle == .start ? track.trimStartSeconds : effectiveEnd
-                        }
-                        guard let dragStartTime else { return }
-                        let deltaTime = TimeInterval(value.translation.width / timelineContentWidth) * safeTimelineDuration
-                        applyTrimTime(handle: handle, time: dragStartTime + deltaTime)
-                    }
-                    .onEnded { _ in
-                        activeHandle = nil
-                        dragStartTime = nil
-                        onTrimChange()
-                    }
-            )
-    }
-
     private func applyTrimTime(handle: TrimHandle, time: TimeInterval) {
         let minGap: TimeInterval = 0.1
 
@@ -652,6 +1169,41 @@ struct WaveformLaneView: View {
             let minEnd = track.trimStartSeconds + minGap
             track.trimEndSeconds = min(max(minEnd, time), fileDuration)
         }
+    }
+}
+
+private struct ClipHeaderEdgeTrimControl<G: Gesture>: View {
+    let icon: String
+    let isActive: Bool
+    let isEnabled: Bool
+    let gesture: G
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Text(icon)
+            .font(.system(size: 10, weight: .heavy, design: .monospaced))
+            .foregroundStyle(.white.opacity(isActive ? 1 : 0.92))
+            .frame(width: 14)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .highPriorityGesture(gesture)
+            #if os(macOS)
+            .opacity(isEnabled && (isHovering || isActive) ? 1 : 0)
+            .onContinuousHover { phase in
+                guard isEnabled else { return }
+                switch phase {
+                case .active:
+                    isHovering = true
+                    NSCursor.resizeLeftRight.push()
+                case .ended:
+                    isHovering = false
+                    NSCursor.pop()
+                }
+            }
+            #else
+            .opacity(isEnabled && isActive ? 1 : 0)
+            #endif
     }
 }
 
@@ -674,6 +1226,8 @@ private struct WaveformBarsCanvas: View, Equatable {
     let bars: [Float]
     var showsEmptyBaseline = true
     var baselineRanges: [ClosedRange<CGFloat>] = []
+    var headerHeight: CGFloat = 0
+    var fillColor: Color = Color.dawWaveformFill
 
     private let minBarHeight: CGFloat = 1.0
 
@@ -685,12 +1239,12 @@ private struct WaveformBarsCanvas: View, Equatable {
     }
 
     private func drawWaveform(in context: inout GraphicsContext, size: CGSize) {
-        let midY = size.height / 2
-        let fillColor = Color.dawWaveformFill
+        let bodyHeight = max(1, size.height - headerHeight)
+        let midY = headerHeight + bodyHeight / 2
 
         if !bars.isEmpty {
             let barWidth = size.width / CGFloat(bars.count)
-            let maxBarHeight = midY * 0.92
+            let maxBarHeight = (bodyHeight / 2) * 0.92
 
             if baselineRanges.isEmpty {
                 drawFilledWaveformSegment(

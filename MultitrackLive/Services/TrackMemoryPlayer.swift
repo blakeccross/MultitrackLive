@@ -60,6 +60,20 @@ final class TrackMemoryPlayer {
             }
         }
 
+        private func silentGapSkipFrames(
+            regionSeconds: TimeInterval,
+            remainingFrames: Int
+        ) -> Int {
+            min(Int((regionSeconds * sampleRate).rounded(.down)), remainingFrames)
+        }
+
+        private func silentGapSkipFrames(
+            regionSeconds: TimeInterval,
+            remainingFrames: AVAudioFrameCount
+        ) -> AVAudioFrameCount {
+            min(AVAudioFrameCount(regionSeconds * sampleRate), remainingFrames)
+        }
+
         private func renderConstantTempo(
             masterStart: TimeInterval,
             frameCount: AVAudioFrameCount,
@@ -77,14 +91,22 @@ final class TrackMemoryPlayer {
                     bufferLimit: bufferRemaining
                 )
 
-                guard regionSeconds > 0,
-                      let sourceStart = mapper.sourceSeconds(atMasterTimeline: masterTime) else {
-                    break
+                guard regionSeconds > 0 else { break }
+
+                guard let sourceStart = mapper.sourceSeconds(atMasterTimeline: masterTime) else {
+                    let skipFrames = silentGapSkipFrames(
+                        regionSeconds: regionSeconds,
+                        remainingFrames: frameCount - renderedFrames
+                    )
+                    guard skipFrames > 0 else { break }
+                    renderedFrames += skipFrames
+                    masterTime += Double(skipFrames) / sampleRate
+                    continue
                 }
 
-                let runFrames = min(
-                    AVAudioFrameCount(regionSeconds * sampleRate),
-                    frameCount - renderedFrames
+                let runFrames = silentGapSkipFrames(
+                    regionSeconds: regionSeconds,
+                    remainingFrames: frameCount - renderedFrames
                 )
                 guard runFrames > 0 else { break }
 
@@ -188,14 +210,22 @@ final class TrackMemoryPlayer {
                     bufferLimit: bufferRemaining
                 )
 
-                guard regionSeconds > 0,
-                      let sourceStart = mapper.sourceSeconds(atMasterTimeline: masterTime) else {
-                    break
+                guard regionSeconds > 0 else { break }
+
+                guard let sourceStart = mapper.sourceSeconds(atMasterTimeline: masterTime) else {
+                    let skipFrames = silentGapSkipFrames(
+                        regionSeconds: regionSeconds,
+                        remainingFrames: outputFrames - renderedFrames
+                    )
+                    guard skipFrames > 0 else { break }
+                    renderedFrames += skipFrames
+                    masterTime += Double(skipFrames) / sampleRate
+                    continue
                 }
 
-                let runFrames = min(
-                    Int((regionSeconds * sampleRate).rounded(.down)),
-                    outputFrames - renderedFrames
+                let runFrames = silentGapSkipFrames(
+                    regionSeconds: regionSeconds,
+                    remainingFrames: outputFrames - renderedFrames
                 )
                 guard runFrames > 0 else { break }
 

@@ -228,6 +228,8 @@ enum SongTrackLoader {
             slots: arrangement.slots,
             clipTrims: arrangement.clipTrims,
             removedClips: arrangement.removedClips,
+            clipGaps: arrangement.clipGaps,
+            clipRegions: arrangement.clipRegions,
             inputs: inputs
         )
 
