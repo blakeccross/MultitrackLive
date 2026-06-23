@@ -11,6 +11,9 @@ final class Song {
     var timeSignatureDenominator: Int?
     var transposeSemitones: Int
     var transposeHighQuality: Bool
+    var clickTrackEnabled: Bool
+    var clickTrackVolume: Double
+    var clickTrackSubdivision: String
 
     @Relationship(deleteRule: .cascade, inverse: \AudioTrack.song)
     var tracks: [AudioTrack]
@@ -24,7 +27,23 @@ final class Song {
         timeSignatureDenominator = nil
         transposeSemitones = 0
         transposeHighQuality = false
+        clickTrackEnabled = false
+        clickTrackVolume = 1.0
+        clickTrackSubdivision = ClickTrackSubdivision.quarter.rawValue
         tracks = []
+    }
+
+    var clickSubdivision: ClickTrackSubdivision {
+        get { ClickTrackSubdivision(rawValue: clickTrackSubdivision) ?? .quarter }
+        set { clickTrackSubdivision = newValue.rawValue }
+    }
+
+    /// Stable virtual track ID for the generated click stem (never stored as `AudioTrack`).
+    var clickTrackID: UUID {
+        var bytes = id.uuid
+        bytes.7 = 0xCC
+        bytes.8 = (bytes.8 & 0x3F) | 0x80
+        return UUID(uuid: bytes)
     }
 
     var timeSignatureDisplay: String? {

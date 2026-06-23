@@ -71,6 +71,9 @@ struct EditView: View {
         }
         try? TempoStore.save(normalized, for: song.id)
         viewModel.syncTempoMap(normalized, timeSignatureChanges: normalizedTimeSignatureChanges)
+        if song.clickTrackEnabled {
+            viewModel.reloadSongForClickTrackChanges()
+        }
     }
 
     private func persistTimeSignatureChanges() {
@@ -86,6 +89,9 @@ struct EditView: View {
         }
         try? TimeSignatureStore.save(normalized, for: song.id)
         viewModel.syncTempoMap(normalizedTempoChanges, timeSignatureChanges: normalized)
+        if song.clickTrackEnabled {
+            viewModel.reloadSongForClickTrackChanges()
+        }
     }
 
     private func handleTempoRulerTap(at time: TimeInterval) {
@@ -871,6 +877,11 @@ private struct EditSongToolbarContent: ToolbarContent {
             }
             .sharedBackgroundVisibility(.hidden)
 
+            ToolbarItem(placement: .navigation) {
+                ClickTrackEditorButton(song: song, viewModel: viewModel)
+            }
+            .sharedBackgroundVisibility(.hidden)
+
             ToolbarItem {
                 Spacer(minLength: 0)
             }
@@ -907,6 +918,10 @@ private struct EditSongToolbarContent: ToolbarContent {
 
             ToolbarItem(placement: .navigation) {
                 timeSignatureEditorButton
+            }
+
+            ToolbarItem(placement: .navigation) {
+                ClickTrackEditorButton(song: song, viewModel: viewModel)
             }
 
             ToolbarItem {
@@ -1077,6 +1092,7 @@ private struct EditTransportBar: View {
                     HStack(spacing: 8) {
                         tempoEditorButton
                         timeSignatureEditorButton
+                        ClickTrackEditorButton(song: song, viewModel: viewModel)
                     }
 
                     Spacer(minLength: 8)
@@ -2155,6 +2171,102 @@ private struct TimelineTempoRulerView: View {
     private func tempoColor(_ index: Int) -> Color {
         let colors: [Color] = [.orange, .pink, .yellow, .red, .brown]
         return colors[index % colors.count]
+    }
+}
+
+private struct ClickTrackEditorButton: View {
+    @Bindable var song: Song
+    let viewModel: SongEditorViewModel
+
+    @State private var showingEditor = false
+
+    var body: some View {
+        Button {
+            showingEditor = true
+        } label: {
+            Label("Click", systemImage: "cursorarrow.click")
+                .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(.bordered)
+        .tint(song.clickTrackEnabled ? .accentColor : nil)
+        .popover(isPresented: $showingEditor, arrowEdge: .bottom) {
+            ClickTrackEditorMenu(song: song, viewModel: viewModel)
+        }
+    }
+}
+
+private struct ClickTrackEditorMenu: View {
+    @Environment(\.modelContext) private var modelContext
+
+    @Bindable var song: Song
+    let viewModel: SongEditorViewModel
+
+    @State private var volume: Double
+
+    init(song: Song, viewModel: SongEditorViewModel) {
+        self.song = song
+        self.viewModel = viewModel
+        _volume = State(initialValue: song.clickTrackVolume)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Click Track")
+                .font(.headline)
+
+            Toggle("Enabled", isOn: $song.clickTrackEnabled)
+                .onChange(of: song.clickTrackEnabled) { _, _ in
+                    try? modelContext.save()
+                    viewModel.reloadSongForClickTrackChanges()
+                }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Speed")
+                    .font(.subheadline)
+
+                Picker("Speed", selection: Binding(
+                    get: { song.clickSubdivision },
+                    set: { newValue in
+                        song.clickSubdivision = newValue
+                        try? modelContext.save()
+                        viewModel.reloadSongForClickTrackChanges()
+                    }
+                )) {
+                    ForEach(ClickTrackSubdivision.allCases) { subdivision in
+                        Text(subdivision.displayName).tag(subdivision)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(!song.clickTrackEnabled)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Volume")
+                    .font(.subheadline)
+
+                Slider(value: $volume, in: 0...1, step: 0.01) {
+                    Text("Volume")
+                } minimumValueLabel: {
+                    Image(systemName: "speaker.fill")
+                } maximumValueLabel: {
+                    Image(systemName: "speaker.wave.3.fill")
+                }
+                .disabled(!song.clickTrackEnabled)
+                .onChange(of: volume) { _, newValue in
+                    song.clickTrackVolume = newValue
+                    viewModel.updateClickTrackMix(context: modelContext)
+                }
+            }
+
+            Text("Plays clicks aligned to the song tempo map.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .frame(minWidth: 280)
+        .onChange(of: song.clickTrackVolume) { _, newValue in
+            volume = newValue
+        }
     }
 }
 

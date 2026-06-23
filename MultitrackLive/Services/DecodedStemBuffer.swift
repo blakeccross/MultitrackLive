@@ -212,6 +212,68 @@ final class DecodedStemBuffer: StemSampleSource, @unchecked Sendable {
         return sampleA + (sampleB - sampleA) * fraction
     }
 
+    static func silent(
+        frameCount: Int,
+        sampleRate: Double = engineSampleRate,
+        channelCount: Int = 1
+    ) throws -> DecodedStemBuffer {
+        guard frameCount > 0, channelCount > 0 else {
+            throw DecodedStemBufferError.emptyFile
+        }
+        guard let audioFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: sampleRate,
+            channels: AVAudioChannelCount(channelCount),
+            interleaved: false
+        ) else {
+            throw DecodedStemBufferError.unsupportedFormat
+        }
+
+        var channelPointers: [UnsafeMutablePointer<Float>] = []
+        channelPointers.reserveCapacity(channelCount)
+        for _ in 0..<channelCount {
+            let pointer = UnsafeMutablePointer<Float>.allocate(capacity: frameCount)
+            pointer.initialize(repeating: 0, count: frameCount)
+            channelPointers.append(pointer)
+        }
+
+        return DecodedStemBuffer(
+            sampleRate: sampleRate,
+            channelCount: channelCount,
+            frameCount: frameCount,
+            audioFormat: audioFormat,
+            channels: channelPointers
+        )
+    }
+
+    func mixAdding(_ sample: DecodedStemBuffer, atFrame startFrame: Int) {
+        let channelsToMix = min(channelCount, sample.channelCount)
+        guard channelsToMix > 0, startFrame >= 0 else { return }
+
+        for channel in 0..<channelsToMix {
+            let destination = channels[channel]
+            let source = sample.channels[channel]
+            let available = min(sample.frameCount, frameCount - startFrame)
+            guard available > 0 else { continue }
+
+            for index in 0..<available {
+                destination[startFrame + index] += source[index]
+            }
+        }
+    }
+
+    static func impulseSample(
+        frameCount: Int = 100,
+        peakFrame: Int = 0,
+        amplitude: Float = 1.0,
+        sampleRate: Double = engineSampleRate
+    ) throws -> DecodedStemBuffer {
+        let buffer = try silent(frameCount: frameCount, sampleRate: sampleRate)
+        guard peakFrame >= 0, peakFrame < frameCount else { return buffer }
+        buffer.channels[0][peakFrame] = amplitude
+        return buffer
+    }
+
     private static func readDirectly(
         from file: AVAudioFile,
         channelCount: Int,

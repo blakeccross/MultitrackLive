@@ -15,6 +15,7 @@ final class AudioEngineManager {
         var trimEnd: TimeInterval?
         var pitchCents: Float
         var excludeFromTranspose: Bool
+        var ignoresSolo: Bool = false
     }
 
     struct PreparedTrackPayload: Sendable {
@@ -438,7 +439,7 @@ final class AudioEngineManager {
             var isAudible = true
 
             if anySolo {
-                if !track.settings.isSolo {
+                if !track.settings.isSolo, !track.settings.ignoresSolo {
                     effectiveVolume = 0
                     isAudible = false
                 }

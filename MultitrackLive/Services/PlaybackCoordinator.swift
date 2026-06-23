@@ -244,8 +244,25 @@ final class PlaybackCoordinator {
         guard generation == loadGeneration, !Task.isCancelled else { return }
 
         switch preparationResult {
-        case .success(let prepared):
+        case .success(var prepared):
             do {
+                let tempoChanges = TempoStore.loadOrMigrate(for: song)
+                let timeSignatureChanges = TimeSignatureStore.loadOrMigrate(
+                    for: song,
+                    tempoChanges: tempoChanges
+                )
+                try SongTrackLoader.appendClickTrackIfNeeded(
+                    to: &prepared,
+                    song: song,
+                    sourceDurationForTrack: { trackID in
+                        guard let track = song.sortedTracks.first(where: { $0.id == trackID }) else { return 1 }
+                        let url = FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath)
+                        return FileStore.fileDuration(at: url) ?? 1
+                    },
+                    tempoChanges: tempoChanges,
+                    timeSignatureChanges: timeSignatureChanges
+                )
+
                 let routing = routingProvider?()
                 try audioEngine.loadPreparedTracks(prepared, routing: routing)
                 applySongEngineState(for: song)

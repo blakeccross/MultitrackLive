@@ -209,4 +209,84 @@ enum SongTrackLoader {
         }
     }
 
+    static func timelineDuration(
+        for song: Song,
+        sourceDurationForTrack: @escaping (UUID) -> TimeInterval
+    ) -> TimeInterval {
+        let fileDuration = song.sortedTracks
+            .map { sourceDurationForTrack($0.id) }
+            .max() ?? 0
+
+        let markers = ArrangementMarkerStore.load(for: song.id).sortedByTime
+        let arrangement = SongArrangementStore.load(for: song.id, markers: markers)
+        let inputs = SongArrangementStore.makeLayoutInputs(
+            markers: markers,
+            trackIDs: song.sortedTracks.map(\.id),
+            sourceDurationForTrack: sourceDurationForTrack
+        )
+        let layout = SongArrangementStore.buildLayoutSnapshot(
+            slots: arrangement.slots,
+            clipTrims: arrangement.clipTrims,
+            removedClips: arrangement.removedClips,
+            inputs: inputs
+        )
+
+        return max(layout.rulerSections.last?.timelineEndSeconds ?? fileDuration, fileDuration, 1)
+    }
+
+    static func clickTrackPayload(
+        for song: Song,
+        duration: TimeInterval,
+        tempoChanges: [TempoChange],
+        timeSignatureChanges: [TimeSignatureChange]
+    ) throws -> AudioEngineManager.PreparedTrackPayload? {
+        guard song.clickTrackEnabled else { return nil }
+
+        let buffer = try ClickTrackGenerator.generate(
+            duration: duration,
+            tempoChanges: tempoChanges,
+            timeSignatureChanges: timeSignatureChanges,
+            subdivision: song.clickSubdivision
+        )
+
+        let settings = AudioEngineManager.TrackSettings(
+            volume: Float(song.clickTrackVolume),
+            pan: 0,
+            isMuted: false,
+            isSolo: false,
+            trimStart: 0,
+            trimEnd: duration,
+            pitchCents: 0,
+            excludeFromTranspose: true,
+            ignoresSolo: true
+        )
+
+        return try AudioEngineManager.prepareTrackPayload(
+            id: song.clickTrackID,
+            decodedBuffer: buffer,
+            settings: settings,
+            groupID: nil,
+            bakePitchShift: false
+        )
+    }
+
+    static func appendClickTrackIfNeeded(
+        to prepared: inout [AudioEngineManager.PreparedTrackPayload],
+        song: Song,
+        sourceDurationForTrack: @escaping (UUID) -> TimeInterval,
+        tempoChanges: [TempoChange],
+        timeSignatureChanges: [TimeSignatureChange]
+    ) throws {
+        guard song.clickTrackEnabled else { return }
+
+        let duration = timelineDuration(for: song, sourceDurationForTrack: sourceDurationForTrack)
+        if let clickPayload = try clickTrackPayload(
+            for: song,
+            duration: duration,
+            tempoChanges: tempoChanges,
+            timeSignatureChanges: timeSignatureChanges
+        ) {
+            prepared.append(clickPayload)
+        }
+    }
 }

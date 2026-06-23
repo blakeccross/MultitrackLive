@@ -57,6 +57,31 @@ final class SongEditorViewModel {
         }
     }
 
+    func reloadSongForClickTrackChanges() {
+        reloadSong()
+    }
+
+    func updateClickTrackMix(context: ModelContext) {
+        guard song.clickTrackEnabled, isLoaded else { return }
+        audioEngine.updateTrackSettings(id: song.clickTrackID, settings: clickTrackSettings())
+        audioEngine.applyAllMixSettings()
+        try? context.save()
+    }
+
+    private func clickTrackSettings() -> AudioEngineManager.TrackSettings {
+        AudioEngineManager.TrackSettings(
+            volume: Float(song.clickTrackVolume),
+            pan: 0,
+            isMuted: false,
+            isSolo: false,
+            trimStart: 0,
+            trimEnd: nil,
+            pitchCents: 0,
+            excludeFromTranspose: true,
+            ignoresSolo: true
+        )
+    }
+
     @MainActor
     private func performReload() async {
         reloadGeneration += 1
@@ -134,23 +159,40 @@ final class SongEditorViewModel {
         guard generation == reloadGeneration, !Task.isCancelled else { return }
 
         switch preparationResult {
-        case .success(let prepared):
+        case .success(var prepared):
             trackDurations = [:]
             for payload in prepared {
                 trackDurations[payload.id] = Double(payload.buffer.frameCount) / payload.buffer.sampleRate
             }
 
+            let tempoChanges = TempoStore.loadOrMigrate(for: song)
+            let timeSignatureChanges = TimeSignatureStore.loadOrMigrate(
+                for: song,
+                tempoChanges: tempoChanges
+            )
+
             do {
+                try SongTrackLoader.appendClickTrackIfNeeded(
+                    to: &prepared,
+                    song: song,
+                    sourceDurationForTrack: { [self] trackID in
+                        if let cached = trackDurations[trackID] {
+                            return cached
+                        }
+                        guard let track = song.sortedTracks.first(where: { $0.id == trackID }) else { return 1 }
+                        return fileDuration(for: track)
+                    },
+                    tempoChanges: tempoChanges,
+                    timeSignatureChanges: timeSignatureChanges
+                )
+                if let clickPayload = prepared.first(where: { $0.id == song.clickTrackID }) {
+                    trackDurations[clickPayload.id] = Double(clickPayload.buffer.frameCount) / clickPayload.buffer.sampleRate
+                }
+
                 try audioEngine.loadPreparedTracks(prepared)
                 isLoaded = true
                 loadError = nil
-                syncTempoMap(
-                    TempoStore.loadOrMigrate(for: song),
-                    timeSignatureChanges: TimeSignatureStore.loadOrMigrate(
-                        for: song,
-                        tempoChanges: TempoStore.loadOrMigrate(for: song)
-                    )
-                )
+                syncTempoMap(tempoChanges, timeSignatureChanges: timeSignatureChanges)
             } catch {
                 isLoaded = false
                 loadError = error.localizedDescription
