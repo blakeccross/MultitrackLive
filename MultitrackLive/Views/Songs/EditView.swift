@@ -483,15 +483,16 @@ struct EditView: View {
                             .frame(width: timelineContentWidth, height: TimelineLayout.rulerTotalHeight)
 
                         ScrollView(.vertical, showsIndicators: true) {
-                            trackTimelineScrollContent
-                                .frame(width: timelineContentWidth, alignment: .leading)
-                                .background {
-                                    TimelineVerticalScrollOffsetReporter(
-                                        coordinateSpaceName: timelineVerticalScrollSpace
-                                    )
-                                }
+                            VStack(spacing: 0) {
+                                TimelineVerticalScrollOffsetReporter(
+                                    coordinateSpaceName: timelineVerticalScrollSpace
+                                )
+                                trackTimelineScrollContent
+                                    .frame(width: timelineContentWidth, alignment: .leading)
+                            }
                         }
                         .coordinateSpace(name: timelineVerticalScrollSpace)
+                        .modifier(TimelineVerticalScrollOffsetObserver(offset: $timelineVerticalScrollOffset))
                         .frame(height: tracksViewportHeight)
                     }
                     .frame(width: timelineContentWidth, alignment: .leading)
@@ -511,9 +512,6 @@ struct EditView: View {
             }
         }
         .frame(maxHeight: .infinity)
-        .onPreferenceChange(TimelineVerticalScrollOffsetKey.self) { offset in
-            timelineVerticalScrollOffset = offset
-        }
     }
 
     private var timelineRulerStack: some View {
@@ -1487,6 +1485,26 @@ private struct TimelineVerticalScrollOffsetKey: PreferenceKey {
     }
 }
 
+private struct TimelineVerticalScrollOffsetObserver: ViewModifier {
+    @Binding var offset: CGFloat
+
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, iOS 18.0, *) {
+            content
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y
+                } action: { _, newValue in
+                    offset = newValue
+                }
+        } else {
+            content
+                .onPreferenceChange(TimelineVerticalScrollOffsetKey.self) { newValue in
+                    offset = newValue
+                }
+        }
+    }
+}
+
 private struct TimelineVerticalScrollOffsetReporter: View {
     let coordinateSpaceName: String
 
@@ -1497,6 +1515,7 @@ private struct TimelineVerticalScrollOffsetReporter: View {
                 value: -proxy.frame(in: .named(coordinateSpaceName)).minY
             )
         }
+        .frame(height: 0)
     }
 }
 

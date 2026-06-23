@@ -219,7 +219,7 @@ private struct InfoFieldValue: View {
 
     var body: some View {
         Text(text)
-            .font(.callout.monospacedDigit().weight(.medium))
+            .font(.title2.monospacedDigit().weight(.medium))
             .lineLimit(1)
     }
 }

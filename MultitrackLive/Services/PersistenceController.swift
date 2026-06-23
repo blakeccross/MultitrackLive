@@ -1,10 +1,12 @@
 import Foundation
+import OSLog
 import SwiftData
 
 enum PersistenceController {
     /// Bump when arrangement marker storage changes so stale rows are discarded.
     private static let storeVersion = 12
     private static let storeVersionKey = "SwiftDataStoreVersion"
+    private static let logger = Logger(subsystem: "com.blakecross.MultitrackLive", category: "Persistence")
 
     static let modelTypes: [any PersistentModel.Type] = [
         Song.self,
@@ -25,7 +27,8 @@ enum PersistenceController {
         do {
             return try ModelContainer(for: schema, configurations: [configuration])
         } catch {
-            resetStore(at: configuration.url)
+            logger.error("SwiftData store open failed; removing store and retrying: \(error.localizedDescription, privacy: .public)")
+            resetStore(at: configuration.url, reason: "ModelContainer open failed")
             UserDefaults.standard.set(storeVersion, forKey: storeVersionKey)
             return try ModelContainer(for: schema, configurations: [configuration])
         }
@@ -35,11 +38,12 @@ enum PersistenceController {
         let storedVersion = UserDefaults.standard.integer(forKey: storeVersionKey)
         guard storedVersion < storeVersion else { return }
 
-        resetStore(at: url)
+        logger.notice("Resetting SwiftData store for schema migration \(storedVersion, privacy: .public) → \(self.storeVersion, privacy: .public)")
+        resetStore(at: url, reason: "schema version migration")
         UserDefaults.standard.set(storeVersion, forKey: storeVersionKey)
     }
 
-    private static func resetStore(at url: URL) {
+    private static func resetStore(at url: URL, reason: String) {
         let fileManager = FileManager.default
         let relatedURLs = [
             url,
@@ -48,6 +52,7 @@ enum PersistenceController {
         ]
 
         for storeURL in relatedURLs where fileManager.fileExists(atPath: storeURL.path) {
+            logger.error("Removing SwiftData file (\(reason, privacy: .public)): \(storeURL.path, privacy: .public)")
             try? fileManager.removeItem(at: storeURL)
         }
     }
