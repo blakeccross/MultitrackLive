@@ -300,6 +300,9 @@ struct EditView: View {
     }
 
     private var timelineDuration: TimeInterval {
+        if song.isClickOnly {
+            return max(max(audioEngine.currentTime + 120, 240), 1)
+        }
         if !displaySections.isEmpty {
             let arrangedEnd = displaySections.last?.timelineEndSeconds ?? 1
             return max(max(arrangedEnd, 1), sourceDuration)
@@ -316,7 +319,7 @@ struct EditView: View {
     }
 
     private var hasTimelineContent: Bool {
-        !song.sortedTracks.isEmpty || !displaySections.isEmpty
+        song.isClickOnly || !song.sortedTracks.isEmpty || !displaySections.isEmpty
     }
 
     var body: some View {
@@ -883,7 +886,72 @@ struct EditView: View {
         )
     }
 
+    @ViewBuilder
     private var dawTimeline: some View {
+        if song.isClickOnly {
+            clickOnlyTimeline
+        } else {
+            stemTimeline
+        }
+    }
+
+    private var clickOnlyTimeline: some View {
+        GeometryReader { geometry in
+            HStack(alignment: .top, spacing: 0) {
+                ScrollView(.horizontal, showsIndicators: true) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        timelineRulerStack
+                            .frame(width: timelineContentWidth, height: TimelineLayout.rulerTotalHeight)
+
+                        ZStack(alignment: .topLeading) {
+                            Rectangle()
+                                .fill(Color.dawTimelineBackground)
+                                .frame(width: timelineContentWidth, height: max(0, geometry.size.height - TimelineLayout.rulerTotalHeight))
+
+                            TimelinePlayheadOverlay(
+                                duration: timelineDuration,
+                                contentWidth: timelineContentWidth,
+                                height: max(0, geometry.size.height - TimelineLayout.rulerTotalHeight)
+                            )
+                        }
+                    }
+                    .frame(width: timelineContentWidth, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.width
+                } action: { width in
+                    timelineViewportWidth = width
+                }
+                .simultaneousGesture(timelinePinchGesture)
+                .onTapGesture {
+                    isTimelineFocused = true
+                }
+
+                clickOnlyTrackHeaderColumn(height: geometry.size.height)
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private func clickOnlyTrackHeaderColumn(height: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            trackHeaderRulerCorner
+
+            HStack(spacing: 8) {
+                Image(systemName: "cursorarrow.click")
+                    .foregroundStyle(.secondary)
+                Text("Click")
+                    .font(.subheadline)
+            }
+            .frame(width: TimelineLayout.trackHeaderWidth, height: max(0, height - TimelineLayout.rulerTotalHeight), alignment: .topLeading)
+            .padding(.top, 8)
+            .padding(.horizontal, 8)
+        }
+        .frame(width: TimelineLayout.trackHeaderWidth)
+    }
+
+    private var stemTimeline: some View {
         GeometryReader { geometry in
             let tracksViewportHeight = max(0, geometry.size.height - TimelineLayout.rulerTotalHeight)
 
@@ -1417,7 +1485,7 @@ private struct EditSongToolbarContent: ToolbarContent {
                 .labelStyle(.titleAndIcon)
         }
         .buttonStyle(.bordered)
-        .disabled(song.sortedTracks.isEmpty)
+        .disabled(song.isClickOnly || song.sortedTracks.isEmpty)
     }
 
     private var changeKeyButtonTitle: String {
@@ -1582,7 +1650,7 @@ private struct EditTransportBar: View {
                 .labelStyle(.titleAndIcon)
         }
         .buttonStyle(.bordered)
-        .disabled(song.sortedTracks.isEmpty)
+        .disabled(song.isClickOnly || song.sortedTracks.isEmpty)
     }
 
     private var changeKeyButtonTitle: String {

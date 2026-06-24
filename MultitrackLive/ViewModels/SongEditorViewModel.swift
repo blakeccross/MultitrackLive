@@ -62,9 +62,17 @@ final class SongEditorViewModel {
     }
 
     func updateClickTrackMix(context: ModelContext) {
-        guard song.clickTrackEnabled, isLoaded else { return }
-        audioEngine.updateTrackSettings(id: song.clickTrackID, settings: clickTrackSettings())
-        audioEngine.applyAllMixSettings()
+        guard song.clickTrackEnabled || song.isClickOnly, isLoaded else { return }
+        if song.isClickOnly {
+            audioEngine.updateTrackSettings(id: song.clickTrackID, settings: clickTrackSettings())
+            audioEngine.updateClickOnlyPlayback(
+                subdivision: song.clickSubdivision,
+                isEnabled: song.clickTrackEnabled
+            )
+        } else {
+            audioEngine.updateTrackSettings(id: song.clickTrackID, settings: clickTrackSettings())
+            audioEngine.applyAllMixSettings()
+        }
         try? context.save()
     }
 
@@ -78,7 +86,8 @@ final class SongEditorViewModel {
             trimEnd: nil,
             pitchCents: 0,
             excludeFromTranspose: true,
-            ignoresSolo: true
+            ignoresSolo: true,
+            bypassesArrangementMapping: true
         )
     }
 
@@ -102,6 +111,33 @@ final class SongEditorViewModel {
                 settings: AudioEngineManager.TrackSettings(track: track),
                 groupID: track.group?.id
             )
+        }
+
+        if song.isClickOnly {
+            audioEngine.stop()
+            let tempoChanges = TempoStore.loadOrMigrate(for: song)
+            let timeSignatureChanges = TimeSignatureStore.loadOrMigrate(
+                for: song,
+                tempoChanges: tempoChanges
+            )
+
+            do {
+                try audioEngine.loadClickOnlySong(
+                    trackID: song.clickTrackID,
+                    settings: clickTrackSettings(),
+                    subdivision: song.clickSubdivision,
+                    isEnabled: song.clickTrackEnabled,
+                    tempoChanges: tempoChanges,
+                    timeSignatureChanges: timeSignatureChanges
+                )
+                isLoaded = true
+                loadError = nil
+                syncTempoMap(tempoChanges, timeSignatureChanges: timeSignatureChanges)
+            } catch {
+                isLoaded = false
+                loadError = error.localizedDescription
+            }
+            return
         }
 
         guard !trackInputs.isEmpty else {

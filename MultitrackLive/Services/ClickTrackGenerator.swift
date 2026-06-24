@@ -36,50 +36,32 @@ enum ClickTrackGenerator {
         let frameCount = Int((duration * sampleRate).rounded(.up))
         let output = try DecodedStemBuffer.silent(frameCount: frameCount, sampleRate: sampleRate)
 
-        let accentSample = try accent ?? accentSample()
-        let normalSample = try normal ?? normalSample()
-        let subdivisionsPerBeat = subdivision.subdivisionsPerBeat
+        let accentSample = try accent ?? sharedAccentSample()
+        let normalSample = try normal ?? sharedNormalSample()
 
-        var measure = 1
-        while true {
-            let measureStart = MeasureTiming.timeAtStartOfMeasure(
-                measure,
-                tempoChanges: normalizedTempo,
-                timeSignatureChanges: normalizedSignatures
-            )
-            if measureStart >= duration { break }
+        let clicks = ClickTrackScheduler.scheduledClicks(
+            from: 0,
+            to: duration,
+            tempoChanges: normalizedTempo,
+            timeSignatureChanges: normalizedSignatures,
+            subdivision: subdivision
+        )
 
-            let bpm = MeasureTiming.bpmForMeasure(measure, tempoChanges: normalizedTempo)
-            guard bpm > 0 else { break }
-
-            let signature = MeasureTiming.numeratorDenominatorForMeasure(
-                measure,
-                changes: normalizedSignatures
-            )
-            let beatsInMeasure = Int(
-                MeasureTiming.beatsPerMeasure(
-                    numerator: signature.numerator,
-                    denominator: signature.denominator
-                ).rounded(.down)
-            )
-            let beatDuration = 60.0 / bpm
-            let subdivisionDuration = beatDuration / Double(subdivisionsPerBeat)
-            let subdivisionsInMeasure = max(1, beatsInMeasure) * subdivisionsPerBeat
-
-            for subdivisionIndex in 0..<subdivisionsInMeasure {
-                let clickTime = measureStart + TimeInterval(subdivisionIndex) * subdivisionDuration
-                if clickTime >= duration { break }
-
-                let sample = subdivisionIndex == 0 ? accentSample : normalSample
-                let startFrame = Int((clickTime * sampleRate).rounded())
-                output.mixAdding(sample, atFrame: startFrame)
-            }
-
-            measure += 1
-            if measure > 1_000_000 { break }
+        for click in clicks {
+            let sample = click.isAccent ? accentSample : normalSample
+            let startFrame = Int((click.time * sampleRate).rounded())
+            output.mixAdding(sample, atFrame: startFrame)
         }
 
         return output
+    }
+
+    static func sharedAccentSample() throws -> DecodedStemBuffer {
+        try accentSample()
+    }
+
+    static func sharedNormalSample() throws -> DecodedStemBuffer {
+        try normalSample()
     }
 
     static func resetCachedSamples() {

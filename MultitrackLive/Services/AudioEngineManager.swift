@@ -16,6 +16,8 @@ final class AudioEngineManager {
         var pitchCents: Float
         var excludeFromTranspose: Bool
         var ignoresSolo: Bool = false
+        /// Generated stems (e.g. click) that follow the master timeline 1:1.
+        var bypassesArrangementMapping: Bool = false
     }
 
     struct PreparedTrackPayload: Sendable {
@@ -54,6 +56,25 @@ final class AudioEngineManager {
     private var referenceBPM: Double = 0
     private var timeSignatureChanges: [TimeSignatureChange] = []
     private var lastAppliedPitchCompensationCents: Float?
+    private var hasFiniteDuration = true
+
+    private struct ClickOnlyState {
+        let trackID: UUID
+        let player: RealtimeClickTrackPlayer
+        var settings: TrackSettings
+        var subdivision: ClickTrackSubdivision
+        var isEnabled: Bool
+        let sourceFormat: AVAudioFormat
+    }
+
+    private var clickOnlyState: ClickOnlyState?
+
+    /// Practical upper bound for open-ended click-only playback and transport clamping.
+    static let openEndedTimelineDuration: TimeInterval = 86_400 * 365
+
+    var isClickOnlyPlayback: Bool {
+        clickOnlyState != nil
+    }
 
     var referenceSampleRate: Double {
         DecodedStemBuffer.engineSampleRate
@@ -102,6 +123,8 @@ final class AudioEngineManager {
         _ payloads: [PreparedTrackPayload],
         routing: OutputRoutingSnapshot? = nil
     ) throws {
+        teardownClickOnlyPlayer()
+        hasFiniteDuration = true
         stop()
         stopEngineForGraphChanges()
         teardownTracks()
@@ -134,6 +157,71 @@ final class AudioEngineManager {
             teardownTracks()
             throw error
         }
+    }
+
+    func loadClickOnlySong(
+        trackID: UUID,
+        settings: TrackSettings,
+        subdivision: ClickTrackSubdivision,
+        isEnabled: Bool,
+        tempoChanges: [TempoChange],
+        timeSignatureChanges: [TimeSignatureChange],
+        routing: OutputRoutingSnapshot? = nil
+    ) throws {
+        stop()
+        stopEngineForGraphChanges()
+        teardownTracks()
+        teardownClickOnlyPlayer()
+        outputRoutingManager.teardown(in: engine)
+        masterArrangementSections = []
+        arrangementSectionsByTrack = [:]
+        arrangementRemovedClips = []
+        routingSnapshot = routing
+        usesOutputRouting = routing != nil
+        hasFiniteDuration = false
+
+        self.tempoChanges = tempoChanges.sortedByMeasure
+        referenceBPM = self.tempoChanges.referenceBPM
+        self.timeSignatureChanges = timeSignatureChanges.sortedByMeasure
+
+        let configuration = RealtimeClickTrackPlayer.Configuration(
+            tempoChanges: self.tempoChanges,
+            timeSignatureChanges: self.timeSignatureChanges,
+            subdivision: subdivision,
+            isEnabled: isEnabled,
+            volume: settings.volume,
+            pan: settings.pan
+        )
+
+        let player = try RealtimeClickTrackPlayer(
+            trackID: trackID,
+            transport: transport,
+            configuration: configuration
+        )
+
+        engine.attach(player.sourceNode)
+        engine.connect(player.sourceNode, to: masterMixer, format: player.audioFormat)
+
+        clickOnlyState = ClickOnlyState(
+            trackID: trackID,
+            player: player,
+            settings: settings,
+            subdivision: subdivision,
+            isEnabled: isEnabled,
+            sourceFormat: player.audioFormat
+        )
+
+        if usesOutputRouting, let routing {
+            try wireClickOnlyOutput(routing: routing)
+        } else {
+            connectTracksToMasterMixer()
+            try startEngineIfNeeded()
+        }
+
+        applyClickOnlyMixSettings()
+        duration = Self.openEndedTimelineDuration
+        transport.setDuration(duration)
+        syncTransportTempoMap()
     }
 
     static func pitchShiftedBuffer(
@@ -237,7 +325,7 @@ final class AudioEngineManager {
         routingSnapshot = routing
         usesOutputRouting = true
 
-        guard !tracks.isEmpty else {
+        guard !tracks.isEmpty || clickOnlyState != nil else {
             if let uid = routing.deviceUID {
                 _ = AudioOutputDeviceService.setSystemDefaultOutputDevice(uid: uid)
             }
@@ -254,7 +342,11 @@ final class AudioEngineManager {
         stopEngineForGraphChanges()
 
         do {
-            try wireTrackOutputs(routing: routing)
+            if clickOnlyState != nil {
+                try wireClickOnlyOutput(routing: routing)
+            } else {
+                try wireTrackOutputs(routing: routing)
+            }
             duration = calculateEffectiveDuration()
             transport.setDuration(duration)
             syncTransportTempoMap()
@@ -317,6 +409,7 @@ final class AudioEngineManager {
         self.timeSignatureChanges = timeSignatureChanges.sortedByMeasure
         syncTransportTempoMap()
         applyTrackPitch()
+        syncClickOnlyConfiguration()
     }
 
     private func syncTransportTempoMap() {
@@ -330,7 +423,7 @@ final class AudioEngineManager {
     }
 
     func play() {
-        guard !tracks.isEmpty, !isPlaying else { return }
+        guard canPlay, !isPlaying else { return }
         if !engine.isRunning {
             try? engine.start()
         }
@@ -361,7 +454,7 @@ final class AudioEngineManager {
     }
 
     func seek(to time: TimeInterval) {
-        let clamped = quantizeTimelineTime(max(0, min(time, duration)))
+        let clamped = quantizeTimelineTime(clampedTimelineTime(time))
         transport.cancelScheduledTransition()
         currentTime = clamped
         transport.setPausedTimeline(clamped)
@@ -380,8 +473,8 @@ final class AudioEngineManager {
     }
 
     func scheduleTransition(to targetOffset: TimeInterval, at transitionTimelineTime: TimeInterval) {
-        let target = quantizeTimelineTime(max(0, min(targetOffset, duration)))
-        let transitionAt = quantizeTimelineTime(max(0, min(transitionTimelineTime, duration)))
+        let target = quantizeTimelineTime(clampedTimelineTime(targetOffset))
+        let transitionAt = quantizeTimelineTime(clampedTimelineTime(transitionTimelineTime))
 
         if isPlaying {
             refreshCurrentTimeFromEngine()
@@ -408,7 +501,7 @@ final class AudioEngineManager {
     }
 
     func snapToTransitionTarget(_ targetOffset: TimeInterval) {
-        let target = quantizeTimelineTime(max(0, min(targetOffset, duration)))
+        let target = quantizeTimelineTime(clampedTimelineTime(targetOffset))
         transport.clearScheduledTransition()
         currentTime = target
         transport.setPausedTimeline(target)
@@ -419,6 +512,13 @@ final class AudioEngineManager {
     }
 
     func updateTrackSettings(id: UUID, settings: TrackSettings) {
+        if var clickOnly = clickOnlyState, clickOnly.trackID == id {
+            clickOnly.settings = settings
+            clickOnlyState = clickOnly
+            applyClickOnlyMixSettings()
+            return
+        }
+
         guard var track = tracks[id] else { return }
         track.settings = settings
         tracks[id] = track
@@ -431,6 +531,11 @@ final class AudioEngineManager {
     }
 
     func applyAllMixSettings() {
+        if clickOnlyState != nil {
+            applyClickOnlyMixSettings()
+            return
+        }
+
         let anySolo = tracks.values.contains { $0.settings.isSolo }
 
         for id in tracks.keys {
@@ -465,6 +570,15 @@ final class AudioEngineManager {
         settings: TrackSettings,
         fileDuration: TimeInterval
     ) -> ArrangementTimelineMapper {
+        if settings.bypassesArrangementMapping {
+            return ArrangementTimelineMapper(
+                sections: [],
+                trimStart: settings.trimStart,
+                trimEnd: settings.trimEnd ?? fileDuration,
+                usesArrangement: false
+            )
+        }
+
         let sections = arrangementSectionsByTrack[trackID] ?? []
         let trackUsesArrangement = usesArrangement || !sections.isEmpty
         return ArrangementTimelineMapper(
@@ -492,7 +606,107 @@ final class AudioEngineManager {
         tracks[trackID] = track
     }
 
+    func updateClickOnlyPlayback(
+        subdivision: ClickTrackSubdivision,
+        isEnabled: Bool
+    ) {
+        guard var clickOnly = clickOnlyState else { return }
+        clickOnly.subdivision = subdivision
+        clickOnly.isEnabled = isEnabled
+        clickOnlyState = clickOnly
+        syncClickOnlyConfiguration()
+        applyClickOnlyMixSettings()
+    }
+
+    private var canPlay: Bool {
+        !tracks.isEmpty || clickOnlyState != nil
+    }
+
+    private func clampedTimelineTime(_ time: TimeInterval) -> TimeInterval {
+        if hasFiniteDuration {
+            return max(0, min(time, duration))
+        }
+        return max(0, time)
+    }
+
+    private func applyClickOnlyMixSettings() {
+        guard let clickOnly = clickOnlyState else { return }
+
+        var effectiveVolume = clickOnly.settings.volume
+        var isAudible = clickOnly.isEnabled
+
+        if clickOnly.settings.isMuted {
+            effectiveVolume = 0
+            isAudible = false
+        }
+
+        clickOnly.player.updateMix(
+            volume: effectiveVolume,
+            pan: clickOnly.settings.pan,
+            isAudible: isAudible
+        )
+        syncClickOnlyConfiguration()
+    }
+
+    private func syncClickOnlyConfiguration() {
+        guard let clickOnly = clickOnlyState else { return }
+        clickOnly.player.updateConfiguration(
+            RealtimeClickTrackPlayer.Configuration(
+                tempoChanges: tempoChanges,
+                timeSignatureChanges: timeSignatureChanges,
+                subdivision: clickOnly.subdivision,
+                isEnabled: clickOnly.isEnabled,
+                volume: clickOnly.settings.volume,
+                pan: clickOnly.settings.pan
+            )
+        )
+    }
+
+    private func teardownClickOnlyPlayer() {
+        guard let clickOnly = clickOnlyState else { return }
+        engine.disconnectNodeOutput(clickOnly.player.sourceNode)
+        engine.detach(clickOnly.player.sourceNode)
+        clickOnlyState = nil
+    }
+
+    private func wireClickOnlyOutput(routing: OutputRoutingSnapshot) throws {
+        guard let clickOnly = clickOnlyState else { return }
+
+        if let uid = routing.deviceUID {
+            _ = AudioOutputDeviceService.setSystemDefaultOutputDevice(uid: uid)
+        }
+
+        let effectiveChannelCount = effectiveOutputChannelCount(routing: routing)
+        stopEngineForGraphChanges()
+        outputRoutingManager.teardown(in: engine)
+        engine.disconnectNodeOutput(clickOnly.player.sourceNode)
+
+        if effectiveChannelCount > 2 {
+            let routeTracks = [(
+                sourceNode: clickOnly.player.sourceNode,
+                format: clickOnly.sourceFormat,
+                destination: OutputRoutingStore.destination(for: nil, snapshot: routing)
+            )]
+
+            if outputRoutingManager.applyChannelMapRouting(
+                engine: engine,
+                tracks: routeTracks,
+                outputChannelCount: effectiveChannelCount
+            ) {
+                try startEngineIfNeeded()
+                return
+            }
+        }
+
+        connectTracksToMasterMixer()
+        try startEngineIfNeeded()
+    }
+
     private func calculateEffectiveDuration() -> TimeInterval {
+        if !hasFiniteDuration {
+            return Self.openEndedTimelineDuration
+        }
+
         if usesArrangement {
             let arrangedEnd = masterArrangementSections.last?.timelineEndSeconds ?? 0
             if masterArrangementSections.usesSourceLinearTimeline {
@@ -520,6 +734,7 @@ final class AudioEngineManager {
             engine.detach(track.timePitchNode)
         }
         tracks.removeAll()
+        teardownClickOnlyPlayer()
         outputRoutingManager.teardown(in: engine)
         usesOutputRouting = false
         routingSnapshot = nil
@@ -592,6 +807,12 @@ final class AudioEngineManager {
             OutputRoutingManager.clearChannelMap(on: track.playbackOutputNode)
             engine.connect(track.playbackOutputNode, to: masterMixer, format: track.sourceFormat)
         }
+
+        if let clickOnly = clickOnlyState {
+            engine.disconnectNodeOutput(clickOnly.player.sourceNode)
+            OutputRoutingManager.clearChannelMap(on: clickOnly.player.sourceNode)
+            engine.connect(clickOnly.player.sourceNode, to: masterMixer, format: clickOnly.sourceFormat)
+        }
     }
 
     private func effectiveOutputChannelCount(routing: OutputRoutingSnapshot) -> Int {
@@ -610,7 +831,7 @@ final class AudioEngineManager {
             guard let self, self.isPlaying else { return }
             self.refreshCurrentTimeFromEngine()
             self.applyTrackPitch(at: self.currentTime)
-            if self.currentTime >= self.duration {
+            if self.hasFiniteDuration, self.currentTime >= self.duration {
                 self.stop()
                 self.onPlaybackFinished?()
             }

@@ -198,7 +198,7 @@ struct LivePlaybackView: View {
 
     private func handleSongEditorDismissed(_ songToEditID: UUID?) {
         guard songToEditID == nil else { return }
-        coordinator.refreshCurrentSongState()
+        coordinator.loadCurrentSong()
     }
 
     private func setlistDisplayName(for setlist: Setlist) -> String {
@@ -325,6 +325,13 @@ struct LivePlaybackView: View {
                                 loadingOverlay
                             }
                         }
+                    } else if coordinator.currentSong?.isClickOnly == true, coordinator.isLoaded {
+                        LiveClickTrackNowPlayingView(song: coordinator.currentSong)
+                            .overlay {
+                                if coordinator.isLoadingSong {
+                                    loadingOverlay
+                                }
+                            }
                     } else if coordinator.isLoadingSong {
                         LiveSetlistWaveformLoadingPlaceholder(
                             message: loadingMessage(for: coordinator.currentSong)
@@ -360,6 +367,47 @@ struct LivePlaybackView: View {
             ProgressView(loadingMessage(for: coordinator.currentSong))
                 .padding(12)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private struct LiveClickTrackNowPlayingView: View {
+        let song: Song?
+
+        private var tempoChanges: [TempoChange] {
+            guard let song else { return [] }
+            return TempoStore.loadOrMigrate(for: song)
+        }
+
+        private var timeSignatureChanges: [TimeSignatureChange] {
+            guard let song else { return [] }
+            return TimeSignatureStore.loadOrMigrate(for: song, tempoChanges: tempoChanges)
+        }
+
+        var body: some View {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.secondary.opacity(0.10))
+                .overlay {
+                    VStack(spacing: 8) {
+                        Image(systemName: "cursorarrow.click")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                        Text(song?.name ?? "Click Track")
+                            .font(.headline)
+                        Text(
+                            String(
+                                format: "%.0f BPM • %d/%d",
+                                tempoChanges.referenceBPM,
+                                timeSignatureChanges.referenceNumerator,
+                                timeSignatureChanges.referenceDenominator
+                            )
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 96)
         }
     }
 
@@ -491,10 +539,12 @@ struct LivePlaybackView: View {
             }
 
             Button {
+                guard !song.isClickOnly else { return }
                 songToEditID = song.id
             } label: {
                 Label("Edit", systemImage: "pencil")
             }
+            .disabled(song.isClickOnly)
 
             Button("Remove from Setlist", role: .destructive) {
                 removeFromSetlist(entry)
@@ -1026,6 +1076,7 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         .popover(isPresented: $showingSongLibrary, arrowEdge: .bottom) {
             SongLibraryPanel(
                 onEdit: { song in
+                    guard !song.isClickOnly else { return }
                     showingSongLibrary = false
                     onEditSong(song)
                 },

@@ -260,7 +260,8 @@ enum SongTrackLoader {
             trimEnd: duration,
             pitchCents: 0,
             excludeFromTranspose: true,
-            ignoresSolo: true
+            ignoresSolo: true,
+            bypassesArrangementMapping: true
         )
 
         return try AudioEngineManager.prepareTrackPayload(

@@ -11,8 +11,13 @@ struct SongLibraryPanel: View {
 
     @State private var searchText = ""
     @State private var showingNewSongAlert = false
+    @State private var showingNewClickTrackSheet = false
     @State private var showingFolderImporter = false
     @State private var newSongName = ""
+    @State private var newClickTrackBPM: Double = TempoChange.defaultBPM
+    @State private var newClickTrackSubdivision: ClickTrackSubdivision = .quarter
+    @State private var newClickTrackNumerator: Int = TimeSignatureChange.defaultNumerator
+    @State private var newClickTrackDenominator: Int = TimeSignatureChange.defaultDenominator
     @State private var songPendingImport: Song?
     @State private var songPendingRename: Song?
     @State private var renameSongName = ""
@@ -40,6 +45,13 @@ struct SongLibraryPanel: View {
                         showingNewSongAlert = true
                     } label: {
                         Label("New Song", systemImage: "plus")
+                    }
+
+                    Button {
+                        resetNewClickTrackForm()
+                        showingNewClickTrackSheet = true
+                    } label: {
+                        Label("New Click Track", systemImage: "cursorarrow.click")
                     }
 
                     Button {
@@ -90,13 +102,16 @@ struct SongLibraryPanel: View {
                         SongLibraryDragRow(song: song)
                             .contentShape(Rectangle())
                             .onTapGesture {
+                                guard !song.isClickOnly else { return }
                                 onEdit(song)
                             }
                             .contextMenu {
-                                Button {
-                                    onEdit(song)
-                                } label: {
-                                    Label("Edit Song", systemImage: "pencil")
+                                if !song.isClickOnly {
+                                    Button {
+                                        onEdit(song)
+                                    } label: {
+                                        Label("Edit Song", systemImage: "pencil")
+                                    }
                                 }
                                 Button("Rename") {
                                     songPendingRename = song
@@ -133,6 +148,19 @@ struct SongLibraryPanel: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Enter a name, then import your stem files or choose a song folder.")
+        }
+        .sheet(isPresented: $showingNewClickTrackSheet) {
+            NewClickTrackSheet(
+                name: $newSongName,
+                bpm: $newClickTrackBPM,
+                subdivision: $newClickTrackSubdivision,
+                numerator: $newClickTrackNumerator,
+                denominator: $newClickTrackDenominator,
+                onCreate: createClickTrack,
+                onCancel: {
+                    showingNewClickTrackSheet = false
+                }
+            )
         }
         .alert("Import Complete", isPresented: Binding(
             get: { folderImportSummary != nil },
@@ -237,6 +265,55 @@ struct SongLibraryPanel: View {
         return lines.joined(separator: "\n")
     }
 
+    private func resetNewClickTrackForm() {
+        newSongName = ""
+        newClickTrackBPM = TempoChange.defaultBPM
+        newClickTrackSubdivision = .quarter
+        newClickTrackNumerator = TimeSignatureChange.defaultNumerator
+        newClickTrackDenominator = TimeSignatureChange.defaultDenominator
+    }
+
+    private func createClickTrack() {
+        let trimmed = newSongName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard TempoChange.validBPMRange.contains(newClickTrackBPM) else { return }
+        guard (1...32).contains(newClickTrackNumerator),
+              TimeSignatureChange.validDenominators.contains(newClickTrackDenominator) else { return }
+
+        let song = Song(name: trimmed)
+        song.isClickOnly = true
+        song.clickTrackEnabled = true
+        song.bpm = newClickTrackBPM
+        song.timeSignatureNumerator = newClickTrackNumerator
+        song.timeSignatureDenominator = newClickTrackDenominator
+        song.clickTrackSubdivision = newClickTrackSubdivision.rawValue
+        modelContext.insert(song)
+
+        do {
+            try modelContext.save()
+            try TempoStore.save(
+                [TempoChange(startMeasure: 1, bpm: newClickTrackBPM)],
+                for: song.id
+            )
+            try TimeSignatureStore.save(
+                [
+                    TimeSignatureChange(
+                        numerator: newClickTrackNumerator,
+                        denominator: newClickTrackDenominator,
+                        startMeasure: 1
+                    )
+                ],
+                for: song.id
+            )
+            showingNewClickTrackSheet = false
+            resetNewClickTrackForm()
+        } catch {
+            modelContext.delete(song)
+            FileStore.deleteSongFiles(for: song.id)
+            createSongError = error.localizedDescription
+        }
+    }
+
     private func createSong() {
         let trimmed = newSongName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -276,6 +353,10 @@ struct SongLibraryPanel: View {
         copy.timeSignatureDenominator = source.timeSignatureDenominator
         copy.transposeSemitones = source.transposeSemitones
         copy.transposeHighQuality = source.transposeHighQuality
+        copy.isClickOnly = source.isClickOnly
+        copy.clickTrackEnabled = source.clickTrackEnabled
+        copy.clickTrackVolume = source.clickTrackVolume
+        copy.clickTrackSubdivision = source.clickTrackSubdivision
         modelContext.insert(copy)
 
         var trackIDMap: [UUID: UUID] = [:]
@@ -356,6 +437,85 @@ struct SongLibraryPanel: View {
     }
 }
 
+private struct NewClickTrackSheet: View {
+    @Binding var name: String
+    @Binding var bpm: Double
+    @Binding var subdivision: ClickTrackSubdivision
+    @Binding var numerator: Int
+    @Binding var denominator: Int
+
+    let onCreate: () -> Void
+    let onCancel: () -> Void
+
+    private var canCreate: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && TempoChange.validBPMRange.contains(bpm)
+            && (1...32).contains(numerator)
+            && TimeSignatureChange.validDenominators.contains(denominator)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Name:", text: $name)
+
+                LabeledContent("Tempo:") {
+                    Stepper(value: $bpm, in: TempoChange.validBPMRange, step: 1) {
+                        Text("\(Int(bpm.rounded())) BPM")
+                            .monospacedDigit()
+                    }
+                }
+
+                LabeledContent("Meter:") {
+                    HStack(spacing: 8) {
+                        Picker("Beats:", selection: $numerator) {
+                            ForEach(1...32, id: \.self) { value in
+                                Text("\(value)").tag(value)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 72)
+
+                        Text("/")
+                            .foregroundStyle(.secondary)
+
+                        Picker("Beat value:", selection: $denominator) {
+                            ForEach(TimeSignatureChange.validDenominators.filter { $0 != 1 }, id: \.self) { value in
+                                Text("\(value)").tag(value)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 72)
+                    }
+                }
+
+                Picker("Subdivision:", selection: $subdivision) {
+                    ForEach(ClickTrackSubdivision.allCases) { option in
+                        Text(option.displayName).tag(option)
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("New Click Track")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onCancel)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create", action: onCreate)
+                        .disabled(!canCreate)
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(width: 420)
+        #endif
+    }
+}
+
 private struct SongLibraryDragRow: View {
     let song: Song
 
@@ -375,7 +535,7 @@ private struct SongLibraryDragRow: View {
                 Text(song.name)
                     .font(.subheadline)
                     .lineLimit(2)
-                Text("\(song.tracks.count) tracks")
+                Text(song.isClickOnly ? song.clickTrackSummary : "\(song.tracks.count) tracks")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -387,7 +547,7 @@ private struct SongLibraryDragRow: View {
 
     private var dragPreview: some View {
         HStack(spacing: 8) {
-            Image(systemName: "music.note")
+            Image(systemName: song.isClickOnly ? "cursorarrow.click" : "music.note")
             Text(song.name)
                 .lineLimit(1)
         }

@@ -235,6 +235,46 @@ final class PlaybackCoordinator {
 
         audioEngine.stop()
 
+        if song.isClickOnly {
+            do {
+                let tempoChanges = TempoStore.loadOrMigrate(for: song)
+                let timeSignatureChanges = TimeSignatureStore.loadOrMigrate(
+                    for: song,
+                    tempoChanges: tempoChanges
+                )
+                let routing = routingProvider?()
+                try audioEngine.loadClickOnlySong(
+                    trackID: song.clickTrackID,
+                    settings: Self.clickOnlySettings(for: song),
+                    subdivision: song.clickSubdivision,
+                    isEnabled: song.clickTrackEnabled,
+                    tempoChanges: tempoChanges,
+                    timeSignatureChanges: timeSignatureChanges,
+                    routing: routing
+                )
+                applySongEngineState(for: song)
+                currentWaveformSnapshot = nil
+                nextWaveformSnapshot = nextSong?.isClickOnly == true ? nil : nextSong.flatMap { Self.makeWaveformSnapshot(for: $0) }
+                loadedSongID = song.id
+                isLoaded = true
+                loadError = nil
+
+                if let preservedTime {
+                    audioEngine.seek(to: preservedTime)
+                }
+                if autoPlay {
+                    audioEngine.play()
+                }
+            } catch {
+                loadedSongID = nil
+                currentWaveformSnapshot = nil
+                nextWaveformSnapshot = nil
+                isLoaded = false
+                loadError = error.localizedDescription
+            }
+            return
+        }
+
         let trackInputs = SongTrackLoader.trackInputs(for: song)
 
         let preparationResult: Result<[AudioEngineManager.PreparedTrackPayload], Error> =
@@ -364,7 +404,7 @@ final class PlaybackCoordinator {
     }
 
     static func makeWaveformSnapshot(for song: Song) -> LiveSongWaveformSnapshot? {
-        guard !song.sortedTracks.isEmpty else { return nil }
+        guard !song.isClickOnly, !song.sortedTracks.isEmpty else { return nil }
 
         let trackSources: [(url: URL, duration: TimeInterval)] = song.sortedTracks.compactMap { track in
             let url = FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath)
@@ -411,6 +451,21 @@ final class PlaybackCoordinator {
             timelineDuration: timelineDuration,
             sections: layout.rulerSections,
             loopSlotIDs: arrangement.loopSlotIDs
+        )
+    }
+
+    private static func clickOnlySettings(for song: Song) -> AudioEngineManager.TrackSettings {
+        AudioEngineManager.TrackSettings(
+            volume: Float(song.clickTrackVolume),
+            pan: 0,
+            isMuted: false,
+            isSolo: false,
+            trimStart: 0,
+            trimEnd: nil,
+            pitchCents: 0,
+            excludeFromTranspose: true,
+            ignoresSolo: true,
+            bypassesArrangementMapping: true
         )
     }
 }

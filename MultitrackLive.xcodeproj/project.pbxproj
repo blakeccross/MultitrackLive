@@ -73,6 +73,9 @@
 		AA000001000000000000004C /* SectionLoopController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004C /* SectionLoopController.swift */; };
 		AA000001000000000000004D /* WaveformBarsCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004D /* WaveformBarsCanvas.swift */; };
 		AA0000010000000000000047 /* ClickTrackSubdivision.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000047 /* ClickTrackSubdivision.swift */; };
+		AA000001000000000000004E /* ClickTrackScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004E /* ClickTrackScheduler.swift */; };
+		AA000001000000000000004F /* RealtimeClickTrackPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004F /* RealtimeClickTrackPlayer.swift */; };
+		AA0000010000000000000050 /* ClickTrackSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000050 /* ClickTrackSchedulerTests.swift */; };
 		AA000001000000000000003B /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003D /* Accelerate.framework */; };
 /* End PBXBuildFile section */
 
@@ -144,6 +147,9 @@
 		AA000002000000000000004C /* SectionLoopController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionLoopController.swift; sourceTree = "<group>"; };
 		AA000002000000000000004D /* WaveformBarsCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsCanvas.swift; sourceTree = "<group>"; };
 		AA0000020000000000000047 /* ClickTrackSubdivision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackSubdivision.swift; sourceTree = "<group>"; };
+		AA000002000000000000004E /* ClickTrackScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackScheduler.swift; sourceTree = "<group>"; };
+		AA000002000000000000004F /* RealtimeClickTrackPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeClickTrackPlayer.swift; sourceTree = "<group>"; };
+		AA0000020000000000000050 /* ClickTrackSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackSchedulerTests.swift; sourceTree = "<group>"; };
 		AA0000030000000000000002 /* MultitrackLiveTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MultitrackLiveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000002000000000000003B /* MultitrackLive-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "MultitrackLive-Bridging-Header.h"; sourceTree = "<group>"; };
 		AA000002000000000000003C /* RubberBandSingle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = RubberBandSingle.cpp; path = ThirdParty/rubberband/single/RubberBandSingle.cpp; sourceTree = SOURCE_ROOT; };
@@ -210,6 +216,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000020000000000000046 /* ClickTrackGeneratorTests.swift */,
+				AA0000020000000000000050 /* ClickTrackSchedulerTests.swift */,
 				AA0000020000000000000049 /* SongArrangementLayoutTests.swift */,
 				AA000002000000000000004B /* ClipRegionStoreTests.swift */,
 			);
@@ -264,6 +271,8 @@
 				AA0000020000000000000040 /* TrackBakeCache.swift */,
 				AA0000020000000000000041 /* SongTrackLoader.swift */,
 				AA0000020000000000000043 /* ClickTrackGenerator.swift */,
+				AA000002000000000000004E /* ClickTrackScheduler.swift */,
+				AA000002000000000000004F /* RealtimeClickTrackPlayer.swift */,
 				AA000002000000000000001F /* SongArrangementStore.swift */,
 				AA000002000000000000004A /* ClipRegionStore.swift */,
 				AA000002000000000000004C /* SectionLoopController.swift */,
@@ -489,6 +498,8 @@
 				AA0000010000000000000040 /* TrackBakeCache.swift in Sources */,
 				AA0000010000000000000041 /* SongTrackLoader.swift in Sources */,
 				AA0000010000000000000043 /* ClickTrackGenerator.swift in Sources */,
+				AA000001000000000000004E /* ClickTrackScheduler.swift in Sources */,
+				AA000001000000000000004F /* RealtimeClickTrackPlayer.swift in Sources */,
 				AA000001000000000000001C /* TimelineLayout.swift in Sources */,
 				AA000001000000000000001D /* ArrangementSlot.swift in Sources */,
 				AA000001000000000000001E /* SongArrangementStore.swift in Sources */,
@@ -524,6 +535,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA0000010000000000000046 /* ClickTrackGeneratorTests.swift in Sources */,
+				AA0000010000000000000050 /* ClickTrackSchedulerTests.swift in Sources */,
 				AA0000010000000000000049 /* SongArrangementLayoutTests.swift in Sources */,
 				AA000001000000000000004B /* ClipRegionStoreTests.swift in Sources */,
 			);

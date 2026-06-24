@@ -14,6 +14,7 @@ final class Song {
     var clickTrackEnabled: Bool
     var clickTrackVolume: Double
     var clickTrackSubdivision: String
+    var isClickOnly: Bool
 
     @Relationship(deleteRule: .cascade, inverse: \AudioTrack.song)
     var tracks: [AudioTrack]
@@ -30,6 +31,7 @@ final class Song {
         clickTrackEnabled = false
         clickTrackVolume = 1.0
         clickTrackSubdivision = ClickTrackSubdivision.quarter.rawValue
+        isClickOnly = false
         tracks = []
     }
 
@@ -54,6 +56,14 @@ final class Song {
             return nil
         }
         return "\(numerator)/\(denominator)"
+    }
+
+    var clickTrackSummary: String {
+        let bpmText = String(format: "%.0f BPM", bpm ?? TempoChange.defaultBPM)
+        let numerator = timeSignatureNumerator ?? TimeSignatureChange.defaultNumerator
+        let denominator = timeSignatureDenominator ?? TimeSignatureChange.defaultDenominator
+        let meterText = "\(numerator)/\(denominator)"
+        return "\(bpmText) • \(meterText) • \(clickSubdivision.displayName)"
     }
 
     var sortedTracks: [AudioTrack] {
