@@ -582,7 +582,6 @@ struct WaveformLaneView: View {
                 }
             }
             .frame(width: clipWidth, height: clipBodyHeight)
-            .overlay { ClipSideBorders() }
             .contentShape(Rectangle())
             .gesture(
                 clipBodySelectionGesture(
@@ -1158,20 +1157,5 @@ private struct ClipHeaderEdgeTrimControl<G: Gesture>: View {
             #else
             .opacity(isEnabled && isActive ? 1 : 0)
             #endif
-    }
-}
-
-private struct ClipSideBorders: View {
-    var body: some View {
-        HStack(spacing: 0) {
-            Rectangle()
-                .fill(Color.dawClipSideBorder)
-                .frame(width: 1)
-            Spacer(minLength: 0)
-            Rectangle()
-                .fill(Color.dawClipSideBorder)
-                .frame(width: 1)
-        }
-        .allowsHitTesting(false)
     }
 }
