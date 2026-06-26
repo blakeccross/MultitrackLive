@@ -71,6 +71,18 @@ final class DecodedStemBuffer: StemSampleSource, @unchecked Sendable {
     }
 
     static func decode(
+        from data: Data,
+        targetSampleRate: Double = engineSampleRate
+    ) throws -> DecodedStemBuffer {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: false)
+            .appendingPathExtension("wav")
+        try data.write(to: tempURL, options: .atomic)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        return try decode(from: tempURL, targetSampleRate: targetSampleRate)
+    }
+
+    static func decode(
         from url: URL,
         targetSampleRate: Double = engineSampleRate
     ) throws -> DecodedStemBuffer {

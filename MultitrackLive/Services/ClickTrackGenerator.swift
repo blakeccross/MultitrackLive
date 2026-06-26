@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 enum ClickTrackGeneratorError: Error {
     case missingAccentSample
@@ -8,9 +13,8 @@ enum ClickTrackGeneratorError: Error {
 
 enum ClickTrackGenerator {
     private static let sampleRate = DecodedStemBuffer.engineSampleRate
-    private static let bundleSubdirectory = "Click"
-    private static let accentResourceName = "click-accent"
-    private static let normalResourceName = "click-normal"
+    private static let accentAssetName = "Click Accent"
+    private static let normalAssetName = "Click Quarter"
 
     private static var cachedAccent: DecodedStemBuffer?
     private static var cachedNormal: DecodedStemBuffer?
@@ -69,30 +73,26 @@ enum ClickTrackGenerator {
         cachedNormal = nil
     }
 
-    static func loadSample(named resourceName: String) throws -> DecodedStemBuffer {
-        guard let url = Bundle.main.url(
-            forResource: resourceName,
-            withExtension: "wav",
-            subdirectory: bundleSubdirectory
-        ) ?? Bundle.main.url(forResource: resourceName, withExtension: "wav") else {
-            if resourceName == accentResourceName {
+    static func loadSample(named assetName: String) throws -> DecodedStemBuffer {
+        guard let data = NSDataAsset(name: assetName)?.data, !data.isEmpty else {
+            if assetName == accentAssetName {
                 throw ClickTrackGeneratorError.missingAccentSample
             }
             throw ClickTrackGeneratorError.missingNormalSample
         }
-        return try DecodedStemBuffer.decode(from: url)
+        return try DecodedStemBuffer.decode(from: data)
     }
 
     private static func accentSample() throws -> DecodedStemBuffer {
         if let cachedAccent { return cachedAccent }
-        let sample = try loadSample(named: accentResourceName)
+        let sample = try loadSample(named: accentAssetName)
         cachedAccent = sample
         return sample
     }
 
     private static func normalSample() throws -> DecodedStemBuffer {
         if let cachedNormal { return cachedNormal }
-        let sample = try loadSample(named: normalResourceName)
+        let sample = try loadSample(named: normalAssetName)
         cachedNormal = sample
         return sample
     }

@@ -169,7 +169,19 @@ struct EditView: View {
     private var sourceDuration: TimeInterval {
         song.sortedTracks
             .map { viewModel.fileDuration(for: $0) }
-            .max() ?? AudioEngineManager.shared.duration
+            .max() ?? finiteEngineDuration
+    }
+
+    /// Engine duration usable for sizing the editor timeline. Ignores the open-ended
+    /// click-only sentinel so a stale click-only duration can't inflate the timeline
+    /// to a year-long width and freeze layout before the song finishes reloading.
+    private var finiteEngineDuration: TimeInterval {
+        let engine = AudioEngineManager.shared
+        guard !engine.isClickOnlyPlayback,
+              engine.duration < AudioEngineManager.openEndedTimelineDuration else {
+            return 0
+        }
+        return engine.duration
     }
 
     private var sourceDurationForTrack: (UUID) -> TimeInterval {
@@ -307,7 +319,7 @@ struct EditView: View {
             let arrangedEnd = displaySections.last?.timelineEndSeconds ?? 1
             return max(max(arrangedEnd, 1), sourceDuration)
         }
-        return max(sourceDuration, AudioEngineManager.shared.duration, 1)
+        return max(sourceDuration, finiteEngineDuration, 1)
     }
 
     private var timelineMinZoom: CGFloat {

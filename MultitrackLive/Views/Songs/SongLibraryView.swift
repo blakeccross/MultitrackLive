@@ -99,7 +99,7 @@ struct SongLibraryPanel: View {
                     Spacer(minLength: 0)
                 } else {
                     List(filteredSongs) { song in
-                        SongLibraryDragRow(song: song)
+                        SongLibraryRow(song: song)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 guard !song.isClickOnly else { return }
@@ -516,21 +516,11 @@ private struct NewClickTrackSheet: View {
     }
 }
 
-private struct SongLibraryDragRow: View {
+private struct SongLibraryRow: View {
     let song: Song
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "line.3.horizontal")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
-                .draggable(song.id.uuidString) {
-                    dragPreview
-                }
-                .accessibilityLabel("Drag \(song.name) to setlist")
-
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.name)
                     .font(.subheadline)
@@ -543,18 +533,6 @@ private struct SongLibraryDragRow: View {
             Spacer(minLength: 0)
         }
         .contentShape(Rectangle())
-    }
-
-    private var dragPreview: some View {
-        HStack(spacing: 8) {
-            Image(systemName: song.isClickOnly ? "cursorarrow.click" : "music.note")
-            Text(song.name)
-                .lineLimit(1)
-        }
-        .font(.subheadline)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

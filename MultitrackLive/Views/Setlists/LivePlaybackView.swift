@@ -1,14 +1,6 @@
 import SwiftData
 import SwiftUI
 
-private enum SetlistDropMetrics {
-    static let inactiveDropHeight: CGFloat = 12
-    static let inactiveDropHitHeight: CGFloat = 28
-    static let activeDropHeight: CGFloat = 56
-    static let targetClearDelayMs: UInt64 = 150
-    static let spring = Animation.spring(response: 0.32, dampingFraction: 0.9)
-}
-
 struct LivePlaybackView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Song.name) private var allSongs: [Song]
@@ -24,8 +16,7 @@ struct LivePlaybackView: View {
     @State private var cueFlashPhase = false
     @State private var sectionLoop = SectionLoopController()
     @State private var showingSongLibrary = false
-    @State private var songDropInsertionIndex: Int?
-    @State private var clearDropTargetTask: Task<Void, Never>?
+    @State private var showingAddSong = false
     @State private var songToEditID: UUID?
     @State private var showingManageOutputs = false
     @State private var showingSaveSetlistAlert = false
@@ -135,8 +126,7 @@ struct LivePlaybackView: View {
         }
         .onChange(of: activeSetlistID) { _, _ in
             showingSongLibrary = false
-            songDropInsertionIndex = nil
-            clearDropTargetTask?.cancel()
+            showingAddSong = false
         }
         .onDisappear {
             stopPlayback()
@@ -167,8 +157,10 @@ struct LivePlaybackView: View {
             onPlay: coordinator.play,
             onPause: coordinator.pause,
             showingSongLibrary: $showingSongLibrary,
+            showingAddSong: $showingAddSong,
             showingManageOutputs: $showingManageOutputs,
-            onEditSong: { songToEditID = $0.id }
+            onEditSong: { songToEditID = $0.id },
+            onAddSong: { addSong($0, at: workingSetlist.sortedEntries.count) }
         )
     }
 
@@ -446,32 +438,16 @@ struct LivePlaybackView: View {
         List {
             Section("Setlist") {
                 if workingSetlist.sortedEntries.isEmpty {
-                    SetlistSongDropSlot(
-                        index: 0,
-                        insertionIndex: $songDropInsertionIndex,
-                        prominent: true,
-                        listRowStyled: true,
-                        onDrop: { addSongFromDrag($0, at: 0) },
-                        onTargetChanged: updateDropTarget,
-                        onSelectSong: { addSong($0, at: 0) }
-                    )
-
                     ContentUnavailableView(
                         "No Songs in Setlist",
                         systemImage: "music.note.list",
-                        description: Text("Open the Songs menu, drag songs here, or tap to add.")
+                        description: Text("Tap Add Song to build your setlist.")
                     )
-                    .listRowSeparator(.hidden)
                 } else {
                     ForEach(Array(workingSetlist.sortedEntries.enumerated()), id: \.element.id) { index, entry in
                         if let song = entry.song {
-                            setlistEntryRow(
-                                song: song,
-                                entry: entry,
-                                index: index
-                            )
+                            setlistEntryRow(song: song, entry: entry, index: index)
                         }
-
                     }
                     .onMove { source, destination in
                         viewModel.moveEntries(in: workingSetlist, from: source, to: destination, context: modelContext)
@@ -484,51 +460,42 @@ struct LivePlaybackView: View {
                         }
                         coordinator.syncSetlist(workingSetlist)
                     }
-
-                    SetlistSongDropSlot(
-                        index: workingSetlist.sortedEntries.count,
-                        insertionIndex: $songDropInsertionIndex,
-                        listRowStyled: true,
-                        onDrop: { addSongFromDrag($0, at: workingSetlist.sortedEntries.count) },
-                        onTargetChanged: updateDropTarget,
-                        onSelectSong: { addSong($0, at: workingSetlist.sortedEntries.count) }
-                    )
                 }
-
             }
         }
         .listStyle(.plain)
-        .onChange(of: showingSongLibrary) { _, isShowing in
-            if !isShowing {
-                clearDropTargetTask?.cancel()
-                songDropInsertionIndex = nil
-            }
-        }
     }
 
     private func setlistEntryRow(song: Song, entry: SetlistEntry, index: Int) -> some View {
-        let dropActive = songDropInsertionIndex == index
-        let row = setlistPlaybackRowContent(song: song, entry: entry, index: index)
-        let dropSlot = SetlistSongDropSlot(
-            index: index,
-            insertionIndex: $songDropInsertionIndex,
-            onDrop: { addSongFromDrag($0, at: index) },
-            onTargetChanged: updateDropTarget,
-            onSelectSong: { addSong($0, at: index) }
-        )
+        let transition = index < workingSetlist.sortedEntries.count - 1 ? entry.transition : nil
 
-        return Group {
-            if dropActive {
-                VStack(spacing: 0) {
-                    dropSlot
-                    row
-                }
-            } else {
-                row
-                    .overlay(alignment: .top) {
-                        dropSlot
-                            .offset(y: -SetlistDropMetrics.inactiveDropHitHeight / 2)
+        return HStack(spacing: 12) {
+            Button {
+                coordinator.goToSong(at: index, autoPlay: audioEngine.isPlaying)
+            } label: {
+                SetlistPlaybackRow(
+                    song: song,
+                    index: index,
+                    currentIndex: coordinator.currentIndex,
+                    isPlaying: audioEngine.isPlaying
+                )
+            }
+            .buttonStyle(.plain)
+
+            if let transition {
+                Menu {
+                    ForEach(SetlistTransition.allCases) { option in
+                        Button {
+                            viewModel.setTransition(option, for: entry, context: modelContext)
+                            coordinator.updateTransitions(from: workingSetlist)
+                        } label: {
+                            Label(option.label, systemImage: option.systemImage)
+                        }
                     }
+                } label: {
+                    SetlistTransitionBadge(transition: transition, size: 24)
+                }
+                .menuStyle(.borderlessButton)
             }
         }
         .contextMenu {
@@ -550,32 +517,9 @@ struct LivePlaybackView: View {
                 removeFromSetlist(entry)
             }
         }
-        .listRowInsets(EdgeInsets())
-        .listRowSeparator(.hidden)
         .listRowBackground(
             index == coordinator.currentIndex ? Color.accentColor.opacity(0.08) : nil
         )
-    }
-
-    private func setlistPlaybackRowContent(song: Song, entry: SetlistEntry, index: Int) -> some View {
-        SetlistPlaybackRow(
-            song: song,
-            index: index,
-            currentIndex: coordinator.currentIndex,
-            isPlaying: audioEngine.isPlaying,
-            transition: index < workingSetlist.sortedEntries.count - 1 ? entry.transition : nil,
-            onTransitionChange: { transition in
-                viewModel.setTransition(transition, for: entry, context: modelContext)
-                coordinator.updateTransitions(from: workingSetlist)
-            }
-        )
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: 40, maxHeight: .infinity, alignment: .center)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            coordinator.goToSong(at: index, autoPlay: audioEngine.isPlaying)
-        }
     }
 
     private func removeFromSetlist(_ entry: SetlistEntry) {
@@ -588,42 +532,9 @@ struct LivePlaybackView: View {
             ?? allSongs.first(where: { $0.id == id })
     }
 
-    private func updateDropTarget(_ isTargeted: Bool, at index: Int) {
-        clearDropTargetTask?.cancel()
-
-        if isTargeted {
-            withAnimation(SetlistDropMetrics.spring) {
-                songDropInsertionIndex = index
-            }
-            return
-        }
-
-        clearDropTargetTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(SetlistDropMetrics.targetClearDelayMs))
-            guard !Task.isCancelled else { return }
-            if songDropInsertionIndex == index {
-                withAnimation(SetlistDropMetrics.spring) {
-                    songDropInsertionIndex = nil
-                }
-            }
-        }
-    }
-
     private func addSong(_ song: Song, at index: Int) {
-        clearDropTargetTask?.cancel()
-        withAnimation(SetlistDropMetrics.spring) {
-            songDropInsertionIndex = nil
-        }
         viewModel.insertSong(song, at: index, to: workingSetlist, context: modelContext)
         coordinator.syncSetlist(workingSetlist)
-    }
-
-    @discardableResult
-    private func addSongFromDrag(_ items: [String], at index: Int) -> Bool {
-        guard let idString = items.first, let songID = UUID(uuidString: idString) else { return false }
-        guard let song = allSongs.first(where: { $0.id == songID }) else { return false }
-        addSong(song, at: index)
-        return true
     }
 
     private var loopSlotIDs: Set<UUID> {
@@ -719,8 +630,6 @@ private struct SetlistPlaybackRow: View {
     let index: Int
     let currentIndex: Int
     let isPlaying: Bool
-    let transition: SetlistTransition?
-    let onTransitionChange: (SetlistTransition) -> Void
 
     private var isFinished: Bool {
         index < currentIndex
@@ -742,21 +651,6 @@ private struct SetlistPlaybackRow: View {
                 .foregroundStyle(isFinished ? .secondary : .primary)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-            if let transition {
-                Menu {
-                    ForEach(SetlistTransition.allCases) { option in
-                        Button {
-                            onTransitionChange(option)
-                        } label: {
-                            Label(option.label, systemImage: option.systemImage)
-                        }
-                    }
-                } label: {
-                    SetlistTransitionBadge(transition: transition, size: 24)
-                }
-                .menuStyle(.borderlessButton)
-            }
 
             if isCurrent {
                 PlayingBadge(isPlaying: isPlaying)
@@ -786,36 +680,6 @@ private struct PlayingBadge: View {
         .padding(.vertical, 4)
         .background(Color.accentColor)
         .clipShape(Capsule())
-    }
-}
-
-private struct SetlistDropPlaceholder: View {
-    var isActive: Bool
-    var inactiveLabel = "Drop song here"
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "plus.circle.fill")
-                .foregroundStyle(Color.accentColor)
-            Text(isActive ? "Release to add song" : inactiveLabel)
-                .font(.subheadline)
-                .foregroundStyle(isActive ? Color.primary : Color.secondary)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.accentColor.opacity(isActive ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: 8))
-        .background(.background, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(
-                    Color.accentColor.opacity(isActive ? 0.65 : 0.25),
-                    style: StrokeStyle(lineWidth: isActive ? 2 : 1, dash: isActive ? [6, 4] : [4, 4])
-                )
-        }
-        .padding(.horizontal, 4)
-        .frame(maxWidth: .infinity)
-        .frame(height: SetlistDropMetrics.activeDropHeight)
     }
 }
 
@@ -906,81 +770,6 @@ private struct SetlistAddSongMenu: View {
     }
 }
 
-private struct SetlistSongDropSlot: View {
-    let index: Int
-    @Binding var insertionIndex: Int?
-    var prominent = false
-    var listRowStyled = false
-    let onDrop: ([String]) -> Bool
-    let onTargetChanged: (Bool, Int) -> Void
-    let onSelectSong: (Song) -> Void
-
-    @State private var showingAddMenu = false
-
-    private var isActive: Bool {
-        insertionIndex == index
-    }
-
-    private var height: CGFloat {
-        if prominent { return 88 }
-        return isActive ? SetlistDropMetrics.activeDropHeight : SetlistDropMetrics.inactiveDropHeight
-    }
-
-    private var hitHeight: CGFloat {
-        prominent ? height : max(height, SetlistDropMetrics.inactiveDropHitHeight)
-    }
-
-    var body: some View {
-        Color.clear
-            .frame(maxWidth: .infinity)
-            .frame(height: hitHeight)
-            .overlay {
-                ZStack {
-                    if isActive {
-                        SetlistDropPlaceholder(isActive: true)
-                    } else if prominent {
-                        SetlistDropPlaceholder(isActive: false)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: height)
-                .allowsHitTesting(false)
-            }
-            .contentShape(Rectangle())
-            .modifier(SetlistDropSlotListRowStyle(enabled: listRowStyled))
-            .animation(SetlistDropMetrics.spring, value: isActive)
-            .onTapGesture {
-                showingAddMenu = true
-            }
-            .popover(isPresented: $showingAddMenu, arrowEdge: .bottom) {
-                SetlistAddSongMenu { song in
-                    onSelectSong(song)
-                    showingAddMenu = false
-                }
-            }
-            .dropDestination(for: String.self) { items, _ in
-                onDrop(items)
-            } isTargeted: { isTargeted in
-                onTargetChanged(isTargeted, index)
-            }
-    }
-}
-
-private struct SetlistDropSlotListRowStyle: ViewModifier {
-    let enabled: Bool
-
-    func body(content: Content) -> some View {
-        if enabled {
-            content
-                .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12))
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-        } else {
-            content
-        }
-    }
-}
-
 private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @ViewBuilder let setlistSwitcher: Switcher
     let coordinator: PlaybackCoordinator
@@ -990,8 +779,10 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     let onPlay: () -> Void
     let onPause: () -> Void
     @Binding var showingSongLibrary: Bool
+    @Binding var showingAddSong: Bool
     @Binding var showingManageOutputs: Bool
     let onEditSong: (Song) -> Void
+    let onAddSong: (Song) -> Void
 
     @ToolbarContentBuilder
     var body: some ToolbarContent {
@@ -999,6 +790,11 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         if #available(macOS 26.0, *) {
             ToolbarItem(placement: .principal) {
                 nowPlayingInfo
+            }
+            .sharedBackgroundVisibility(.hidden)
+
+            ToolbarItem(placement: .primaryAction) {
+                addSongButton
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -1019,6 +815,10 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         } else {
             ToolbarItem(placement: .principal) {
                 nowPlayingInfo
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                addSongButton
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -1036,6 +836,10 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         #else
         ToolbarItem(placement: .principal) {
             nowPlayingInfo
+        }
+
+        ToolbarItem(placement: .primaryAction) {
+            addSongButton
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -1065,6 +869,20 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             onPlay: onPlay,
             onPause: onPause
         )
+    }
+
+    private var addSongButton: some View {
+        Button {
+            showingAddSong = true
+        } label: {
+            Label("Add Song", systemImage: "plus")
+        }
+        .popover(isPresented: $showingAddSong, arrowEdge: .bottom) {
+            SetlistAddSongMenu { song in
+                onAddSong(song)
+                showingAddSong = false
+            }
+        }
     }
 
     private var songsButton: some View {
