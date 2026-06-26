@@ -18,7 +18,11 @@ struct EditView: View {
     @Binding var loopSlotIDs: Set<UUID>
     @Binding var tempoChanges: [TempoChange]
     @Binding var timeSignatureChanges: [TimeSignatureChange]
+    @Binding var midiEvents: [MIDIEvent]
 
+    @State private var showingMIDIDevicePicker = false
+    @State private var showingMIDIDeviceEditor = false
+    @State private var deviceBeingEdited: MIDIDevice?
     @State private var timelineZoom: CGFloat = 1
     @State private var timelineViewportWidth: CGFloat = 0
     @State private var hasSetInitialTimelineZoom = false
@@ -331,7 +335,67 @@ struct EditView: View {
     }
 
     private var hasTimelineContent: Bool {
-        song.isClickOnly || !song.sortedTracks.isEmpty || !displaySections.isEmpty
+        song.isClickOnly || !song.sortedTracks.isEmpty || !displaySections.isEmpty || !song.midiTracks.isEmpty
+    }
+
+    private var midiTracks: [MIDITrack] {
+        song.sortedMIDITracks
+    }
+
+    private func reconfigureMIDI() {
+        let resolved = MIDIScheduler.scheduledEvents(events: midiEvents, tracks: midiTracks)
+        AudioEngineManager.shared.configureMIDI(events: resolved)
+    }
+
+    private func commitMIDIEvents() {
+        MIDIEventStore.saveAsync(midiEvents, for: song.id)
+        reconfigureMIDI()
+    }
+
+    private func commitMIDIConfig() {
+        try? modelContext.save()
+        reconfigureMIDI()
+    }
+
+    private func createMIDITrack(for device: MIDIDevice) {
+        let track = MIDITrack(
+            displayName: device.name,
+            sortOrder: midiTracks.count
+        )
+        track.device = device
+        track.song = song
+        modelContext.insert(track)
+        song.midiTracks.append(track)
+        try? modelContext.save()
+        reconfigureMIDI()
+    }
+
+    private func editDevice(for track: MIDITrack) {
+        guard let device = track.device else {
+            showingMIDIDevicePicker = true
+            return
+        }
+        deviceBeingEdited = device
+        showingMIDIDeviceEditor = true
+    }
+
+    private func deleteMIDITrack(_ track: MIDITrack) {
+        midiEvents.removeAll { $0.trackID == track.id }
+        song.midiTracks.removeAll { $0.id == track.id }
+        modelContext.delete(track)
+        try? modelContext.save()
+        commitMIDIEvents()
+    }
+
+    private func sendMIDITest(for track: MIDITrack) {
+        guard let device = track.device,
+              let uniqueID = device.destinationUniqueID,
+              let command = device.commands.first else { return }
+        MIDIOutputService.shared.sendNoteTestNow(
+            note: command.note,
+            channel: device.midiChannel,
+            toUniqueID: uniqueID
+        )
     }
 
     var body: some View {
@@ -364,6 +428,7 @@ struct EditView: View {
             tempoChanges = normalizedTempoChanges
             timeSignatureChanges = normalizedTimeSignatureChanges
             viewModel.syncTempoMap(tempoChanges, timeSignatureChanges: timeSignatureChanges)
+            reconfigureMIDI()
         }
         .onChange(of: clipSelection) { _, newValue in
             if newValue != nil {
@@ -418,6 +483,18 @@ struct EditView: View {
         }
         .sheet(isPresented: $showingChangeKey) {
             ChangeKeyDialog(song: song, viewModel: viewModel)
+        }
+        .sheet(isPresented: $showingMIDIDevicePicker) {
+            MIDIDevicePickerView { device in
+                createMIDITrack(for: device)
+            }
+        }
+        .sheet(isPresented: $showingMIDIDeviceEditor) {
+            NavigationStack {
+                MIDIDeviceEditorView(device: deviceBeingEdited) { _ in
+                    commitMIDIConfig()
+                }
+            }
         }
 #if os(macOS)
         .toolbar {
@@ -1180,6 +1257,20 @@ struct EditView: View {
                     }
                 )
             }
+
+            ForEach(midiTracks) { track in
+                MIDILaneView(
+                    track: track,
+                    device: track.device,
+                    timelineDuration: timelineDuration,
+                    timelineContentWidth: timelineContentWidth,
+                    laneHeight: TimelineLayout.laneHeight,
+                    events: $midiEvents,
+                    tempoChanges: normalizedTempoChanges,
+                    timeSignatureChanges: normalizedTimeSignatureChanges,
+                    onCommit: commitMIDIEvents
+                )
+            }
         }
     }
 
@@ -1202,6 +1293,17 @@ struct EditView: View {
                     }
                 )
             }
+
+            ForEach(midiTracks) { track in
+                MIDITrackHeaderView(
+                    track: track,
+                    laneHeight: TimelineLayout.laneHeight,
+                    onConfigChange: commitMIDIConfig,
+                    onSendTest: { sendMIDITest(for: track) },
+                    onEditDevice: { editDevice(for: track) },
+                    onDelete: { deleteMIDITrack(track) }
+                )
+            }
         }
         .frame(width: TimelineLayout.trackHeaderWidth)
         .background(Color.dawTrackHeaderColumnBackground)
@@ -1213,7 +1315,7 @@ struct EditView: View {
     }
 
     private var trackAreaHeight: CGFloat {
-        let count = song.sortedTracks.count
+        let count = song.sortedTracks.count + midiTracks.count
         guard count > 0 else { return 0 }
         return CGFloat(count) * TimelineLayout.laneHeight
             + CGFloat(count - 1) * TimelineLayout.laneSpacing
@@ -1275,9 +1377,24 @@ struct EditView: View {
                 Rectangle()
                     .fill(Color.primary.opacity(0.06))
 
-                Text("Tracks")
-                    .font(.system(size: 9, weight: .semibold))
+                HStack(spacing: 6) {
+                    Text("Tracks")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 0)
+
+                    Button { showingMIDIDevicePicker = true } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: "plus")
+                            Text("MIDI")
+                        }
+                        .font(.system(size: 9, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 8)
             }
             .frame(height: TimelineLayout.rulerHeight)
         }
@@ -2785,6 +2902,7 @@ private struct ClickTrackEditorMenu: View {
         tempoChanges: .constant([TempoChange(startMeasure: 1, bpm: 120)]),
         timeSignatureChanges: .constant([
             TimeSignatureChange(numerator: 4, denominator: 4, startMeasure: 1, sortOrder: 0)
-        ])
+        ]),
+        midiEvents: .constant([])
     )
 }

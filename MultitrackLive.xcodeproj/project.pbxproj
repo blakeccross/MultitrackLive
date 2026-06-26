@@ -77,6 +77,15 @@
 		AA000001000000000000004F /* RealtimeClickTrackPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004F /* RealtimeClickTrackPlayer.swift */; };
 		AA0000010000000000000050 /* ClickTrackSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000050 /* ClickTrackSchedulerTests.swift */; };
 		AA000001000000000000003B /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003D /* Accelerate.framework */; };
+		AA0000010000000000000060 /* MIDITrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000060 /* MIDITrack.swift */; };
+		AA0000010000000000000061 /* MIDIEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000061 /* MIDIEvent.swift */; };
+		AA0000010000000000000062 /* MIDIEventStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000062 /* MIDIEventStore.swift */; };
+		AA0000010000000000000063 /* MIDIOutputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000063 /* MIDIOutputService.swift */; };
+		AA0000010000000000000064 /* MIDIScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000064 /* MIDIScheduler.swift */; };
+		AA0000010000000000000065 /* MIDILaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000065 /* MIDILaneView.swift */; };
+		AA0000010000000000000066 /* MIDIDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000066 /* MIDIDevice.swift */; };
+		AA0000010000000000000067 /* MIDIDeviceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000067 /* MIDIDeviceStore.swift */; };
+		AA0000010000000000000068 /* MIDIDeviceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000068 /* MIDIDeviceViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -84,6 +93,15 @@
 		AA0000020000000000000001 /* MultitrackLiveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultitrackLiveApp.swift; sourceTree = "<group>"; };
 		AA0000020000000000000002 /* Song.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Song.swift; sourceTree = "<group>"; };
 		AA0000020000000000000003 /* AudioTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioTrack.swift; sourceTree = "<group>"; };
+		AA0000020000000000000060 /* MIDITrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDITrack.swift; sourceTree = "<group>"; };
+		AA0000020000000000000061 /* MIDIEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIEvent.swift; sourceTree = "<group>"; };
+		AA0000020000000000000062 /* MIDIEventStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIEventStore.swift; sourceTree = "<group>"; };
+		AA0000020000000000000063 /* MIDIOutputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIOutputService.swift; sourceTree = "<group>"; };
+		AA0000020000000000000064 /* MIDIScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIScheduler.swift; sourceTree = "<group>"; };
+		AA0000020000000000000065 /* MIDILaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDILaneView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000066 /* MIDIDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIDevice.swift; sourceTree = "<group>"; };
+		AA0000020000000000000067 /* MIDIDeviceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIDeviceStore.swift; sourceTree = "<group>"; };
+		AA0000020000000000000068 /* MIDIDeviceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIDeviceViews.swift; sourceTree = "<group>"; };
 		AA0000020000000000000004 /* Setlist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Setlist.swift; sourceTree = "<group>"; };
 		AA0000020000000000000005 /* SetlistEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistEntry.swift; sourceTree = "<group>"; };
 		AA0000020000000000000006 /* FileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileStore.swift; sourceTree = "<group>"; };
@@ -228,6 +246,9 @@
 			children = (
 				AA0000020000000000000002 /* Song.swift */,
 				AA0000020000000000000003 /* AudioTrack.swift */,
+				AA0000020000000000000060 /* MIDITrack.swift */,
+				AA0000020000000000000061 /* MIDIEvent.swift */,
+				AA0000020000000000000066 /* MIDIDevice.swift */,
 				AA000002000000000000002A /* TrackGroup.swift */,
 				AA000002000000000000002D /* OutputDestination.swift */,
 				AA000002000000000000002E /* OutputRoutingConfig.swift */,
@@ -284,6 +305,10 @@
 				AA000002000000000000003A /* RubberBandPitchProcessor.swift */,
 				AA0000020000000000000027 /* TrackMemoryPlayer.swift */,
 				AA0000020000000000000008 /* PlaybackCoordinator.swift */,
+				AA0000020000000000000062 /* MIDIEventStore.swift */,
+				AA0000020000000000000063 /* MIDIOutputService.swift */,
+				AA0000020000000000000064 /* MIDIScheduler.swift */,
+				AA0000020000000000000067 /* MIDIDeviceStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -336,6 +361,8 @@
 				AA0000020000000000000033 /* ManageOutputsView.swift */,
 				AA000002000000000000001D /* TimelineLayout.swift */,
 				AA0000020000000000000017 /* WaveformLaneView.swift */,
+				AA0000020000000000000065 /* MIDILaneView.swift */,
+				AA0000020000000000000068 /* MIDIDeviceViews.swift */,
 				AA000002000000000000004D /* WaveformBarsCanvas.swift */,
 				AA0000020000000000000024 /* TimelinePlayheadOverlay.swift */,
 				AA0000020000000000000018 /* DAWColors.swift */,
@@ -469,6 +496,15 @@
 				AA0000010000000000000002 /* Song.swift in Sources */,
 				AA0000010000000000000047 /* ClickTrackSubdivision.swift in Sources */,
 				AA0000010000000000000003 /* AudioTrack.swift in Sources */,
+				AA0000010000000000000060 /* MIDITrack.swift in Sources */,
+				AA0000010000000000000061 /* MIDIEvent.swift in Sources */,
+				AA0000010000000000000062 /* MIDIEventStore.swift in Sources */,
+				AA0000010000000000000063 /* MIDIOutputService.swift in Sources */,
+				AA0000010000000000000064 /* MIDIScheduler.swift in Sources */,
+				AA0000010000000000000065 /* MIDILaneView.swift in Sources */,
+				AA0000010000000000000066 /* MIDIDevice.swift in Sources */,
+				AA0000010000000000000067 /* MIDIDeviceStore.swift in Sources */,
+				AA0000010000000000000068 /* MIDIDeviceViews.swift in Sources */,
 				AA0000010000000000000004 /* Setlist.swift in Sources */,
 				AA0000010000000000000005 /* SetlistEntry.swift in Sources */,
 				AA0000010000000000000006 /* FileStore.swift in Sources */,

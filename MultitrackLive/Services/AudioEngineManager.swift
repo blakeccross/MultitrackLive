@@ -45,6 +45,7 @@ final class AudioEngineManager {
     private let masterMixer = AVAudioMixerNode()
     private let outputRoutingManager = OutputRoutingManager()
     private let transport = AudioPlaybackTransport()
+    private let midiScheduler: MIDIScheduler
     private var tracks: [UUID: TrackState] = [:]
     private var playbackTimer: Timer?
     private var masterArrangementSections: [ArrangementDisplaySection] = []
@@ -87,6 +88,7 @@ final class AudioEngineManager {
     var onPlaybackFinished: (() -> Void)?
 
     private init() {
+        midiScheduler = MIDIScheduler(transport: transport)
         engine.attach(masterMixer)
         engine.connect(masterMixer, to: engine.mainMixerNode, format: nil)
         #if os(iOS)
@@ -434,6 +436,7 @@ final class AudioEngineManager {
         transport.beginPlayback(from: startTime)
         isPlaying = true
         startTimer()
+        midiScheduler.start()
         refreshCurrentTimeFromEngine()
     }
 
@@ -443,6 +446,7 @@ final class AudioEngineManager {
         transport.pause(capturingTimeline: timeline)
         isPlaying = false
         stopTimer()
+        midiScheduler.stop()
         currentTime = timeline
     }
 
@@ -451,6 +455,7 @@ final class AudioEngineManager {
         isPlaying = false
         currentTime = 0
         stopTimer()
+        midiScheduler.stop()
     }
 
     func seek(to time: TimeInterval) {
@@ -460,10 +465,17 @@ final class AudioEngineManager {
         transport.setPausedTimeline(clamped)
         applyTrackPitch(at: clamped)
         prewarmTracks(atTimelineSeconds: clamped)
+        midiScheduler.reset(toTimeline: clamped)
 
         if isPlaying {
             transport.beginPlayback(from: clamped)
         }
+    }
+
+    /// Configures MIDI playback for the current song with fully-resolved events.
+    /// Events are sent in sync with the shared transport during playback.
+    func configureMIDI(events: [MIDIScheduler.ScheduledEvent]) {
+        midiScheduler.configure(events: events)
     }
 
     private func prewarmTracks(atTimelineSeconds timeline: TimeInterval) {
@@ -505,6 +517,7 @@ final class AudioEngineManager {
         transport.clearScheduledTransition()
         currentTime = target
         transport.setPausedTimeline(target)
+        midiScheduler.reset(toTimeline: target)
 
         if isPlaying, let hostTime = currentHostTime() {
             transport.resetAnchor(to: target, hostTime: hostTime)

@@ -21,6 +21,7 @@ struct SongDetailView: View {
     @State private var loopSlotIDs: Set<UUID> = []
     @State private var tempoChanges: [TempoChange] = []
     @State private var timeSignatureChanges: [TimeSignatureChange] = []
+    @State private var midiEvents: [MIDIEvent] = []
 
     var body: some View {
         songDetailContent
@@ -79,6 +80,7 @@ struct SongDetailView: View {
                 )
                 try? TempoStore.save(tempoChanges, for: song.id)
                 try? TimeSignatureStore.save(timeSignatureChanges, for: song.id)
+                try? MIDIEventStore.save(midiEvents, for: song.id)
             }
     }
 
@@ -112,7 +114,8 @@ struct SongDetailView: View {
                     clipRegions: $clipRegions,
                         loopSlotIDs: $loopSlotIDs,
                         tempoChanges: $tempoChanges,
-                        timeSignatureChanges: $timeSignatureChanges
+                        timeSignatureChanges: $timeSignatureChanges,
+                        midiEvents: $midiEvents
                     )
 
                     if viewModel.isReloadingSong {
@@ -157,6 +160,7 @@ struct SongDetailView: View {
         reloadArrangementMarkers()
         reloadTempoChanges()
         reloadTimeSignatureChanges()
+        midiEvents = MIDIEventStore.load(for: song.id)
         syncArrangementPlayback()
         syncTempoPlayback()
     }

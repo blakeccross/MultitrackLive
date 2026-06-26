@@ -313,6 +313,7 @@ final class PlaybackCoordinator {
                 let routing = routingProvider?()
                 try audioEngine.loadPreparedTracks(prepared, routing: routing)
                 applySongEngineState(for: song)
+                configureMIDIPlayback(for: song)
                 currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
                 nextWaveformSnapshot = nextSong.flatMap { Self.makeWaveformSnapshot(for: $0) }
                 loadedSongID = song.id
@@ -354,6 +355,12 @@ final class PlaybackCoordinator {
         }
         currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
         nextWaveformSnapshot = nextSong.flatMap { Self.makeWaveformSnapshot(for: $0) }
+    }
+
+    private func configureMIDIPlayback(for song: Song) {
+        let events = MIDIEventStore.load(for: song.id)
+        let resolved = MIDIScheduler.scheduledEvents(events: events, tracks: song.sortedMIDITracks)
+        audioEngine.configureMIDI(events: resolved)
     }
 
     private func applySongEngineState(for song: Song) {

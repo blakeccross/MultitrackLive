@@ -1,0 +1,216 @@
+import SwiftData
+import SwiftUI
+
+/// Sheet shown when adding a MIDI track: pick an existing device or create a new one.
+struct MIDIDevicePickerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \MIDIDevice.name) private var devices: [MIDIDevice]
+    let onSelect: (MIDIDevice) -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if !devices.isEmpty {
+                    Section("Devices") {
+                        ForEach(devices) { device in
+                            Button {
+                                onSelect(device)
+                                dismiss()
+                            } label: {
+                                deviceRow(device)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                Section {
+                    NavigationLink {
+                        MIDIDeviceEditorView(device: nil) { created in
+                            onSelect(created)
+                            dismiss()
+                        }
+                    } label: {
+                        Label("Create New Device", systemImage: "plus")
+                    }
+                }
+            }
+            .navigationTitle("Add MIDI Device")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .frame(minWidth: 360, minHeight: 360)
+    }
+
+    private func deviceRow(_ device: MIDIDevice) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(device.name)
+                .font(.body)
+            Text(subtitle(for: device))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func subtitle(for device: MIDIDevice) -> String {
+        let commandText = "\(device.commands.count) command\(device.commands.count == 1 ? "" : "s")"
+        let destinationText = device.destinationName ?? "No destination"
+        return "\(commandText) • \(destinationText)"
+    }
+}
+
+/// Create or edit a MIDI device: name, destination, channel, and named commands.
+struct MIDIDeviceEditorView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    let device: MIDIDevice?
+    let onSave: (MIDIDevice) -> Void
+
+    @State private var name: String
+    @State private var destinationUniqueID: Int32?
+    @State private var destinationName: String?
+    @State private var channel: Int
+    @State private var commands: [MIDICommand]
+    @State private var destinations: [MIDIOutputService.Destination] = []
+
+    init(device: MIDIDevice?, onSave: @escaping (MIDIDevice) -> Void) {
+        self.device = device
+        self.onSave = onSave
+        _name = State(initialValue: device?.name ?? "")
+        _destinationUniqueID = State(initialValue: device?.destinationUniqueID)
+        _destinationName = State(initialValue: device?.destinationName)
+        _channel = State(initialValue: device?.midiChannel ?? 1)
+        _commands = State(initialValue: device?.commands ?? [])
+    }
+
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        Form {
+            Section("Device") {
+                TextField("Device Name", text: $name)
+                destinationPicker
+                channelPicker
+            }
+
+            Section("Commands") {
+                if commands.isEmpty {
+                    Text("Add commands to trigger on this device. Each command is a named MIDI note.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach($commands) { $command in
+                    commandRow($command)
+                }
+                .onDelete { offsets in
+                    commands.remove(atOffsets: offsets)
+                }
+
+                Button {
+                    commands.append(MIDICommand(name: "", note: 60))
+                } label: {
+                    Label("Add Command", systemImage: "plus")
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(device == nil ? "New Device" : "Edit Device")
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") { save() }
+                    .disabled(!isValid)
+            }
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+        }
+        .onAppear { destinations = MIDIOutputService.shared.availableDestinations() }
+        .onReceive(NotificationCenter.default.publisher(for: MIDIOutputService.destinationsDidChangeNotification)) { _ in
+            destinations = MIDIOutputService.shared.availableDestinations()
+        }
+    }
+
+    private func commandRow(_ command: Binding<MIDICommand>) -> some View {
+        HStack(spacing: 10) {
+            TextField("Name", text: command.name)
+                .textFieldStyle(.roundedBorder)
+
+            HStack(spacing: 4) {
+                Text("Note")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("Note", value: command.note, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 44)
+                    .multilineTextAlignment(.trailing)
+                    .onChange(of: command.wrappedValue.note) { _, newValue in
+                        command.wrappedValue.note = min(127, max(0, newValue))
+                    }
+            }
+            .fixedSize()
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var destinationPicker: some View {
+        Menu {
+            Button("No Destination") {
+                destinationUniqueID = nil
+                destinationName = nil
+            }
+            ForEach(destinations) { destination in
+                Button(destination.name) {
+                    destinationUniqueID = destination.uniqueID
+                    destinationName = destination.name
+                }
+            }
+        } label: {
+            LabeledContent("Destination", value: destinationLabel)
+        }
+    }
+
+    private var destinationLabel: String {
+        if let destinationName, !destinationName.isEmpty {
+            return destinationName
+        }
+        if destinationUniqueID != nil {
+            return "Unavailable"
+        }
+        return "No Destination"
+    }
+
+    private var channelPicker: some View {
+        Picker("Channel", selection: $channel) {
+            ForEach(1...16, id: \.self) { channel in
+                Text("Channel \(channel)").tag(channel)
+            }
+        }
+    }
+
+    private func save() {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        let target = device ?? MIDIDevice(name: trimmedName)
+        target.name = trimmedName
+        target.destinationUniqueID = destinationUniqueID
+        target.destinationName = destinationName
+        target.midiChannel = channel
+        target.commands = commands
+
+        if device == nil {
+            modelContext.insert(target)
+        }
+        try? modelContext.save()
+
+        onSave(target)
+        dismiss()
+    }
+}

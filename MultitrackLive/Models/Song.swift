@@ -19,6 +19,9 @@ final class Song {
     @Relationship(deleteRule: .cascade, inverse: \AudioTrack.song)
     var tracks: [AudioTrack]
 
+    @Relationship(deleteRule: .cascade, inverse: \MIDITrack.song)
+    var midiTracks: [MIDITrack]
+
     init(name: String) {
         id = UUID()
         self.name = name
@@ -33,6 +36,7 @@ final class Song {
         clickTrackSubdivision = ClickTrackSubdivision.quarter.rawValue
         isClickOnly = false
         tracks = []
+        midiTracks = []
     }
 
     var clickSubdivision: ClickTrackSubdivision {
@@ -68,5 +72,9 @@ final class Song {
 
     var sortedTracks: [AudioTrack] {
         tracks.sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    var sortedMIDITracks: [MIDITrack] {
+        midiTracks.sorted { $0.sortOrder < $1.sortOrder }
     }
 }
