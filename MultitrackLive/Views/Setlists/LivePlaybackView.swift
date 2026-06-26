@@ -1,5 +1,31 @@
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
+
+private enum SongImportFeedback: Identifiable {
+    case success(String)
+    case failure(String)
+
+    var id: String {
+        switch self {
+        case .success(let message): "success-\(message)"
+        case .failure(let message): "failure-\(message)"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .success: "Import Complete"
+        case .failure: "Import Failed"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .success(let message), .failure(let message): message
+        }
+    }
+}
 
 struct LivePlaybackView: View {
     @Environment(\.modelContext) private var modelContext
@@ -21,6 +47,9 @@ struct LivePlaybackView: View {
     @State private var showingManageOutputs = false
     @State private var showingSaveSetlistAlert = false
     @State private var saveSetlistName = ""
+    @State private var showingSongFolderImporter = false
+    @State private var songPendingTrackImport: Song?
+    @State private var songImportFeedback: SongImportFeedback?
 
     private var activeSetlist: Setlist? {
         if let activeSetlistID,
@@ -93,6 +122,25 @@ struct LivePlaybackView: View {
                 coordinator.applyOutputRouting()
             }
         }
+        .fileImporter(
+            isPresented: $showingSongFolderImporter,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            handleSongFolderImport(result)
+        }
+        .sheet(item: $songPendingTrackImport) { song in
+            TrackImportView(song: song) { error in
+                songImportFeedback = .failure(error)
+            }
+        }
+        .alert(item: $songImportFeedback) { feedback in
+            Alert(
+                title: Text(feedback.title),
+                message: Text(feedback.message),
+                dismissButton: .cancel(Text("OK"))
+            )
+        }
         .background {
             playbackMonitorSupport
         }
@@ -159,9 +207,35 @@ struct LivePlaybackView: View {
             showingSongLibrary: $showingSongLibrary,
             showingAddSong: $showingAddSong,
             showingManageOutputs: $showingManageOutputs,
+            onRequestFolderImport: {
+                showingSongLibrary = false
+                showingSongFolderImporter = true
+            },
+            onRequestTrackImport: { song in
+                showingSongLibrary = false
+                songPendingTrackImport = song
+            },
             onEditSong: { songToEditID = $0.id },
             onAddSong: { addSong($0, at: workingSetlist.sortedEntries.count) }
         )
+    }
+
+    private func handleSongFolderImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            songImportFeedback = .failure(error.localizedDescription)
+        case .success(let urls):
+            guard let folderURL = urls.first else { return }
+            do {
+                let importResult = try SongFolderImporter.importFromFolder(
+                    at: folderURL,
+                    context: modelContext
+                )
+                songImportFeedback = .success(SongFolderImporter.summaryMessage(for: importResult))
+            } catch {
+                songImportFeedback = .failure(error.localizedDescription)
+            }
+        }
     }
 
     private var playbackMonitorSupport: some View {
@@ -781,6 +855,8 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @Binding var showingSongLibrary: Bool
     @Binding var showingAddSong: Bool
     @Binding var showingManageOutputs: Bool
+    let onRequestFolderImport: () -> Void
+    let onRequestTrackImport: (Song) -> Void
     let onEditSong: (Song) -> Void
     let onAddSong: (Song) -> Void
 
@@ -900,7 +976,9 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
                 },
                 onDismiss: {
                     showingSongLibrary = false
-                }
+                },
+                onRequestFolderImport: onRequestFolderImport,
+                onRequestTrackImport: onRequestTrackImport
             )
             .frame(width: 300, height: 420)
         }

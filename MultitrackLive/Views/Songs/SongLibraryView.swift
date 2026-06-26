@@ -8,24 +8,22 @@ struct SongLibraryPanel: View {
 
     var onEdit: (Song) -> Void
     var onDismiss: () -> Void
+    var onRequestFolderImport: () -> Void
+    var onRequestTrackImport: (Song) -> Void
 
     @State private var searchText = ""
     @State private var showingNewSongAlert = false
     @State private var showingNewClickTrackSheet = false
-    @State private var showingFolderImporter = false
     @State private var newSongName = ""
     @State private var newClickTrackBPM: Double = TempoChange.defaultBPM
     @State private var newClickTrackSubdivision: ClickTrackSubdivision = .quarter
     @State private var newClickTrackNumerator: Int = TimeSignatureChange.defaultNumerator
     @State private var newClickTrackDenominator: Int = TimeSignatureChange.defaultDenominator
-    @State private var songPendingImport: Song?
     @State private var songPendingRename: Song?
     @State private var renameSongName = ""
     @State private var songPendingDelete: Song?
-    @State private var importError: String?
     @State private var createSongError: String?
     @State private var songActionError: String?
-    @State private var folderImportSummary: String?
 
     private var filteredSongs: [Song] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -55,7 +53,7 @@ struct SongLibraryPanel: View {
                     }
 
                     Button {
-                        showingFolderImporter = true
+                        onRequestFolderImport()
                     } label: {
                         Label("Import from Folder", systemImage: "folder")
                     }
@@ -133,13 +131,6 @@ struct SongLibraryPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.background)
-        .fileImporter(
-            isPresented: $showingFolderImporter,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
-            handleFolderImport(result)
-        }
         .alert("New Song", isPresented: $showingNewSongAlert) {
             TextField("Song name", text: $newSongName)
             Button("Create") {
@@ -161,27 +152,6 @@ struct SongLibraryPanel: View {
                     showingNewClickTrackSheet = false
                 }
             )
-        }
-        .alert("Import Complete", isPresented: Binding(
-            get: { folderImportSummary != nil },
-            set: { if !$0 { folderImportSummary = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(folderImportSummary ?? "")
-        }
-        .sheet(item: $songPendingImport) { song in
-            TrackImportView(song: song) { error in
-                importError = error
-            }
-        }
-        .alert("Import Failed", isPresented: Binding(
-            get: { importError != nil },
-            set: { if !$0 { importError = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(importError ?? "")
         }
         .alert("Could Not Create Song", isPresented: Binding(
             get: { createSongError != nil },
@@ -233,36 +203,6 @@ struct SongLibraryPanel: View {
         } message: {
             Text(songActionError ?? "")
         }
-    }
-
-    private func handleFolderImport(_ result: Result<[URL], Error>) {
-        switch result {
-        case .failure(let error):
-            importError = error.localizedDescription
-        case .success(let urls):
-            guard let folderURL = urls.first else { return }
-            do {
-                let importResult = try SongFolderImporter.importFromFolder(
-                    at: folderURL,
-                    context: modelContext
-                )
-                folderImportSummary = folderImportSummaryText(for: importResult)
-            } catch {
-                importError = error.localizedDescription
-            }
-        }
-    }
-
-    private func folderImportSummaryText(for result: SongFolderImporter.ImportResult) -> String {
-        var lines = ["Created \"\(result.song.name)\" with \(result.trackCount) track\(result.trackCount == 1 ? "" : "s")."]
-        if result.sectionCount > 0, let bpm = result.bpm {
-            var line = "Imported \(result.sectionCount) sections from Ableton at \(String(format: "%.1f", bpm)) BPM."
-            if let timeSignature = result.song.timeSignatureDisplay {
-                line += " Time signature: \(timeSignature)."
-            }
-            lines.append(line)
-        }
-        return lines.joined(separator: "\n")
     }
 
     private func resetNewClickTrackForm() {
@@ -323,7 +263,7 @@ struct SongLibraryPanel: View {
 
         do {
             try modelContext.save()
-            songPendingImport = song
+            onRequestTrackImport(song)
         } catch {
             modelContext.delete(song)
             createSongError = error.localizedDescription
@@ -537,7 +477,12 @@ private struct SongLibraryRow: View {
 }
 
 #Preview {
-    SongLibraryPanel(onEdit: { _ in }, onDismiss: {})
+    SongLibraryPanel(
+        onEdit: { _ in },
+        onDismiss: {},
+        onRequestFolderImport: {},
+        onRequestTrackImport: { _ in }
+    )
         .frame(width: 280)
         .modelContainer(for: [Song.self, AudioTrack.self], inMemory: true)
 }

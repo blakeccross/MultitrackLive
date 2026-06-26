@@ -15,6 +15,20 @@ enum SongFolderImporter {
         let bpm: Double?
     }
 
+    static func summaryMessage(for result: ImportResult) -> String {
+        var lines = [
+            "Created \"\(result.song.name)\" with \(result.trackCount) track\(result.trackCount == 1 ? "" : "s")."
+        ]
+        if result.sectionCount > 0, let bpm = result.bpm {
+            var line = "Imported \(result.sectionCount) sections from Ableton at \(String(format: "%.1f", bpm)) BPM."
+            if let timeSignature = result.song.timeSignatureDisplay {
+                line += " Time signature: \(timeSignature)."
+            }
+            lines.append(line)
+        }
+        return lines.joined(separator: "\n")
+    }
+
     enum ImportError: LocalizedError {
         case unreadableFolder
         case noImportableContent
