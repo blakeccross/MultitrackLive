@@ -30,7 +30,6 @@
 		AA0000010000000000000018 /* ArrangementMarker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000019 /* ArrangementMarker.swift */; };
 		AA0000010000000000000019 /* AbletonProjectImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000001A /* AbletonProjectImporter.swift */; };
 		AA000001000000000000001A /* PersistenceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000001B /* PersistenceController.swift */; };
-		AA000001000000000000001B /* ArrangementMarkerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000001C /* ArrangementMarkerStore.swift */; };
 		AA000001000000000000001C /* TimelineLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000001D /* TimelineLayout.swift */; };
 		AA000001000000000000001D /* ArrangementSlot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000001E /* ArrangementSlot.swift */; };
 		AA000001000000000000001E /* SongArrangementStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000001F /* SongArrangementStore.swift */; };
@@ -54,13 +53,11 @@
 		AA0000010000000000000032 /* OutputRoutingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000032 /* OutputRoutingManager.swift */; };
 		AA0000010000000000000033 /* ManageOutputsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000033 /* ManageOutputsView.swift */; };
 		AA0000010000000000000035 /* TimeSignatureChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000035 /* TimeSignatureChange.swift */; };
-		AA0000010000000000000036 /* TimeSignatureStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000036 /* TimeSignatureStore.swift */; };
 		AA0000010000000000000034 /* SongFolderImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000034 /* SongFolderImporter.swift */; };
 		AA0000010000000000000037 /* ChangeKeyDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000037 /* ChangeKeyDialog.swift */; };
 		AA0000010000000000000038 /* PitchShiftBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000039 /* PitchShiftBridge.mm */; };
 		AA000001000000000000003A /* RubberBandPitchProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003A /* RubberBandPitchProcessor.swift */; };
 		AA000001000000000000003C /* TempoChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003E /* TempoChange.swift */; };
-		AA000001000000000000003D /* TempoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003F /* TempoStore.swift */; };
 		AA0000010000000000000040 /* TrackBakeCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000040 /* TrackBakeCache.swift */; };
 		AA0000010000000000000041 /* SongTrackLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000041 /* SongTrackLoader.swift */; };
 		AA0000010000000000000042 /* LiveSetlistNowPlayingInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000042 /* LiveSetlistNowPlayingInfoView.swift */; };
@@ -79,13 +76,20 @@
 		AA000001000000000000003B /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000002000000000000003D /* Accelerate.framework */; };
 		AA0000010000000000000060 /* MIDITrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000060 /* MIDITrack.swift */; };
 		AA0000010000000000000061 /* MIDIEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000061 /* MIDIEvent.swift */; };
-		AA0000010000000000000062 /* MIDIEventStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000062 /* MIDIEventStore.swift */; };
 		AA0000010000000000000063 /* MIDIOutputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000063 /* MIDIOutputService.swift */; };
 		AA0000010000000000000064 /* MIDIScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000064 /* MIDIScheduler.swift */; };
 		AA0000010000000000000065 /* MIDILaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000065 /* MIDILaneView.swift */; };
 		AA0000010000000000000066 /* MIDIDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000066 /* MIDIDevice.swift */; };
 		AA0000010000000000000067 /* MIDIDeviceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000067 /* MIDIDeviceStore.swift */; };
 		AA0000010000000000000068 /* MIDIDeviceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000068 /* MIDIDeviceViews.swift */; };
+		AA0000010000000000000071 /* MediaReference.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000071 /* MediaReference.swift */; };
+		AA0000010000000000000072 /* SongProjectDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000072 /* SongProjectDocument.swift */; };
+		AA0000010000000000000073 /* ShowProjectDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000073 /* ShowProjectDocument.swift */; };
+		AA0000010000000000000074 /* ProjectUTType.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000074 /* ProjectUTType.swift */; };
+		AA0000010000000000000075 /* MediaReferenceResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000075 /* MediaReferenceResolver.swift */; };
+		AA0000010000000000000076 /* ProjectFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000076 /* ProjectFileStore.swift */; };
+		AA0000010000000000000077 /* SongProjectBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000077 /* SongProjectBridge.swift */; };
+		AA0000010000000000000078 /* MediaConsolidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000078 /* MediaConsolidator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -95,7 +99,6 @@
 		AA0000020000000000000003 /* AudioTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioTrack.swift; sourceTree = "<group>"; };
 		AA0000020000000000000060 /* MIDITrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDITrack.swift; sourceTree = "<group>"; };
 		AA0000020000000000000061 /* MIDIEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIEvent.swift; sourceTree = "<group>"; };
-		AA0000020000000000000062 /* MIDIEventStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIEventStore.swift; sourceTree = "<group>"; };
 		AA0000020000000000000063 /* MIDIOutputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIOutputService.swift; sourceTree = "<group>"; };
 		AA0000020000000000000064 /* MIDIScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIScheduler.swift; sourceTree = "<group>"; };
 		AA0000020000000000000065 /* MIDILaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDILaneView.swift; sourceTree = "<group>"; };
@@ -123,7 +126,6 @@
 		AA0000020000000000000019 /* ArrangementMarker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArrangementMarker.swift; sourceTree = "<group>"; };
 		AA000002000000000000001A /* AbletonProjectImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AbletonProjectImporter.swift; sourceTree = "<group>"; };
 		AA000002000000000000001B /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
-		AA000002000000000000001C /* ArrangementMarkerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArrangementMarkerStore.swift; sourceTree = "<group>"; };
 		AA000002000000000000001D /* TimelineLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineLayout.swift; sourceTree = "<group>"; };
 		AA000002000000000000001E /* ArrangementSlot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArrangementSlot.swift; sourceTree = "<group>"; };
 		AA000002000000000000001F /* SongArrangementStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongArrangementStore.swift; sourceTree = "<group>"; };
@@ -144,7 +146,6 @@
 		AA0000020000000000000030 /* OutputRoutingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputRoutingStore.swift; sourceTree = "<group>"; };
 		AA0000020000000000000031 /* AudioOutputDeviceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioOutputDeviceService.swift; sourceTree = "<group>"; };
 		AA0000020000000000000032 /* OutputRoutingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputRoutingManager.swift; sourceTree = "<group>"; };
-		AA0000020000000000000036 /* TimeSignatureStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeSignatureStore.swift; sourceTree = "<group>"; };
 		AA0000020000000000000035 /* TimeSignatureChange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeSignatureChange.swift; sourceTree = "<group>"; };
 		AA0000020000000000000034 /* SongFolderImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongFolderImporter.swift; sourceTree = "<group>"; };
 		AA0000020000000000000037 /* ChangeKeyDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangeKeyDialog.swift; sourceTree = "<group>"; };
@@ -152,7 +153,6 @@
 		AA0000020000000000000039 /* PitchShiftBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = PitchShiftBridge.mm; sourceTree = "<group>"; };
 		AA000002000000000000003A /* RubberBandPitchProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubberBandPitchProcessor.swift; sourceTree = "<group>"; };
 		AA000002000000000000003E /* TempoChange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoChange.swift; sourceTree = "<group>"; };
-		AA000002000000000000003F /* TempoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempoStore.swift; sourceTree = "<group>"; };
 		AA0000020000000000000040 /* TrackBakeCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackBakeCache.swift; sourceTree = "<group>"; };
 		AA0000020000000000000041 /* SongTrackLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongTrackLoader.swift; sourceTree = "<group>"; };
 		AA0000020000000000000042 /* LiveSetlistNowPlayingInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSetlistNowPlayingInfoView.swift; sourceTree = "<group>"; };
@@ -174,6 +174,14 @@
 		AA000002000000000000003D /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		AA0000020000000000000033 /* ManageOutputsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageOutputsView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000024 /* TimelinePlayheadOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelinePlayheadOverlay.swift; sourceTree = "<group>"; };
+		AA0000020000000000000071 /* MediaReference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaReference.swift; sourceTree = "<group>"; };
+		AA0000020000000000000072 /* SongProjectDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongProjectDocument.swift; sourceTree = "<group>"; };
+		AA0000020000000000000073 /* ShowProjectDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowProjectDocument.swift; sourceTree = "<group>"; };
+		AA0000020000000000000074 /* ProjectUTType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectUTType.swift; sourceTree = "<group>"; };
+		AA0000020000000000000075 /* MediaReferenceResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaReferenceResolver.swift; sourceTree = "<group>"; };
+		AA0000020000000000000076 /* ProjectFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectFileStore.swift; sourceTree = "<group>"; };
+		AA0000020000000000000077 /* SongProjectBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongProjectBridge.swift; sourceTree = "<group>"; };
+		AA0000020000000000000078 /* MediaConsolidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaConsolidator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -244,6 +252,7 @@
 		AA0000050000000000000004 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				AA0000050000000000000012 /* Project */,
 				AA0000020000000000000002 /* Song.swift */,
 				AA0000020000000000000003 /* AudioTrack.swift */,
 				AA0000020000000000000060 /* MIDITrack.swift */,
@@ -263,6 +272,16 @@
 				AA0000020000000000000029 /* SetlistTransition.swift */,
 			);
 			path = Models;
+			sourceTree = "<group>";
+		};
+		AA0000050000000000000012 /* Project */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000020000000000000071 /* MediaReference.swift */,
+				AA0000020000000000000072 /* SongProjectDocument.swift */,
+				AA0000020000000000000073 /* ShowProjectDocument.swift */,
+			);
+			path = Project;
 			sourceTree = "<group>";
 		};
 		AA000005000000000000000E /* Audio */ = {
@@ -286,9 +305,6 @@
 				AA0000020000000000000030 /* OutputRoutingStore.swift */,
 				AA0000020000000000000031 /* AudioOutputDeviceService.swift */,
 				AA0000020000000000000032 /* OutputRoutingManager.swift */,
-				AA000002000000000000001C /* ArrangementMarkerStore.swift */,
-				AA0000020000000000000036 /* TimeSignatureStore.swift */,
-				AA000002000000000000003F /* TempoStore.swift */,
 				AA0000020000000000000040 /* TrackBakeCache.swift */,
 				AA0000020000000000000041 /* SongTrackLoader.swift */,
 				AA0000020000000000000043 /* ClickTrackGenerator.swift */,
@@ -305,10 +321,14 @@
 				AA000002000000000000003A /* RubberBandPitchProcessor.swift */,
 				AA0000020000000000000027 /* TrackMemoryPlayer.swift */,
 				AA0000020000000000000008 /* PlaybackCoordinator.swift */,
-				AA0000020000000000000062 /* MIDIEventStore.swift */,
 				AA0000020000000000000063 /* MIDIOutputService.swift */,
 				AA0000020000000000000064 /* MIDIScheduler.swift */,
 				AA0000020000000000000067 /* MIDIDeviceStore.swift */,
+				AA0000020000000000000074 /* ProjectUTType.swift */,
+				AA0000020000000000000075 /* MediaReferenceResolver.swift */,
+				AA0000020000000000000076 /* ProjectFileStore.swift */,
+				AA0000020000000000000077 /* SongProjectBridge.swift */,
+				AA0000020000000000000078 /* MediaConsolidator.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -498,7 +518,6 @@
 				AA0000010000000000000003 /* AudioTrack.swift in Sources */,
 				AA0000010000000000000060 /* MIDITrack.swift in Sources */,
 				AA0000010000000000000061 /* MIDIEvent.swift in Sources */,
-				AA0000010000000000000062 /* MIDIEventStore.swift in Sources */,
 				AA0000010000000000000063 /* MIDIOutputService.swift in Sources */,
 				AA0000010000000000000064 /* MIDIScheduler.swift in Sources */,
 				AA0000010000000000000065 /* MIDILaneView.swift in Sources */,
@@ -527,10 +546,7 @@
 				AA0000010000000000000035 /* TimeSignatureChange.swift in Sources */,
 				AA0000010000000000000019 /* AbletonProjectImporter.swift in Sources */,
 				AA000001000000000000001A /* PersistenceController.swift in Sources */,
-				AA000001000000000000001B /* ArrangementMarkerStore.swift in Sources */,
-				AA0000010000000000000036 /* TimeSignatureStore.swift in Sources */,
 				AA000001000000000000003C /* TempoChange.swift in Sources */,
-				AA000001000000000000003D /* TempoStore.swift in Sources */,
 				AA0000010000000000000040 /* TrackBakeCache.swift in Sources */,
 				AA0000010000000000000041 /* SongTrackLoader.swift in Sources */,
 				AA0000010000000000000043 /* ClickTrackGenerator.swift in Sources */,
@@ -563,6 +579,14 @@
 				AA0000010000000000000032 /* OutputRoutingManager.swift in Sources */,
 				AA0000010000000000000034 /* SongFolderImporter.swift in Sources */,
 				AA0000010000000000000033 /* ManageOutputsView.swift in Sources */,
+				AA0000010000000000000071 /* MediaReference.swift in Sources */,
+				AA0000010000000000000072 /* SongProjectDocument.swift in Sources */,
+				AA0000010000000000000073 /* ShowProjectDocument.swift in Sources */,
+				AA0000010000000000000074 /* ProjectUTType.swift in Sources */,
+				AA0000010000000000000075 /* MediaReferenceResolver.swift in Sources */,
+				AA0000010000000000000076 /* ProjectFileStore.swift in Sources */,
+				AA0000010000000000000077 /* SongProjectBridge.swift in Sources */,
+				AA0000010000000000000078 /* MediaConsolidator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

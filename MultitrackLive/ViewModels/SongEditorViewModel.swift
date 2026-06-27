@@ -103,11 +103,18 @@ final class SongEditorViewModel {
             }
         }
 
-        let trackInputs = song.sortedTracks.map { track in
-            (
+        let trackInputs = song.sortedTracks.compactMap { track -> (
+            id: UUID,
+            url: URL,
+            relativePath: String,
+            settings: AudioEngineManager.TrackSettings,
+            groupID: UUID?
+        )? in
+            guard let url = FileStore.trackURL(for: song, track: track) else { return nil }
+            return (
                 id: track.id,
-                url: FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath),
-                relativePath: track.relativeFilePath,
+                url: url,
+                relativePath: track.mediaPath ?? track.relativeFilePath,
                 settings: AudioEngineManager.TrackSettings(track: track),
                 groupID: track.group?.id
             )
@@ -115,11 +122,9 @@ final class SongEditorViewModel {
 
         if song.isClickOnly {
             audioEngine.stop()
-            let tempoChanges = TempoStore.loadOrMigrate(for: song)
-            let timeSignatureChanges = TimeSignatureStore.loadOrMigrate(
-                for: song,
-                tempoChanges: tempoChanges
-            )
+            let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
+            let tempoChanges = projectState.tempoChanges
+            let timeSignatureChanges = projectState.timeSignatureChanges
 
             do {
                 try audioEngine.loadClickOnlySong(
@@ -201,11 +206,9 @@ final class SongEditorViewModel {
                 trackDurations[payload.id] = Double(payload.buffer.frameCount) / payload.buffer.sampleRate
             }
 
-            let tempoChanges = TempoStore.loadOrMigrate(for: song)
-            let timeSignatureChanges = TimeSignatureStore.loadOrMigrate(
-                for: song,
-                tempoChanges: tempoChanges
-            )
+            let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
+            let tempoChanges = projectState.tempoChanges
+            let timeSignatureChanges = projectState.timeSignatureChanges
 
             do {
                 try SongTrackLoader.appendClickTrackIfNeeded(
@@ -309,7 +312,7 @@ final class SongEditorViewModel {
         if let cached = trackDurations[track.id] {
             return cached
         }
-        let url = FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath)
+        guard let url = FileStore.trackURL(for: song, track: track) else { return 0 }
         let duration = FileStore.fileDuration(at: url) ?? 0
         trackDurations[track.id] = duration
         return duration

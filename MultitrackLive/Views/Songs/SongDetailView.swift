@@ -69,18 +69,7 @@ struct SongDetailView: View {
             #endif
             .onDisappear {
                 AudioEngineManager.shared.stop()
-                try? SongArrangementStore.save(
-                    slots: arrangementSlots,
-                    clipTrims: clipTrims,
-                    removedClips: removedClips,
-                    clipGaps: clipGaps,
-                    clipRegions: clipRegions,
-                    loopSlotIDs: loopSlotIDs,
-                    for: song.id
-                )
-                try? TempoStore.save(tempoChanges, for: song.id)
-                try? TimeSignatureStore.save(timeSignatureChanges, for: song.id)
-                try? MIDIEventStore.save(midiEvents, for: song.id)
+                persistSongState()
             }
     }
 
@@ -157,53 +146,41 @@ struct SongDetailView: View {
             model.loadSong()
             viewModel = model
         }
-        reloadArrangementMarkers()
-        reloadTempoChanges()
-        reloadTimeSignatureChanges()
-        midiEvents = MIDIEventStore.load(for: song.id)
+        try? SongProjectBridge.ensureProjectFile(for: song, context: modelContext)
+        guard let projectState = try? SongProjectBridge.loadProjectState(for: song) else { return }
+        arrangementMarkers = projectState.markers
+        arrangementSlots = projectState.arrangement.slots
+        clipTrims = projectState.arrangement.clipTrims
+        removedClips = projectState.arrangement.removedClips
+        clipGaps = projectState.arrangement.clipGaps
+        clipRegions = projectState.arrangement.clipRegions
+        loopSlotIDs = projectState.arrangement.loopSlotIDs
+        tempoChanges = projectState.tempoChanges
+        timeSignatureChanges = projectState.timeSignatureChanges
+        midiEvents = projectState.midiEvents
+        migrateClipGapsIfNeeded()
         syncArrangementPlayback()
         syncTempoPlayback()
     }
 
-    private func reloadTempoChanges() {
-        tempoChanges = TempoStore.loadOrMigrate(for: song)
-        if song.bpm != tempoChanges.referenceBPM {
-            song.bpm = tempoChanges.referenceBPM
-            try? modelContext.save()
-        }
+    private func persistSongState() {
+        try? SongProjectBridge.persist(
+            song: song,
+            markers: arrangementMarkers,
+            arrangementSlots: arrangementSlots,
+            clipTrims: clipTrims,
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions,
+            loopSlotIDs: loopSlotIDs,
+            tempoChanges: tempoChanges,
+            timeSignatureChanges: timeSignatureChanges,
+            midiEvents: midiEvents,
+            context: modelContext
+        )
     }
 
-    private func reloadTimeSignatureChanges() {
-        timeSignatureChanges = TimeSignatureStore.loadOrMigrate(for: song, tempoChanges: tempoChanges)
-        let referenceNumerator = timeSignatureChanges.referenceNumerator
-        let referenceDenominator = timeSignatureChanges.referenceDenominator
-        var didChange = false
-        if song.timeSignatureNumerator != referenceNumerator {
-            song.timeSignatureNumerator = referenceNumerator
-            didChange = true
-        }
-        if song.timeSignatureDenominator != referenceDenominator {
-            song.timeSignatureDenominator = referenceDenominator
-            didChange = true
-        }
-        if didChange {
-            try? modelContext.save()
-        }
-    }
-
-    private func reloadArrangementMarkers() {
-        arrangementMarkers = ArrangementMarkerStore.load(for: song.id).sortedByTime
-        let arrangement = SongArrangementStore.load(for: song.id, markers: arrangementMarkers)
-        arrangementSlots = arrangement.slots
-        clipTrims = arrangement.clipTrims
-        removedClips = arrangement.removedClips
-        clipGaps = arrangement.clipGaps
-        clipRegions = arrangement.clipRegions
-        loopSlotIDs = arrangement.loopSlotIDs
-        migrateLegacyClipGapsIfNeeded()
-    }
-
-    private func migrateLegacyClipGapsIfNeeded() {
+    private func migrateClipGapsIfNeeded() {
         guard clipRegions.isEmpty, !clipGaps.isEmpty else { return }
         let inputs = SongArrangementStore.makeLayoutInputs(
             markers: arrangementMarkers,
@@ -229,15 +206,7 @@ struct SongDetailView: View {
             sourceTracks: sourceTracks
         )
         clipGaps = []
-        try? SongArrangementStore.save(
-            slots: arrangementSlots,
-            clipTrims: clipTrims,
-            removedClips: removedClips,
-            clipGaps: clipGaps,
-            clipRegions: clipRegions,
-            loopSlotIDs: loopSlotIDs,
-            for: song.id
-        )
+        persistSongState()
     }
 
     private func syncArrangementPlayback() {
@@ -279,17 +248,9 @@ struct SongDetailView: View {
                 clipGaps = []
                 clipRegions = []
                 loopSlotIDs = []
-                try SongArrangementStore.save(
-                    slots: arrangementSlots,
-                    clipTrims: clipTrims,
-                    removedClips: removedClips,
-                    clipGaps: clipGaps,
-                    clipRegions: clipRegions,
-                    loopSlotIDs: loopSlotIDs,
-                    for: song.id
-                )
-                reloadTempoChanges()
-                reloadTimeSignatureChanges()
+                tempoChanges = [TempoChange(startMeasure: 1, bpm: importResult.bpm, sortOrder: 0)]
+                timeSignatureChanges = importResult.timeSignatures
+                persistSongState()
                 abletonImportSummary = importSummary(for: importResult)
                 syncArrangementPlayback()
                 syncTempoPlayback()

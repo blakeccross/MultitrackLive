@@ -237,11 +237,9 @@ final class PlaybackCoordinator {
 
         if song.isClickOnly {
             do {
-                let tempoChanges = TempoStore.loadOrMigrate(for: song)
-                let timeSignatureChanges = TimeSignatureStore.loadOrMigrate(
-                    for: song,
-                    tempoChanges: tempoChanges
-                )
+                let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
+                let tempoChanges = projectState.tempoChanges
+                let timeSignatureChanges = projectState.timeSignatureChanges
                 let routing = routingProvider?()
                 try audioEngine.loadClickOnlySong(
                     trackID: song.clickTrackID,
@@ -293,17 +291,15 @@ final class PlaybackCoordinator {
         switch preparationResult {
         case .success(var prepared):
             do {
-                let tempoChanges = TempoStore.loadOrMigrate(for: song)
-                let timeSignatureChanges = TimeSignatureStore.loadOrMigrate(
-                    for: song,
-                    tempoChanges: tempoChanges
-                )
+                let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
+                let tempoChanges = projectState.tempoChanges
+                let timeSignatureChanges = projectState.timeSignatureChanges
                 try SongTrackLoader.appendClickTrackIfNeeded(
                     to: &prepared,
                     song: song,
                     sourceDurationForTrack: { trackID in
-                        guard let track = song.sortedTracks.first(where: { $0.id == trackID }) else { return 1 }
-                        let url = FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath)
+                        guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
+                              let url = FileStore.trackURL(for: song, track: track) else { return 1 }
                         return FileStore.fileDuration(at: url) ?? 1
                     },
                     tempoChanges: tempoChanges,
@@ -358,19 +354,20 @@ final class PlaybackCoordinator {
     }
 
     private func configureMIDIPlayback(for song: Song) {
-        let events = MIDIEventStore.load(for: song.id)
+        let events = SongProjectBridge.projectStateOrDefaults(for: song).midiEvents
         let resolved = MIDIScheduler.scheduledEvents(events: events, tracks: song.sortedMIDITracks)
         audioEngine.configureMIDI(events: resolved)
     }
 
     private func applySongEngineState(for song: Song) {
-        let markers = ArrangementMarkerStore.load(for: song.id).sortedByTime
-        let arrangement = SongArrangementStore.load(for: song.id, markers: markers)
+        let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
+        let markers = projectState.markers
+        let arrangement = projectState.arrangement
         let trackIDs = song.sortedTracks.map(\.id)
 
         func sourceDuration(for trackID: UUID) -> TimeInterval {
-            guard let track = song.sortedTracks.first(where: { $0.id == trackID }) else { return 1 }
-            let url = FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath)
+            guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
+                  let url = FileStore.trackURL(for: song, track: track) else { return 1 }
             return FileStore.fileDuration(at: url) ?? 1
         }
 
@@ -401,8 +398,8 @@ final class PlaybackCoordinator {
             removedClips: arrangement.removedClips
         )
 
-        let tempoChanges = TempoStore.loadOrMigrate(for: song)
-        let timeSignatureChanges = TimeSignatureStore.loadOrMigrate(for: song, tempoChanges: tempoChanges)
+        let tempoChanges = projectState.tempoChanges
+        let timeSignatureChanges = projectState.timeSignatureChanges
         audioEngine.setTempoMap(
             tempoChanges,
             referenceBPM: tempoChanges.referenceBPM,
@@ -414,20 +411,21 @@ final class PlaybackCoordinator {
         guard !song.isClickOnly, !song.sortedTracks.isEmpty else { return nil }
 
         let trackSources: [(url: URL, duration: TimeInterval)] = song.sortedTracks.compactMap { track in
-            let url = FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath)
-            guard let duration = FileStore.fileDuration(at: url) else { return nil }
+            guard let url = FileStore.trackURL(for: song, track: track),
+                  let duration = FileStore.fileDuration(at: url) else { return nil }
             return (url, duration)
         }
         guard !trackSources.isEmpty else { return nil }
 
         let fileDuration = trackSources.map(\.duration).max() ?? 0
-        let markers = ArrangementMarkerStore.load(for: song.id).sortedByTime
-        let arrangement = SongArrangementStore.load(for: song.id, markers: markers)
+        let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
+        let markers = projectState.markers
+        let arrangement = projectState.arrangement
         let trackIDs = song.sortedTracks.map(\.id)
 
         func sourceDuration(for trackID: UUID) -> TimeInterval {
-            guard let track = song.sortedTracks.first(where: { $0.id == trackID }) else { return 1 }
-            let url = FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath)
+            guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
+                  let url = FileStore.trackURL(for: song, track: track) else { return 1 }
             return FileStore.fileDuration(at: url) ?? 1
         }
 

@@ -137,8 +137,9 @@ struct LiveSetlistNowPlayingInfoView: View {
             )
         }
 
-        let tempoChanges = TempoStore.loadOrMigrate(for: song)
-        let timeSignatureChanges = TimeSignatureStore.loadOrMigrate(for: song, tempoChanges: tempoChanges)
+        let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
+        let tempoChanges = projectState.tempoChanges
+        let timeSignatureChanges = projectState.timeSignatureChanges
         let position = MeasureTiming.position(
             at: time,
             tempoChanges: tempoChanges,

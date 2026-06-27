@@ -1,75 +1,20 @@
 import Foundation
 
 enum SongArrangementStore {
-    private static let fileName = "arrangement-sequence.json"
     static let minimumClipDuration: TimeInterval = 0.1
 
-    static func fileURL(for songID: UUID) -> URL {
-        FileStore.songDirectory(for: songID).appendingPathComponent(fileName)
+    static func normalized(_ arrangement: SongArrangement, markers: [ArrangementMarker]) -> SongArrangement {
+        validated(arrangement, markers: markers)
     }
 
-    static func load(for songID: UUID, markers: [ArrangementMarker]) -> SongArrangement {
-        let url = fileURL(for: songID)
-        if let data = try? Data(contentsOf: url),
-           let arrangement = try? JSONDecoder().decode(SongArrangement.self, from: data) {
-            let hadMatchingSlots = !validatedSlots(arrangement.slots, markers: markers).isEmpty
-            let result = validated(arrangement, markers: markers)
-            if !hadMatchingSlots, !result.slots.isEmpty {
-                try? save(result, for: songID)
-            }
-            return result
-        }
-        return SongArrangement(slots: defaultSlots(from: markers), clipTrims: [], removedClips: [], clipGaps: [], clipRegions: [])
-    }
-
-    static func save(_ arrangement: SongArrangement, for songID: UUID) throws {
-        try FileStore.ensureSongDirectory(for: songID)
-        let data = try JSONEncoder().encode(arrangement)
-        try data.write(to: fileURL(for: songID), options: .atomic)
-    }
-
-    static func save(
-        slots: [ArrangementSlot],
-        clipTrims: [ArrangementClipTrim],
-        removedClips: [ArrangementRemovedClip],
-        clipGaps: [ArrangementClipGap] = [],
-        clipRegions: [ClipRegion] = [],
-        loopSlotIDs: Set<UUID> = [],
-        for songID: UUID
-    ) throws {
-        try save(
-            SongArrangement(
-                slots: slots,
-                clipTrims: clipTrims,
-                removedClips: removedClips,
-                clipGaps: clipGaps,
-                clipRegions: clipRegions,
-                loopSlotIDs: loopSlotIDs
-            ),
-            for: songID
+    static func defaultArrangement(for markers: [ArrangementMarker]) -> SongArrangement {
+        SongArrangement(
+            slots: defaultSlots(from: markers),
+            clipTrims: [],
+            removedClips: [],
+            clipGaps: [],
+            clipRegions: []
         )
-    }
-
-    static func saveAsync(
-        slots: [ArrangementSlot],
-        clipTrims: [ArrangementClipTrim],
-        removedClips: [ArrangementRemovedClip],
-        clipGaps: [ArrangementClipGap] = [],
-        clipRegions: [ClipRegion] = [],
-        loopSlotIDs: Set<UUID> = [],
-        for songID: UUID
-    ) {
-        let arrangement = SongArrangement(
-            slots: slots,
-            clipTrims: clipTrims,
-            removedClips: removedClips,
-            clipGaps: clipGaps,
-            clipRegions: clipRegions,
-            loopSlotIDs: loopSlotIDs
-        )
-        Task.detached(priority: .utility) {
-            try? save(arrangement, for: songID)
-        }
     }
 
     static func makeLayoutInputs(
@@ -358,10 +303,6 @@ enum SongArrangementStore {
                 columnEndSeconds: trimEnd
             )
         }
-    }
-
-    static func delete(for songID: UUID) {
-        try? FileManager.default.removeItem(at: fileURL(for: songID))
     }
 
     static func defaultSlots(from markers: [ArrangementMarker]) -> [ArrangementSlot] {

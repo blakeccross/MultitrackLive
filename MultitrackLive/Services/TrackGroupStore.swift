@@ -60,6 +60,19 @@ enum TrackGroupStore {
         return group
     }
 
+    static func findOrCreateGroup(named name: String, in context: ModelContext) -> TrackGroup? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let groups = sortedGroups(from: context)
+        if let existing = groups.first(where: {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(trimmed) == .orderedSame
+        }) {
+            return existing
+        }
+        return addGroup(named: trimmed, in: context)
+    }
+
     static func delete(_ group: TrackGroup, in context: ModelContext) {
         let groupID = group.id
         let tracks = (try? context.fetch(FetchDescriptor<AudioTrack>())) ?? []

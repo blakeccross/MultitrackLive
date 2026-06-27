@@ -13,3 +13,14 @@ struct ArrangementMarker: Codable, Identifiable, Hashable {
         self.sortOrder = sortOrder
     }
 }
+
+extension Array where Element == ArrangementMarker {
+    var sortedByTime: [ArrangementMarker] {
+        sorted {
+            if $0.startSeconds != $1.startSeconds {
+                return $0.startSeconds < $1.startSeconds
+            }
+            return $0.sortOrder < $1.sortOrder
+        }
+    }
+}

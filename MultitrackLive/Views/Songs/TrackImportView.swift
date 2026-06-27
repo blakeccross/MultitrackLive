@@ -86,12 +86,18 @@ struct TrackImportView: View {
         case .success(let urls):
             guard !urls.isEmpty else { return }
             do {
-                let tracks = try FileStore.importTracks(from: urls, into: song)
+                let projectURL = try SongProjectBridge.ensureProjectFile(for: song, context: modelContext)
+                let tracks = try FileStore.linkTracks(
+                    from: urls,
+                    into: song,
+                    projectFileURL: projectURL
+                )
                 for track in tracks {
                     modelContext.insert(track)
                     song.tracks.append(track)
                 }
                 try modelContext.save()
+                try SongProjectBridge.syncProjectFile(for: song, context: modelContext)
                 importedCount += tracks.count
                 TrackGroupStore.autoAssignGroups(for: song, in: modelContext)
             } catch {

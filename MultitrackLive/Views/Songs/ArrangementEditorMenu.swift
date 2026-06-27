@@ -8,7 +8,7 @@ struct ArrangementEditorMenu: View {
     @Binding var clipRegions: [ClipRegion]
     @Binding var loopSlotIDs: Set<UUID>
     let markers: [ArrangementMarker]
-    let songID: UUID
+    let onPersist: () -> Void
 
     private var markersByID: [UUID: ArrangementMarker] {
         Dictionary(uniqueKeysWithValues: markers.map { ($0.id, $0) })
@@ -93,14 +93,14 @@ struct ArrangementEditorMenu: View {
 
     private func move(from source: IndexSet, to destination: Int) {
         slots.move(fromOffsets: source, toOffset: destination)
-        persist()
+        onPersist()
     }
 
     private func duplicate(_ slot: ArrangementSlot) {
         guard let index = slots.firstIndex(where: { $0.id == slot.id }) else { return }
         let copy = ArrangementSlot(markerID: slot.markerID)
         slots.insert(copy, at: index + 1)
-        persist()
+        onPersist()
     }
 
     private func remove(_ slot: ArrangementSlot) {
@@ -110,18 +110,6 @@ struct ArrangementEditorMenu: View {
         clipGaps.removeAll { $0.slotID == slot.id }
         clipRegions.removeAll { $0.slotID == slot.id }
         loopSlotIDs.remove(slot.id)
-        persist()
-    }
-
-    private func persist() {
-        try? SongArrangementStore.save(
-            slots: slots,
-            clipTrims: clipTrims,
-            removedClips: removedClips,
-            clipGaps: clipGaps,
-            clipRegions: clipRegions,
-            loopSlotIDs: loopSlotIDs,
-            for: songID
-        )
+        onPersist()
     }
 }

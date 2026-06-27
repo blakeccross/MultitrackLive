@@ -16,11 +16,12 @@ enum SongTrackLoader {
     }
 
     static func trackInputs(for song: Song) -> [TrackInput] {
-        song.sortedTracks.map { track in
-            (
+        song.sortedTracks.compactMap { track in
+            guard let url = FileStore.trackURL(for: song, track: track) else { return nil }
+            return (
                 id: track.id,
-                url: FileStore.trackURL(songID: song.id, relativePath: track.relativeFilePath),
-                relativePath: track.relativeFilePath,
+                url: url,
+                relativePath: track.mediaPath ?? track.relativeFilePath,
                 settings: AudioEngineManager.TrackSettings(track: track),
                 groupID: track.group?.id
             )
@@ -217,8 +218,9 @@ enum SongTrackLoader {
             .map { sourceDurationForTrack($0.id) }
             .max() ?? 0
 
-        let markers = ArrangementMarkerStore.load(for: song.id).sortedByTime
-        let arrangement = SongArrangementStore.load(for: song.id, markers: markers)
+        let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
+        let markers = projectState.markers
+        let arrangement = projectState.arrangement
         let inputs = SongArrangementStore.makeLayoutInputs(
             markers: markers,
             trackIDs: song.sortedTracks.map(\.id),

@@ -349,6 +349,7 @@ struct LivePlaybackView: View {
             showingSaveSetlistAlert = true
         } else {
             try? modelContext.save()
+            try? SongProjectBridge.persistShow(for: workingSetlist, context: modelContext)
         }
     }
 
@@ -359,6 +360,7 @@ struct LivePlaybackView: View {
         workingSetlist.name = trimmed
         workingSetlist.isDraft = false
         try? modelContext.save()
+        try? SongProjectBridge.persistShow(for: workingSetlist, context: modelContext)
     }
 
     private func createUntitledSetlist() {
@@ -439,14 +441,25 @@ struct LivePlaybackView: View {
     private struct LiveClickTrackNowPlayingView: View {
         let song: Song?
 
+        private var projectState: SongProjectBridge.ProjectState {
+            guard let song else {
+                return SongProjectBridge.ProjectState(
+                    markers: [],
+                    arrangement: SongArrangementStore.defaultArrangement(for: []),
+                    tempoChanges: [],
+                    timeSignatureChanges: [],
+                    midiEvents: []
+                )
+            }
+            return SongProjectBridge.projectStateOrDefaults(for: song)
+        }
+
         private var tempoChanges: [TempoChange] {
-            guard let song else { return [] }
-            return TempoStore.loadOrMigrate(for: song)
+            projectState.tempoChanges
         }
 
         private var timeSignatureChanges: [TimeSignatureChange] {
-            guard let song else { return [] }
-            return TimeSignatureStore.loadOrMigrate(for: song, tempoChanges: tempoChanges)
+            projectState.timeSignatureChanges
         }
 
         var body: some View {

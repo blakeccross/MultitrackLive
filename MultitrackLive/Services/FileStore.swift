@@ -9,29 +9,28 @@ enum FileStore {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
-    static func songDirectory(for songID: UUID) -> URL {
-        documentsDirectory
-            .appendingPathComponent("Songs", isDirectory: true)
-            .appendingPathComponent(songID.uuidString, isDirectory: true)
-    }
-
-    static func trackURL(songID: UUID, relativePath: String) -> URL {
-        songDirectory(for: songID).appendingPathComponent(relativePath)
-    }
-
-    static func ensureSongDirectory(for songID: UUID) throws {
-        let directory = songDirectory(for: songID)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    static func trackURL(for song: Song, track: AudioTrack) -> URL? {
+        guard let mediaPath = track.mediaPath, let pathStyle = track.mediaPathStyle else {
+            return nil
+        }
+        let reference = MediaReference(
+            path: mediaPath,
+            pathStyle: pathStyle,
+            bookmark: track.mediaBookmarkData
+        )
+        return MediaReferenceResolver.resolve(
+            reference,
+            projectFileURL: SongProjectBridge.projectURL(for: song)
+        )
     }
 
     @discardableResult
-    static func importTracks(
+    static func linkTracks(
         from sourceURLs: [URL],
-        into song: Song
+        into song: Song,
+        projectFileURL: URL
     ) throws -> [AudioTrack] {
-        try ensureSongDirectory(for: song.id)
-
-        var importedTracks: [AudioTrack] = []
+        var linkedTracks: [AudioTrack] = []
         let existingCount = song.tracks.count
 
         for (index, sourceURL) in sourceURLs.enumerated() {
@@ -43,110 +42,29 @@ enum FileStore {
             }
 
             let fileName = sourceURL.lastPathComponent
-            let trackID = UUID()
-            let fileExtension = sourceURL.pathExtension.isEmpty ? "audio" : sourceURL.pathExtension
-            let destinationName = "\(trackID.uuidString).\(fileExtension)"
-            let destinationURL = songDirectory(for: song.id).appendingPathComponent(destinationName)
-
-            if FileManager.default.fileExists(atPath: destinationURL.path) {
-                try FileManager.default.removeItem(at: destinationURL)
-            }
-            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-
+            let fileExtension = sourceURL.pathExtension
             let displayName = fileName
                 .replacingOccurrences(of: ".\(fileExtension)", with: "", options: .caseInsensitive)
 
+            let reference = MediaReference.from(url: sourceURL, relativeTo: projectFileURL)
             let track = AudioTrack(
-                displayName: displayName,
-                relativeFilePath: destinationName,
+                displayName: displayName.isEmpty ? fileName : displayName,
+                relativeFilePath: fileName,
                 sortOrder: existingCount + index
             )
+            track.mediaPath = reference.path
+            track.mediaPathStyle = reference.pathStyle
+            track.mediaBookmarkData = reference.bookmark
             track.song = song
-            importedTracks.append(track)
+            linkedTracks.append(track)
         }
 
-        return importedTracks
+        return linkedTracks
     }
 
-    static func deleteSongFiles(for songID: UUID) {
-        ArrangementMarkerStore.delete(for: songID)
-        TimeSignatureStore.delete(for: songID)
-        TempoStore.delete(for: songID)
-        SongArrangementStore.delete(for: songID)
-        let directory = songDirectory(for: songID)
-        try? FileManager.default.removeItem(at: directory)
-    }
-
-    static func copyTrackFile(
-        from sourceSongID: UUID,
-        to destinationSongID: UUID,
-        relativePath: String,
-        newTrackID: UUID
-    ) throws -> String {
-        try ensureSongDirectory(for: destinationSongID)
-
-        let sourceURL = trackURL(songID: sourceSongID, relativePath: relativePath)
-        let fileExtension = (relativePath as NSString).pathExtension
-        let destinationName = "\(newTrackID.uuidString).\(fileExtension.isEmpty ? "audio" : fileExtension)"
-        let destinationURL = trackURL(songID: destinationSongID, relativePath: destinationName)
-
-        if FileManager.default.fileExists(atPath: destinationURL.path) {
-            try FileManager.default.removeItem(at: destinationURL)
-        }
-        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-        return destinationName
-    }
-
-    static func copyArrangementData(
-        from sourceSongID: UUID,
-        to destinationSongID: UUID,
-        trackIDMap: [UUID: UUID]
-    ) throws {
-        let markers = ArrangementMarkerStore.load(for: sourceSongID)
-        try ArrangementMarkerStore.save(markers, for: destinationSongID)
-
-        let timeSignatures = TimeSignatureStore.load(for: sourceSongID)
-        try TimeSignatureStore.save(timeSignatures, for: destinationSongID)
-
-        let tempoChanges = TempoStore.load(for: sourceSongID)
-        try TempoStore.save(tempoChanges, for: destinationSongID)
-
-        var arrangement = SongArrangementStore.load(for: sourceSongID, markers: markers)
-        arrangement.clipTrims = arrangement.clipTrims.map { trim in
-            ArrangementClipTrim(
-                slotID: trim.slotID,
-                trackID: trackIDMap[trim.trackID] ?? trim.trackID,
-                leadingTrim: trim.leadingTrim,
-                trailingTrim: trim.trailingTrim
-            )
-        }
-        arrangement.removedClips = arrangement.removedClips.map { removed in
-            ArrangementRemovedClip(
-                slotID: removed.slotID,
-                trackID: trackIDMap[removed.trackID] ?? removed.trackID
-            )
-        }
-        arrangement.clipGaps = arrangement.clipGaps.map { gap in
-            ArrangementClipGap(
-                slotID: gap.slotID,
-                trackID: trackIDMap[gap.trackID] ?? gap.trackID,
-                sourceStartSeconds: gap.sourceStartSeconds,
-                sourceEndSeconds: gap.sourceEndSeconds
-            )
-        }
-        arrangement.clipRegions = arrangement.clipRegions.map { region in
-            ClipRegion(
-                id: region.id,
-                slotID: region.slotID,
-                trackID: trackIDMap[region.trackID] ?? region.trackID,
-                markerID: region.markerID,
-                sourceStartSeconds: region.sourceStartSeconds,
-                sourceEndSeconds: region.sourceEndSeconds,
-                timelineStartSeconds: region.timelineStartSeconds,
-                timelineEndSeconds: region.timelineEndSeconds
-            )
-        }
-        try SongArrangementStore.save(arrangement, for: destinationSongID)
+    static func deleteProjectFile(for song: Song) {
+        guard let path = song.projectFilePath else { return }
+        try? FileManager.default.removeItem(at: URL(fileURLWithPath: path))
     }
 
     static func fileDuration(at url: URL) -> TimeInterval? {

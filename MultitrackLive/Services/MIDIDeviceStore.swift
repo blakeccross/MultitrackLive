@@ -16,4 +16,14 @@ enum MIDIDeviceStore {
         context.delete(device)
         try? context.save()
     }
+
+    static func findDevice(named name: String, in context: ModelContext) -> MIDIDevice? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let devices = sortedDevices(from: context)
+        return devices.first {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(trimmed) == .orderedSame
+        }
+    }
 }

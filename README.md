@@ -26,6 +26,8 @@ Select the **My Mac** or **iPad** simulator destination and run.
 
 ## Architecture
 
-- SwiftData for song/setlist metadata
+- SwiftData for song/setlist library index and app settings
+- `.mtlive` project files for song data (arrangement, tempo, media references)
+- `.mtliveshow` files for setlist references
 - `AVAudioEngine` + `AVAudioPlayerNode` for synced multitrack playback
-- Audio files stored in `Documents/Songs/<song-id>/`
+- Audio files referenced on disk, not copied into the app bundle

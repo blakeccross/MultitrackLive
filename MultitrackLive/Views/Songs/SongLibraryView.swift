@@ -24,6 +24,8 @@ struct SongLibraryPanel: View {
     @State private var songPendingDelete: Song?
     @State private var createSongError: String?
     @State private var songActionError: String?
+    @State private var showingProjectImporter = false
+    @State private var consolidateSummary: String?
 
     private var filteredSongs: [Song] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -56,6 +58,12 @@ struct SongLibraryPanel: View {
                         onRequestFolderImport()
                     } label: {
                         Label("Import from Folder", systemImage: "folder")
+                    }
+
+                    Button {
+                        showingProjectImporter = true
+                    } label: {
+                        Label("Open Project File…", systemImage: "doc")
                     }
                 } label: {
                     Image(systemName: "plus.circle.fill")
@@ -117,6 +125,11 @@ struct SongLibraryPanel: View {
                                 }
                                 Button("Duplicate") {
                                     duplicateSong(song)
+                                }
+                                if SongProjectBridge.projectURL(for: song) != nil {
+                                    Button("Consolidate Media…") {
+                                        consolidateMedia(for: song)
+                                    }
                                 }
                                 Divider()
                                 Button("Remove", role: .destructive) {
@@ -203,6 +216,21 @@ struct SongLibraryPanel: View {
         } message: {
             Text(songActionError ?? "")
         }
+        .fileImporter(
+            isPresented: $showingProjectImporter,
+            allowedContentTypes: [ProjectUTType.songProjectType],
+            allowsMultipleSelection: false
+        ) { result in
+            handleOpenProject(result)
+        }
+        .alert("Media Consolidated", isPresented: Binding(
+            get: { consolidateSummary != nil },
+            set: { if !$0 { consolidateSummary = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(consolidateSummary ?? "")
+        }
     }
 
     private func resetNewClickTrackForm() {
@@ -231,25 +259,12 @@ struct SongLibraryPanel: View {
 
         do {
             try modelContext.save()
-            try TempoStore.save(
-                [TempoChange(startMeasure: 1, bpm: newClickTrackBPM)],
-                for: song.id
-            )
-            try TimeSignatureStore.save(
-                [
-                    TimeSignatureChange(
-                        numerator: newClickTrackNumerator,
-                        denominator: newClickTrackDenominator,
-                        startMeasure: 1
-                    )
-                ],
-                for: song.id
-            )
+            try SongProjectBridge.syncProjectFile(for: song, context: modelContext)
             showingNewClickTrackSheet = false
             resetNewClickTrackForm()
         } catch {
             modelContext.delete(song)
-            FileStore.deleteSongFiles(for: song.id)
+            FileStore.deleteProjectFile(for: song)
             createSongError = error.localizedDescription
         }
     }
@@ -263,6 +278,7 @@ struct SongLibraryPanel: View {
 
         do {
             try modelContext.save()
+            _ = try SongProjectBridge.ensureProjectFile(for: song, context: modelContext)
             onRequestTrackImport(song)
         } catch {
             modelContext.delete(song)
@@ -280,6 +296,7 @@ struct SongLibraryPanel: View {
         song.name = trimmed
         do {
             try modelContext.save()
+            try SongProjectBridge.syncProjectFile(for: song, context: modelContext)
             songPendingRename = nil
         } catch {
             songActionError = error.localizedDescription
@@ -306,18 +323,12 @@ struct SongLibraryPanel: View {
                 let newTrackID = UUID()
                 trackIDMap[track.id] = newTrackID
 
-                let destinationPath = try FileStore.copyTrackFile(
-                    from: source.id,
-                    to: copy.id,
-                    relativePath: track.relativeFilePath,
-                    newTrackID: newTrackID
-                )
-
                 let newTrack = AudioTrack(
                     displayName: track.displayName,
-                    relativeFilePath: destinationPath,
+                    relativeFilePath: track.relativeFilePath,
                     sortOrder: track.sortOrder
                 )
+                newTrack.id = newTrackID
                 newTrack.volume = track.volume
                 newTrack.pan = track.pan
                 newTrack.isMuted = track.isMuted
@@ -325,20 +336,98 @@ struct SongLibraryPanel: View {
                 newTrack.trimStartSeconds = track.trimStartSeconds
                 newTrack.trimEndSeconds = track.trimEndSeconds
                 newTrack.excludeFromTranspose = track.excludeFromTranspose
+                newTrack.mediaPath = track.mediaPath
+                newTrack.mediaPathStyle = track.mediaPathStyle
+                newTrack.mediaBookmarkData = track.mediaBookmarkData
                 newTrack.group = track.group
                 newTrack.song = copy
+                modelContext.insert(newTrack)
+                copy.tracks.append(newTrack)
             }
 
-            try FileStore.copyArrangementData(
-                from: source.id,
-                to: copy.id,
-                trackIDMap: trackIDMap
-            )
+            let sourceState = try SongProjectBridge.loadProjectState(for: source)
+            var arrangement = sourceState.arrangement
+            arrangement.clipTrims = arrangement.clipTrims.map { trim in
+                ArrangementClipTrim(
+                    slotID: trim.slotID,
+                    trackID: trackIDMap[trim.trackID] ?? trim.trackID,
+                    leadingTrim: trim.leadingTrim,
+                    trailingTrim: trim.trailingTrim
+                )
+            }
+            arrangement.removedClips = arrangement.removedClips.map { removed in
+                ArrangementRemovedClip(
+                    slotID: removed.slotID,
+                    trackID: trackIDMap[removed.trackID] ?? removed.trackID
+                )
+            }
+            arrangement.clipGaps = arrangement.clipGaps.map { gap in
+                ArrangementClipGap(
+                    slotID: gap.slotID,
+                    trackID: trackIDMap[gap.trackID] ?? gap.trackID,
+                    sourceStartSeconds: gap.sourceStartSeconds,
+                    sourceEndSeconds: gap.sourceEndSeconds
+                )
+            }
+            arrangement.clipRegions = arrangement.clipRegions.map { region in
+                ClipRegion(
+                    id: region.id,
+                    slotID: region.slotID,
+                    trackID: trackIDMap[region.trackID] ?? region.trackID,
+                    markerID: region.markerID,
+                    sourceStartSeconds: region.sourceStartSeconds,
+                    sourceEndSeconds: region.sourceEndSeconds,
+                    timelineStartSeconds: region.timelineStartSeconds,
+                    timelineEndSeconds: region.timelineEndSeconds
+                )
+            }
+            let midiEvents = sourceState.midiEvents.map { event in
+                MIDIEvent(
+                    id: event.id,
+                    trackID: trackIDMap[event.trackID] ?? event.trackID,
+                    timelineSeconds: event.timelineSeconds,
+                    commandID: event.commandID,
+                    label: event.label
+                )
+            }
+
             try modelContext.save()
+            try SongProjectBridge.syncProjectFile(
+                for: copy,
+                context: modelContext,
+                markers: sourceState.markers,
+                arrangement: arrangement,
+                tempoChanges: sourceState.tempoChanges,
+                timeSignatureChanges: sourceState.timeSignatureChanges,
+                midiEvents: midiEvents
+            )
         } catch {
             modelContext.delete(copy)
-            FileStore.deleteSongFiles(for: copy.id)
+            FileStore.deleteProjectFile(for: copy)
             songActionError = error.localizedDescription
+        }
+    }
+
+    private func consolidateMedia(for song: Song) {
+        do {
+            let stemsDirectory = try MediaConsolidator.consolidate(for: song, context: modelContext)
+            consolidateSummary = "Copied media to \(stemsDirectory.path)."
+        } catch {
+            songActionError = error.localizedDescription
+        }
+    }
+
+    private func handleOpenProject(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            songActionError = error.localizedDescription
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            do {
+                _ = try SongProjectBridge.importProject(from: url, into: modelContext)
+            } catch {
+                songActionError = error.localizedDescription
+            }
         }
     }
 
@@ -356,7 +445,7 @@ struct SongLibraryPanel: View {
 
         do {
             try modelContext.save()
-            FileStore.deleteSongFiles(for: songID)
+            FileStore.deleteProjectFile(for: song)
         } catch {
             songActionError = error.localizedDescription
         }

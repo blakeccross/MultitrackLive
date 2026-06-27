@@ -77,7 +77,7 @@ struct EditView: View {
             song.bpm = normalized.referenceBPM
             try? modelContext.save()
         }
-        try? TempoStore.save(normalized, for: song.id)
+        persistProjectState()
         viewModel.syncTempoMap(normalized, timeSignatureChanges: normalizedTimeSignatureChanges)
         if song.clickTrackEnabled {
             viewModel.reloadSongForClickTrackChanges()
@@ -95,11 +95,28 @@ struct EditView: View {
             song.timeSignatureDenominator = normalized.referenceDenominator
             try? modelContext.save()
         }
-        try? TimeSignatureStore.save(normalized, for: song.id)
+        persistProjectState()
         viewModel.syncTempoMap(normalizedTempoChanges, timeSignatureChanges: normalized)
         if song.clickTrackEnabled {
             viewModel.reloadSongForClickTrackChanges()
         }
+    }
+
+    private func persistProjectState() {
+        try? SongProjectBridge.persist(
+            song: song,
+            markers: markers,
+            arrangementSlots: arrangementSlots,
+            clipTrims: clipTrims,
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions,
+            loopSlotIDs: loopSlotIDs,
+            tempoChanges: normalizedTempoChanges,
+            timeSignatureChanges: normalizedTimeSignatureChanges,
+            midiEvents: midiEvents,
+            context: modelContext
+        )
     }
 
     private func handleTempoRulerTap(at time: TimeInterval) {
@@ -238,15 +255,7 @@ struct EditView: View {
     }
 
     private func persistArrangement() {
-        SongArrangementStore.saveAsync(
-            slots: arrangementSlots,
-            clipTrims: clipTrims,
-            removedClips: removedClips,
-            clipGaps: clipGaps,
-            clipRegions: clipRegions,
-            loopSlotIDs: loopSlotIDs,
-            for: song.id
-        )
+        persistProjectState()
     }
 
     private func syncPlayback() {
@@ -348,7 +357,7 @@ struct EditView: View {
     }
 
     private func commitMIDIEvents() {
-        MIDIEventStore.saveAsync(midiEvents, for: song.id)
+        persistProjectState()
         reconfigureMIDI()
     }
 
@@ -517,7 +526,8 @@ struct EditView: View {
                 clipGaps: $clipGaps,
                 clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
-                onClearMarkerCue: { clearMarkerCue() }
+                onClearMarkerCue: { clearMarkerCue() },
+                onPersistArrangement: persistArrangement
             )
         }
         .toolbarBackground(.bar, for: .windowToolbar)
@@ -971,7 +981,8 @@ struct EditView: View {
             clipGaps: $clipGaps,
             clipRegions: $clipRegions,
             loopSlotIDs: $loopSlotIDs,
-            onClearMarkerCue: { clearMarkerCue() }
+            onClearMarkerCue: { clearMarkerCue() },
+            onPersistArrangement: persistArrangement
         )
     }
 
@@ -1222,12 +1233,10 @@ struct EditView: View {
     private var trackLanesContent: some View {
         VStack(spacing: TimelineLayout.laneSpacing) {
             ForEach(Array(song.sortedTracks.enumerated()), id: \.element.id) { index, track in
+                if let fileURL = FileStore.trackURL(for: song, track: track) {
                 WaveformLaneView(
                     track: track,
-                    fileURL: FileStore.trackURL(
-                        songID: song.id,
-                        relativePath: track.relativeFilePath
-                    ),
+                    fileURL: fileURL,
                     fileDuration: viewModel.fileDuration(for: track),
                     timelineDuration: timelineDuration,
                     timelineContentWidth: timelineContentWidth,
@@ -1256,6 +1265,7 @@ struct EditView: View {
                         AudioEngineManager.shared.seek(to: time)
                     }
                 )
+                }
             }
 
             ForEach(midiTracks) { track in
@@ -1472,6 +1482,7 @@ private struct EditSongToolbarContent: ToolbarContent {
     @Binding var clipRegions: [ClipRegion]
     @Binding var loopSlotIDs: Set<UUID>
     let onClearMarkerCue: () -> Void
+    let onPersistArrangement: () -> Void
 
     @State private var showingTempoToolbarEditor = false
     @Bindable private var audioEngine = AudioEngineManager.shared
@@ -1670,7 +1681,7 @@ private struct EditSongToolbarContent: ToolbarContent {
                 clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
                 markers: markers,
-                songID: song.id
+                onPersist: onPersistArrangement
             )
         }
     }
@@ -1697,6 +1708,7 @@ private struct EditTransportBar: View {
     @Binding var clipRegions: [ClipRegion]
     @Binding var loopSlotIDs: Set<UUID>
     let onClearMarkerCue: () -> Void
+    let onPersistArrangement: () -> Void
 
     @State private var showingTempoToolbarEditor = false
     @Bindable private var audioEngine = AudioEngineManager.shared
@@ -1835,7 +1847,7 @@ private struct EditTransportBar: View {
                 clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
                 markers: markers,
-                songID: song.id
+                onPersist: onPersistArrangement
             )
         }
     }

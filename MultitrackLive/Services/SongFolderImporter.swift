@@ -90,8 +90,18 @@ enum SongFolderImporter {
         let song = Song(name: songName)
         context.insert(song)
 
+        let projectURL = ProjectFileStore.projectURL(named: songName, adjacentTo: folderURL)
+        song.projectFilePath = projectURL.path
+        song.projectFileBookmarkData = MediaReferenceResolver.makeBookmark(for: projectURL)
+
         do {
-            let result = try applyScanResult(scan, to: song, context: context)
+            let result = try applyScanResult(
+                scan,
+                to: song,
+                context: context,
+                projectURL: projectURL
+            )
+            try SongProjectBridge.syncProjectFile(for: song, context: context)
             try context.save()
             return ImportResult(
                 song: song,
@@ -101,7 +111,9 @@ enum SongFolderImporter {
             )
         } catch {
             context.delete(song)
-            FileStore.deleteSongFiles(for: song.id)
+            if let path = song.projectFilePath {
+                try? FileManager.default.removeItem(at: URL(fileURLWithPath: path))
+            }
             throw error
         }
     }
@@ -112,7 +124,14 @@ enum SongFolderImporter {
         context: ModelContext
     ) throws -> (trackCount: Int, sectionCount: Int, bpm: Double?) {
         let scan = try scanFolder(at: folderURL)
-        let result = try applyScanResult(scan, to: song, context: context)
+        let projectURL = try SongProjectBridge.ensureProjectFile(for: song, context: context)
+        let result = try applyScanResult(
+            scan,
+            to: song,
+            context: context,
+            projectURL: projectURL
+        )
+        try SongProjectBridge.syncProjectFile(for: song, context: context)
         try context.save()
         return (result.trackCount, result.sectionCount, result.bpm)
     }
@@ -126,14 +145,19 @@ enum SongFolderImporter {
     private static func applyScanResult(
         _ scan: ScanResult,
         to song: Song,
-        context: ModelContext
+        context: ModelContext,
+        projectURL: URL
     ) throws -> AppliedScanResult {
         var trackCount = 0
         var sectionCount = 0
         var bpm: Double?
 
         if !scan.trackURLs.isEmpty {
-            let tracks = try FileStore.importTracks(from: scan.trackURLs, into: song)
+            let tracks = try FileStore.linkTracks(
+                from: scan.trackURLs,
+                into: song,
+                projectFileURL: projectURL
+            )
             for track in tracks {
                 context.insert(track)
                 song.tracks.append(track)
@@ -152,12 +176,20 @@ enum SongFolderImporter {
                 context: context
             )
             let slots = SongArrangementStore.defaultSlots(from: markers)
-            try SongArrangementStore.save(
+            let arrangement = SongArrangement(
                 slots: slots,
                 clipTrims: [],
                 removedClips: [],
-                loopSlotIDs: [],
-                for: song.id
+                clipGaps: [],
+                clipRegions: []
+            )
+            try SongProjectBridge.syncProjectFile(
+                for: song,
+                context: context,
+                markers: markers,
+                arrangement: arrangement,
+                tempoChanges: [TempoChange(startMeasure: 1, bpm: importResult.bpm, sortOrder: 0)],
+                timeSignatureChanges: importResult.timeSignatures
             )
             sectionCount = importResult.sections.count
             bpm = importResult.bpm
@@ -167,7 +199,11 @@ enum SongFolderImporter {
             throw ImportError.noImportableContent
         }
 
-        return AppliedScanResult(trackCount: trackCount, sectionCount: sectionCount, bpm: bpm)
+        return AppliedScanResult(
+            trackCount: trackCount,
+            sectionCount: sectionCount,
+            bpm: bpm
+        )
     }
 
     private static func findAbletonFile(in folderURL: URL, folderName: String) -> URL? {

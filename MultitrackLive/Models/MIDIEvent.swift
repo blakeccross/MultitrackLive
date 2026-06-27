@@ -27,7 +27,7 @@ struct MIDIEvent: Codable, Hashable, Identifiable {
     }
 }
 
-/// Container persisted to `midi-events.json` per song.
+/// MIDI events stored in a song's `.mtlive` project file.
 struct SongMIDIEvents: Codable {
     var events: [MIDIEvent]
 

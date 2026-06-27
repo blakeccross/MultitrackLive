@@ -1,9 +1,8 @@
 import Foundation
 import SwiftData
 
-/// A MIDI track that sends commands from its associated `MIDIDevice` to external
-/// gear at manually-placed points on the song timeline. Event data is stored
-/// separately as a JSON sidecar (see `MIDIEventStore`).
+/// Sends commands from its associated `MIDIDevice` to external gear at manually-placed
+/// points on the song timeline. Event data is stored in the song project file.
 @Model
 final class MIDITrack {
     var id: UUID
