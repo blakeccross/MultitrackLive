@@ -9,7 +9,7 @@ struct EditView: View {
 
     @Bindable var song: Song
     let viewModel: SongEditorViewModel
-    let arrangementMarkers: [ArrangementMarker]
+    @Binding var arrangementMarkers: [ArrangementMarker]
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
     @Binding var removedClips: [ArrangementRemovedClip]
@@ -40,6 +40,8 @@ struct EditView: View {
     @State private var editingTempoMarkerID: UUID?
     @State private var showingTimeSignatureMarkerEditor = false
     @State private var editingTimeSignatureMarkerID: UUID?
+    @State private var sectionPendingRename: ArrangementDisplaySection?
+    @State private var renameSectionName = ""
     @State private var clipSelection: TimelineClipSelection?
     @FocusState private var isTimelineFocused: Bool
     @State private var cachedRulerSections: [ArrangementDisplaySection] = []
@@ -343,6 +345,11 @@ struct EditView: View {
         TimelineLayout.contentWidth(for: timelineDuration, zoom: timelineZoom)
     }
 
+    /// Fills the scroll viewport when song content is narrower than the editor area.
+    private var timelineDisplayWidth: CGFloat {
+        max(timelineContentWidth, timelineViewportWidth)
+    }
+
     private var hasTimelineContent: Bool {
         song.isClickOnly || !song.sortedTracks.isEmpty || !displaySections.isEmpty || !song.midiTracks.isEmpty
     }
@@ -503,6 +510,18 @@ struct EditView: View {
                 MIDIDeviceEditorView(device: deviceBeingEdited) { _ in
                     commitMIDIConfig()
                 }
+            }
+        }
+        .alert("Rename Section", isPresented: Binding(
+            get: { sectionPendingRename != nil },
+            set: { if !$0 { sectionPendingRename = nil } }
+        )) {
+            TextField("Section name", text: $renameSectionName)
+            Button("Rename") {
+                applySectionRename()
+            }
+            Button("Cancel", role: .cancel) {
+                sectionPendingRename = nil
             }
         }
 #if os(macOS)
@@ -911,22 +930,35 @@ struct EditView: View {
     private func cueSection(_ section: ArrangementDisplaySection) {
         sectionLoop.endLoopIfActive()
 
-        cuedSectionID = section.id
-
-        if let currentSection = displaySections.section(atTimeline: audioEngine.currentTime) {
-            cueFireTime = currentSection.timelineEndSeconds
-        } else {
-            cueFireTime = section.timelineEndSeconds
+        if !audioEngine.isPlaying {
+            clearMarkerCue()
+            viewModel.seekAndPlay(to: section.timelineStartSeconds)
+            return
         }
+
+        cuedSectionID = section.id
+        cueFireTime = sectionCueFireTime(for: section)
 
         guard viewModel.isLoaded else { return }
         viewModel.scheduleSectionTransition(
             to: section.timelineStartSeconds,
             at: cueFireTime ?? section.timelineStartSeconds
         )
-        if !audioEngine.isPlaying {
-            viewModel.play()
+    }
+
+    private func sectionCueFireTime(for cuedSection: ArrangementDisplaySection) -> TimeInterval {
+        if let currentSection = displaySections.section(atTimeline: audioEngine.currentTime) {
+            return currentSection.timelineEndSeconds
         }
+
+        if audioEngine.currentTime < cuedSection.timelineStartSeconds {
+            return cuedSection.timelineStartSeconds
+        }
+
+        return displaySections
+            .map(\.timelineEndSeconds)
+            .first(where: { $0 > audioEngine.currentTime })
+            ?? cuedSection.timelineEndSeconds
     }
 
     private func fireMarkerCue() {
@@ -944,6 +976,101 @@ struct EditView: View {
     private func toggleLoopSection(_ section: ArrangementDisplaySection) {
         sectionLoop.toggleLoop(on: section.id, loopSlotIDs: &loopSlotIDs)
         persistArrangement()
+    }
+
+    private func addSection(at timelineTime: TimeInterval) {
+        guard !song.isClickOnly else { return }
+
+        let snappedTime = MeasureTiming.snapToNearestBeat(
+            max(0, timelineTime),
+            tempoChanges: normalizedTempoChanges,
+            timeSignatureChanges: normalizedTimeSignatureChanges
+        )
+        let sourceTime = min(max(0, snappedTime), max(sourceDuration - 0.01, 0))
+
+        if markers.contains(where: { abs($0.startSeconds - sourceTime) < 0.02 }) {
+            return
+        }
+
+        let newMarker = ArrangementMarker(
+            name: "Section \(markers.count + 1)",
+            startSeconds: sourceTime,
+            sortOrder: markers.count
+        )
+        let markerInsertIndex = markers.firstIndex(where: { $0.startSeconds > sourceTime + 0.001 })
+            ?? markers.count
+
+        arrangementMarkers.insert(newMarker, at: markerInsertIndex)
+
+        let newSlot = ArrangementSlot(markerID: newMarker.id)
+        if arrangementSlots.isEmpty || usesSourceLinearRulerLayout {
+            arrangementSlots.insert(newSlot, at: markerInsertIndex)
+        } else {
+            let slotInsertIndex = displaySections.firstIndex(where: { timelineTime < $0.timelineStartSeconds - 0.001 })
+                ?? arrangementSlots.count
+            arrangementSlots.insert(newSlot, at: slotInsertIndex)
+        }
+
+        refreshTimelineLayout()
+        persistArrangement()
+        syncPlayback()
+
+        if let section = displaySections.first(where: { $0.markerID == newMarker.id }) {
+            sectionPendingRename = section
+            renameSectionName = newMarker.name
+        }
+    }
+
+    private func beginRenameSection(_ section: ArrangementDisplaySection) {
+        sectionPendingRename = section
+        renameSectionName = section.name
+    }
+
+    private func applySectionRename() {
+        guard let section = sectionPendingRename else { return }
+        let trimmed = renameSectionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let index = arrangementMarkers.firstIndex(where: { $0.id == section.markerID }) else {
+            sectionPendingRename = nil
+            return
+        }
+
+        let marker = arrangementMarkers[index]
+        arrangementMarkers[index] = ArrangementMarker(
+            id: marker.id,
+            name: trimmed,
+            startSeconds: marker.startSeconds,
+            sortOrder: marker.sortOrder
+        )
+        sectionPendingRename = nil
+        refreshTimelineLayout()
+        persistArrangement()
+        syncPlayback()
+    }
+
+    private func deleteSection(_ section: ArrangementDisplaySection) {
+        let slotID = section.slotID
+        let markerID = section.markerID
+
+        arrangementSlots.removeAll { $0.id == slotID }
+        clipTrims.removeAll { $0.slotID == slotID }
+        removedClips.removeAll { $0.slotID == slotID }
+        clipGaps.removeAll { $0.slotID == slotID }
+        clipRegions.removeAll { $0.slotID == slotID }
+        loopSlotIDs.remove(slotID)
+        loopSlotIDs.remove(section.id)
+
+        if !arrangementSlots.contains(where: { $0.markerID == markerID }) {
+            arrangementMarkers.removeAll { $0.id == markerID }
+        }
+
+        if cuedSectionID == section.id {
+            clearMarkerCue()
+        }
+
+        refreshTimelineLayout()
+        persistArrangement()
+        syncPlayback()
     }
 
     private func seekOnTimeline(to time: TimeInterval) {
@@ -1001,12 +1128,15 @@ struct EditView: View {
                 ScrollView(.horizontal, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 0) {
                         timelineRulerStack
-                            .frame(width: timelineContentWidth, height: TimelineLayout.rulerTotalHeight)
+                            .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight)
 
                         ZStack(alignment: .topLeading) {
                             Rectangle()
                                 .fill(Color.dawTimelineBackground)
-                                .frame(width: timelineContentWidth, height: max(0, geometry.size.height - TimelineLayout.rulerTotalHeight))
+                                .frame(
+                                    width: timelineDisplayWidth,
+                                    height: max(0, geometry.size.height - TimelineLayout.rulerTotalHeight)
+                                )
 
                             TimelinePlayheadOverlay(
                                 duration: timelineDuration,
@@ -1015,7 +1145,7 @@ struct EditView: View {
                             )
                         }
                     }
-                    .frame(width: timelineContentWidth, alignment: .leading)
+                    .frame(width: timelineDisplayWidth, alignment: .leading)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onGeometryChange(for: CGFloat.self) { proxy in
@@ -1059,7 +1189,7 @@ struct EditView: View {
                 ScrollView(.horizontal, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 0) {
                         timelineRulerStack
-                            .frame(width: timelineContentWidth, height: TimelineLayout.rulerTotalHeight)
+                            .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight)
 
                         ScrollView(.vertical, showsIndicators: true) {
                             VStack(spacing: 0) {
@@ -1067,14 +1197,14 @@ struct EditView: View {
                                     coordinateSpaceName: timelineVerticalScrollSpace
                                 )
                                 trackTimelineScrollContent
-                                    .frame(width: timelineContentWidth, alignment: .leading)
+                                    .frame(width: timelineDisplayWidth, alignment: .leading)
                             }
                         }
                         .coordinateSpace(name: timelineVerticalScrollSpace)
                         .modifier(TimelineVerticalScrollOffsetObserver(offset: $timelineVerticalScrollOffset))
                         .frame(height: tracksViewportHeight)
                     }
-                    .frame(width: timelineContentWidth, alignment: .leading)
+                    .frame(width: timelineDisplayWidth, alignment: .leading)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onGeometryChange(for: CGFloat.self) { proxy in
@@ -1097,26 +1227,30 @@ struct EditView: View {
         ZStack(alignment: .topLeading) {
             Rectangle()
                 .fill(Color.dawStickyRulerBackground)
-                .frame(width: timelineContentWidth, height: TimelineLayout.rulerTotalHeight)
+                .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight)
 
-            timelineRulerSection
+            ZStack(alignment: .topLeading) {
+                timelineRulerSection
 
-            TimelineMeasureGridOverlay(
-                duration: timelineDuration,
-                tempoChanges: normalizedTempoChanges,
-                timeSignatureChanges: normalizedTimeSignatureChanges,
-                rulerHeight: TimelineLayout.rulerTotalHeight
-            )
-            .allowsHitTesting(false)
+                TimelineMeasureGridOverlay(
+                    duration: timelineDuration,
+                    tempoChanges: normalizedTempoChanges,
+                    timeSignatureChanges: normalizedTimeSignatureChanges,
+                    contentWidth: timelineContentWidth,
+                    displayWidth: timelineDisplayWidth,
+                    rulerHeight: TimelineLayout.rulerTotalHeight
+                )
+                .allowsHitTesting(false)
 
-            TimelinePlayheadOverlay(
-                duration: timelineDuration,
-                contentWidth: timelineContentWidth,
-                height: TimelineLayout.rulerTotalHeight
-            )
+                TimelinePlayheadOverlay(
+                    duration: timelineDuration,
+                    contentWidth: timelineContentWidth,
+                    height: TimelineLayout.rulerTotalHeight
+                )
+            }
+            .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight, alignment: .leading)
         }
-        .frame(width: timelineContentWidth, height: TimelineLayout.rulerTotalHeight, alignment: .leading)
-        .clipped()
+        .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight, alignment: .leading)
     }
 
     private func trackHeaderColumn(tracksViewportHeight: CGFloat) -> some View {
@@ -1135,6 +1269,7 @@ struct EditView: View {
         TimelineRulerView(
             duration: timelineDuration,
             contentWidth: timelineContentWidth,
+            displayWidth: timelineDisplayWidth,
             sections: displaySections,
             tempoChanges: normalizedTempoChanges,
             timeSignatureChanges: normalizedTimeSignatureChanges,
@@ -1145,12 +1280,16 @@ struct EditView: View {
             timeSignatureRulerHeight: TimelineLayout.timeSignatureRulerHeight,
             tempoRulerHeight: TimelineLayout.tempoRulerHeight,
             rulerHeight: TimelineLayout.rulerHeight,
+            isPlaying: audioEngine.isPlaying,
             onSeek: { time in
                 clearMarkerCue()
                 seekOnTimeline(to: time)
             },
             onCueSection: cueSection,
             onToggleLoopSection: toggleLoopSection,
+            onAddSection: addSection,
+            onRenameSection: beginRenameSection,
+            onDeleteSection: deleteSection,
             onTimeSignatureRulerTap: handleTimeSignatureRulerTap,
             onEditTimeSignatureMarker: { marker in
                 editingTimeSignatureMarkerID = marker.id
@@ -1212,15 +1351,20 @@ struct EditView: View {
 
     private var trackTimelineScrollContent: some View {
         ZStack(alignment: .topLeading) {
+            Rectangle()
+                .fill(Color.dawTimelineBackground)
+                .frame(width: timelineDisplayWidth, height: trackAreaHeight)
+
+            TimelineMeasureGridOverlay(
+                duration: timelineDuration,
+                tempoChanges: normalizedTempoChanges,
+                timeSignatureChanges: normalizedTimeSignatureChanges,
+                contentWidth: timelineContentWidth,
+                displayWidth: timelineDisplayWidth,
+                rulerHeight: 0
+            )
+
             trackLanesContent
-                .background {
-                    TimelineMeasureGridOverlay(
-                        duration: timelineDuration,
-                        tempoChanges: normalizedTempoChanges,
-                        timeSignatureChanges: normalizedTimeSignatureChanges,
-                        rulerHeight: 0
-                    )
-                }
 
             TimelinePlayheadOverlay(
                 duration: timelineDuration,
@@ -1228,6 +1372,7 @@ struct EditView: View {
                 height: trackAreaHeight
             )
         }
+        .frame(width: timelineDisplayWidth, height: trackAreaHeight, alignment: .leading)
     }
 
     private var trackLanesContent: some View {
@@ -2169,10 +2314,25 @@ private struct TimelineMeasureGridOverlay: View {
     let duration: TimeInterval
     let tempoChanges: [TempoChange]
     let timeSignatureChanges: [TimeSignatureChange]
+    var contentWidth: CGFloat?
+    var displayWidth: CGFloat?
     let rulerHeight: CGFloat
 
     private var safeDuration: TimeInterval {
         max(duration, 0.001)
+    }
+
+    private var mappingWidth: CGFloat {
+        contentWidth ?? displayWidth ?? 0
+    }
+
+    private var canvasWidth: CGFloat {
+        max(mappingWidth, displayWidth ?? mappingWidth)
+    }
+
+    private var extendedMaximumTime: TimeInterval {
+        guard mappingWidth > 0, canvasWidth > mappingWidth else { return safeDuration }
+        return safeDuration * TimeInterval(canvasWidth / mappingWidth)
     }
 
     private func measureBoundaries(for contentWidth: CGFloat) -> [TimeInterval] {
@@ -2181,15 +2341,16 @@ private struct TimelineMeasureGridOverlay: View {
             duration: safeDuration,
             tempoChanges: tempoChanges,
             contentWidth: contentWidth,
-            timeSignatureChanges: timeSignatureChanges
+            timeSignatureChanges: timeSignatureChanges,
+            maximumTime: extendedMaximumTime
         )
     }
 
     var body: some View {
         Canvas { context, size in
-            guard size.width > 0, size.height > 0 else { return }
+            guard size.width > 0, size.height > 0, mappingWidth > 0 else { return }
 
-            let boundaries = measureBoundaries(for: size.width)
+            let boundaries = measureBoundaries(for: mappingWidth)
             let rulerLineColor = Color.dawMeasureGridLine
             let trackLineColor = Color.dawMeasureGridLine.opacity(0.75)
             let rulerLineEnd = min(rulerHeight, size.height)
@@ -2198,7 +2359,7 @@ private struct TimelineMeasureGridOverlay: View {
                 let x = TimelineLayout.xPosition(
                     for: time,
                     duration: safeDuration,
-                    contentWidth: size.width
+                    contentWidth: mappingWidth
                 )
                 guard x >= 0, x <= size.width else { continue }
 
@@ -2215,6 +2376,7 @@ private struct TimelineMeasureGridOverlay: View {
                 context.stroke(trackPath, with: .color(trackLineColor), lineWidth: 1)
             }
         }
+        .frame(width: canvasWidth > 0 ? canvasWidth : nil)
         .allowsHitTesting(false)
     }
 }
@@ -2222,6 +2384,7 @@ private struct TimelineMeasureGridOverlay: View {
 private struct TimelineRulerView: View {
     let duration: TimeInterval
     let contentWidth: CGFloat
+    let displayWidth: CGFloat
     let sections: [ArrangementDisplaySection]
     let tempoChanges: [TempoChange]
     let timeSignatureChanges: [TimeSignatureChange]
@@ -2232,9 +2395,13 @@ private struct TimelineRulerView: View {
     let timeSignatureRulerHeight: CGFloat
     let tempoRulerHeight: CGFloat
     let rulerHeight: CGFloat
+    let isPlaying: Bool
     let onSeek: (TimeInterval) -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
     let onToggleLoopSection: (ArrangementDisplaySection) -> Void
+    let onAddSection: (TimeInterval) -> Void
+    let onRenameSection: (ArrangementDisplaySection) -> Void
+    let onDeleteSection: (ArrangementDisplaySection) -> Void
     let onTimeSignatureRulerTap: (TimeInterval) -> Void
     let onEditTimeSignatureMarker: (TimeSignatureChange) -> Void
     let onDeleteTimeSignatureMarker: (TimeSignatureChange) -> Void
@@ -2246,14 +2413,19 @@ private struct TimelineRulerView: View {
         max(duration, 0.001)
     }
 
+    private var effectiveDisplayWidth: CGFloat {
+        max(contentWidth, displayWidth)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             sectionMarkerRow
-                .frame(width: contentWidth, height: sectionMarkerHeight)
+                .frame(width: effectiveDisplayWidth, height: sectionMarkerHeight)
 
             TimelineTimeSignatureRulerView(
                 duration: safeDuration,
                 contentWidth: contentWidth,
+                displayWidth: effectiveDisplayWidth,
                 tempoChanges: tempoChanges,
                 timeSignatureChanges: timeSignatureChanges,
                 height: timeSignatureRulerHeight,
@@ -2265,6 +2437,7 @@ private struct TimelineRulerView: View {
             TimelineTempoRulerView(
                 duration: safeDuration,
                 contentWidth: contentWidth,
+                displayWidth: effectiveDisplayWidth,
                 tempoChanges: tempoChanges,
                 timeSignatureChanges: timeSignatureChanges,
                 height: tempoRulerHeight,
@@ -2295,7 +2468,7 @@ private struct TimelineRulerView: View {
                     .offset(x: x)
                 }
             }
-            .frame(width: contentWidth, height: rulerHeight)
+            .frame(width: effectiveDisplayWidth, height: rulerHeight)
             .contentShape(Rectangle())
             .gesture(seekGesture)
             #if os(macOS)
@@ -2308,6 +2481,7 @@ private struct TimelineRulerView: View {
             }
             #endif
         }
+        .frame(width: effectiveDisplayWidth, alignment: .leading)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Color.dawTimelineDivider)
@@ -2318,19 +2492,30 @@ private struct TimelineRulerView: View {
     private var seekGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onEnded { value in
-                let time = TimelineLayout.time(
-                    at: value.location.x,
-                    duration: safeDuration,
-                    contentWidth: contentWidth
-                )
-                onSeek(time)
+                onSeek(rulerTime(at: value.location.x))
             }
+    }
+
+    private func rulerTime(at x: CGFloat) -> TimeInterval {
+        let clampedX = min(max(0, x), effectiveDisplayWidth)
+        return safeDuration * TimeInterval(clampedX / contentWidth)
+    }
+
+    private var extendedMaximumTime: TimeInterval {
+        guard contentWidth > 0, effectiveDisplayWidth > contentWidth else { return safeDuration }
+        return safeDuration * TimeInterval(effectiveDisplayWidth / contentWidth)
     }
 
     private var tickTimes: [TimeInterval] {
         let tickInterval = tickIntervalSeconds
-        let tickCount = max(2, Int(duration / tickInterval) + 1)
-        return (0..<tickCount).map { Double($0) * tickInterval }
+        let maximumTime = extendedMaximumTime
+        var times: [TimeInterval] = []
+        var time: TimeInterval = 0
+        while time <= maximumTime + 0.0001 {
+            times.append(time)
+            time += tickInterval
+        }
+        return times
     }
 
     private var tickIntervalSeconds: TimeInterval {
@@ -2343,102 +2528,22 @@ private struct TimelineRulerView: View {
 
     @ViewBuilder
     private var sectionMarkerRow: some View {
-        if sections.isEmpty {
-            Color.clear
-        } else {
-            ZStack(alignment: .leading) {
-                Color.clear
-                    .frame(width: contentWidth, height: sectionMarkerHeight)
-
-                ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
-                    let startX = TimelineLayout.xPosition(
-                        for: section.timelineStartSeconds,
-                        duration: safeDuration,
-                        contentWidth: contentWidth
-                    )
-                    let endX = TimelineLayout.xPosition(
-                        for: section.timelineEndSeconds,
-                        duration: safeDuration,
-                        contentWidth: contentWidth
-                    )
-                    let segmentWidth = max(0, endX - startX)
-                    let isCued = cuedSectionID == section.id
-                    let isLoopSection = loopSlotIDs.contains(section.id)
-
-                    ZStack(alignment: .leading) {
-                        Rectangle()
-                            .fill(sectionColor(index).opacity(isCued && cueFlashPhase ? 0.55 : 0.25))
-
-                        HStack(spacing: 2) {
-                            if isLoopSection {
-                                Image(systemName: "repeat")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundStyle(sectionColor(index))
-                            }
-                            Text(section.name)
-                                .font(.system(size: 9, weight: .semibold))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                                .foregroundStyle(sectionColor(index))
-                        }
-                        .padding(.horizontal, 4)
-                        .frame(width: segmentWidth, alignment: .leading)
-                    }
-                    .frame(width: segmentWidth, height: sectionMarkerHeight)
-                    .overlay {
-                        if isCued {
-                            Rectangle()
-                                .stroke(Color.yellow.opacity(cueFlashPhase ? 1 : 0.35), lineWidth: 2)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) {
-                        onCueSection(section)
-                    }
-                    .contextMenu {
-                        Button("Cue Section") {
-                            onCueSection(section)
-                        }
-                        if isLoopSection {
-                            Button("Remove Loop") {
-                                onToggleLoopSection(section)
-                            }
-                        } else {
-                            Button("Loop Section") {
-                                onToggleLoopSection(section)
-                            }
-                        }
-                    }
-                    .offset(x: startX)
-                    #if os(macOS)
-                    .onHover { hovering in
-                        if hovering {
-                            NSCursor.pointingHand.push()
-                        } else {
-                            NSCursor.pop()
-                        }
-                    }
-                    #endif
-                }
-
-                ForEach(sections) { section in
-                    let x = TimelineLayout.xPosition(
-                        for: section.timelineStartSeconds,
-                        duration: safeDuration,
-                        contentWidth: contentWidth
-                    )
-                    Rectangle()
-                        .fill(Color.primary.opacity(0.2))
-                        .frame(width: 1, height: sectionMarkerHeight)
-                        .offset(x: x)
-                }
-            }
-        }
-    }
-
-    private func sectionColor(_ index: Int) -> Color {
-        let colors: [Color] = [.blue, .purple, .teal, .indigo, .mint, .cyan]
-        return colors[index % colors.count]
+        TimelineSectionMarkerRowView(
+            sections: sections,
+            duration: safeDuration,
+            contentWidth: contentWidth,
+            displayWidth: effectiveDisplayWidth,
+            height: sectionMarkerHeight,
+            cuedSectionID: cuedSectionID,
+            cueFlashPhase: cueFlashPhase,
+            loopSlotIDs: loopSlotIDs,
+            isPlaying: isPlaying,
+            onCueSection: onCueSection,
+            onToggleLoopSection: onToggleLoopSection,
+            onAddSection: onAddSection,
+            onRenameSection: onRenameSection,
+            onDeleteSection: onDeleteSection
+        )
     }
 
     private func formatRulerTime(_ value: TimeInterval) -> String {
@@ -2449,9 +2554,199 @@ private struct TimelineRulerView: View {
     }
 }
 
+private struct TimelineSectionMarkerRowView: View {
+    let sections: [ArrangementDisplaySection]
+    let duration: TimeInterval
+    let contentWidth: CGFloat
+    let displayWidth: CGFloat
+    let height: CGFloat
+    let cuedSectionID: UUID?
+    let cueFlashPhase: Bool
+    let loopSlotIDs: Set<UUID>
+    let isPlaying: Bool
+    let onCueSection: (ArrangementDisplaySection) -> Void
+    let onToggleLoopSection: (ArrangementDisplaySection) -> Void
+    let onAddSection: (TimeInterval) -> Void
+    let onRenameSection: (ArrangementDisplaySection) -> Void
+    let onDeleteSection: (ArrangementDisplaySection) -> Void
+
+    private var safeDuration: TimeInterval {
+        max(duration, 0.001)
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Color.clear
+                .frame(width: displayWidth, height: height)
+
+            ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+                TimelineSectionMarkerSegmentView(
+                    section: section,
+                    index: index,
+                    duration: safeDuration,
+                    contentWidth: contentWidth,
+                    height: height,
+                    isCued: cuedSectionID == section.id,
+                    cueFlashPhase: cueFlashPhase,
+                    isLoopSection: loopSlotIDs.contains(section.id),
+                    isPlaying: isPlaying,
+                    onCueSection: onCueSection,
+                    onToggleLoopSection: onToggleLoopSection,
+                    onAddSection: { time in onAddSection(time) },
+                    onRenameSection: onRenameSection,
+                    onDeleteSection: onDeleteSection
+                )
+            }
+
+            ForEach(sections) { section in
+                let x = TimelineLayout.xPosition(
+                    for: section.timelineStartSeconds,
+                    duration: safeDuration,
+                    contentWidth: contentWidth
+                )
+                Rectangle()
+                    .fill(Color.primary.opacity(0.2))
+                    .frame(width: 1, height: height)
+                    .offset(x: x)
+            }
+        }
+        .frame(width: displayWidth, height: height)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2, coordinateSpace: .local) { location in
+            let time = timelineTime(at: location.x)
+            if isPlaying, let section = section(atTimeline: time) {
+                onCueSection(section)
+            } else if !isPlaying {
+                onAddSection(time)
+            }
+        }
+    }
+
+    private func timelineTime(at x: CGFloat) -> TimeInterval {
+        let clampedX = min(max(0, x), displayWidth)
+        return safeDuration * TimeInterval(clampedX / contentWidth)
+    }
+
+    private func section(atTimeline time: TimeInterval) -> ArrangementDisplaySection? {
+        sections.first { $0.timelineStartSeconds <= time && time < $0.timelineEndSeconds }
+    }
+}
+
+private struct TimelineSectionMarkerSegmentView: View {
+    let section: ArrangementDisplaySection
+    let index: Int
+    let duration: TimeInterval
+    let contentWidth: CGFloat
+    let height: CGFloat
+    let isCued: Bool
+    let cueFlashPhase: Bool
+    let isLoopSection: Bool
+    let isPlaying: Bool
+    let onCueSection: (ArrangementDisplaySection) -> Void
+    let onToggleLoopSection: (ArrangementDisplaySection) -> Void
+    let onAddSection: (TimeInterval) -> Void
+    let onRenameSection: (ArrangementDisplaySection) -> Void
+    let onDeleteSection: (ArrangementDisplaySection) -> Void
+
+    private var startX: CGFloat {
+        TimelineLayout.xPosition(
+            for: section.timelineStartSeconds,
+            duration: duration,
+            contentWidth: contentWidth
+        )
+    }
+
+    private var segmentWidth: CGFloat {
+        let endX = TimelineLayout.xPosition(
+            for: section.timelineEndSeconds,
+            duration: duration,
+            contentWidth: contentWidth
+        )
+        return max(0, endX - startX)
+    }
+
+    private var sectionColor: Color {
+        let colors: [Color] = [.blue, .purple, .teal, .indigo, .mint, .cyan]
+        return colors[index % colors.count]
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Rectangle()
+                .fill(sectionColor.opacity(isCued && cueFlashPhase ? 0.55 : 0.25))
+
+            HStack(spacing: 2) {
+                if isLoopSection {
+                    Image(systemName: "repeat")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(sectionColor)
+                }
+                Text(section.name)
+                    .font(.system(size: 9, weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .foregroundStyle(sectionColor)
+            }
+            .padding(.horizontal, 4)
+            .frame(width: segmentWidth, alignment: .leading)
+        }
+        .frame(width: segmentWidth, height: height)
+        .overlay {
+            if isCued {
+                Rectangle()
+                    .stroke(Color.yellow.opacity(cueFlashPhase ? 1 : 0.35), lineWidth: 2)
+            }
+        }
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button("Rename") {
+                onRenameSection(section)
+            }
+            if isPlaying {
+                Button("Cue Section") {
+                    onCueSection(section)
+                }
+                if isLoopSection {
+                    Button("Remove Loop") {
+                        onToggleLoopSection(section)
+                    }
+                } else {
+                    Button("Loop Section") {
+                        onToggleLoopSection(section)
+                    }
+                }
+            }
+            Button("Delete Section", role: .destructive) {
+                onDeleteSection(section)
+            }
+        }
+        .onTapGesture(count: 2, coordinateSpace: .local) { location in
+            if isPlaying {
+                onCueSection(section)
+            } else {
+                let safeDuration = max(duration, 0.001)
+                let clampedX = min(max(0, startX + location.x), contentWidth)
+                let time = safeDuration * TimeInterval(clampedX / contentWidth)
+                onAddSection(time)
+            }
+        }
+        .offset(x: startX)
+        #if os(macOS)
+        .onHover { hovering in
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        #endif
+    }
+}
+
 private struct TimelineTimeSignatureRulerView: View {
     let duration: TimeInterval
     let contentWidth: CGFloat
+    let displayWidth: CGFloat
     let tempoChanges: [TempoChange]
     let timeSignatureChanges: [TimeSignatureChange]
     let height: CGFloat
@@ -2461,6 +2756,10 @@ private struct TimelineTimeSignatureRulerView: View {
 
     private var safeDuration: TimeInterval {
         max(duration, 0.001)
+    }
+
+    private var effectiveDisplayWidth: CGFloat {
+        max(contentWidth, displayWidth)
     }
 
     private var sortedMarkers: [TimeSignatureChange] {
@@ -2478,11 +2777,13 @@ private struct TimelineTimeSignatureRulerView: View {
                     duration: safeDuration,
                     contentWidth: contentWidth
                 )
-                let endX = TimelineLayout.xPosition(
-                    for: segment.endTime,
-                    duration: safeDuration,
-                    contentWidth: contentWidth
-                )
+                let endX = index + 1 == timeSignatureSegments.count
+                    ? effectiveDisplayWidth
+                    : TimelineLayout.xPosition(
+                        for: segment.endTime,
+                        duration: safeDuration,
+                        contentWidth: contentWidth
+                    )
                 let segmentWidth = max(0, endX - startX)
 
                 ZStack(alignment: .leading) {
@@ -2529,13 +2830,13 @@ private struct TimelineTimeSignatureRulerView: View {
                     }
             }
         }
-        .frame(width: contentWidth, height: height)
+        .frame(width: effectiveDisplayWidth, height: height)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onEnded { value in
                     let time = TimelineLayout.time(
-                        at: value.location.x,
+                        at: min(value.location.x, contentWidth),
                         duration: safeDuration,
                         contentWidth: contentWidth
                     )
@@ -2676,6 +2977,7 @@ private struct TimeSignatureMarkerEditorMenu: View {
 private struct TimelineTempoRulerView: View {
     let duration: TimeInterval
     let contentWidth: CGFloat
+    let displayWidth: CGFloat
     let tempoChanges: [TempoChange]
     let timeSignatureChanges: [TimeSignatureChange]
     let height: CGFloat
@@ -2685,6 +2987,10 @@ private struct TimelineTempoRulerView: View {
 
     private var safeDuration: TimeInterval {
         max(duration, 0.001)
+    }
+
+    private var effectiveDisplayWidth: CGFloat {
+        max(contentWidth, displayWidth)
     }
 
     private var sortedMarkers: [TempoChange] {
@@ -2702,11 +3008,13 @@ private struct TimelineTempoRulerView: View {
                     duration: safeDuration,
                     contentWidth: contentWidth
                 )
-                let endX = TimelineLayout.xPosition(
-                    for: segment.endTime,
-                    duration: safeDuration,
-                    contentWidth: contentWidth
-                )
+                let endX = index + 1 == tempoSegments.count
+                    ? effectiveDisplayWidth
+                    : TimelineLayout.xPosition(
+                        for: segment.endTime,
+                        duration: safeDuration,
+                        contentWidth: contentWidth
+                    )
                 let segmentWidth = max(0, endX - startX)
 
                 ZStack(alignment: .leading) {
@@ -2753,13 +3061,13 @@ private struct TimelineTempoRulerView: View {
                     }
             }
         }
-        .frame(width: contentWidth, height: height)
+        .frame(width: effectiveDisplayWidth, height: height)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onEnded { value in
                     let time = TimelineLayout.time(
-                        at: value.location.x,
+                        at: min(value.location.x, contentWidth),
                         duration: safeDuration,
                         contentWidth: contentWidth
                     )
@@ -2904,7 +3212,7 @@ private struct ClickTrackEditorMenu: View {
     EditView(
         song: Song(name: "Preview"),
         viewModel: SongEditorViewModel(song: Song(name: "Preview")),
-        arrangementMarkers: [],
+        arrangementMarkers: .constant([]),
         arrangementSlots: .constant([]),
         clipTrims: .constant([]),
         removedClips: .constant([]),

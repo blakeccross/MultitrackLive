@@ -50,6 +50,7 @@ struct LivePlaybackView: View {
     @State private var showingSongFolderImporter = false
     @State private var songPendingTrackImport: Song?
     @State private var songImportFeedback: SongImportFeedback?
+    @State private var infoPanelHeight: CGFloat = 0
 
     private var activeSetlist: Setlist? {
         if let activeSetlistID,
@@ -216,7 +217,8 @@ struct LivePlaybackView: View {
                 songPendingTrackImport = song
             },
             onEditSong: { songToEditID = $0.id },
-            onAddSong: { addSong($0, at: workingSetlist.sortedEntries.count) }
+            onAddSong: { addSong($0, at: workingSetlist.sortedEntries.count) },
+            infoPanelHeight: $infoPanelHeight
         )
     }
 
@@ -872,13 +874,19 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     let onRequestTrackImport: (Song) -> Void
     let onEditSong: (Song) -> Void
     let onAddSong: (Song) -> Void
+    @Binding var infoPanelHeight: CGFloat
 
     @ToolbarContentBuilder
     var body: some ToolbarContent {
         #if os(macOS)
         if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .navigation) {
+                songInfoBar
+            }
+            .sharedBackgroundVisibility(.hidden)
+
             ToolbarItem(placement: .principal) {
-                nowPlayingInfo
+                transportInfoBar
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -902,8 +910,12 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             }
             .sharedBackgroundVisibility(.hidden)
         } else {
+            ToolbarItem(placement: .navigation) {
+                songInfoBar
+            }
+
             ToolbarItem(placement: .principal) {
-                nowPlayingInfo
+                transportInfoBar
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -923,8 +935,12 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             }
         }
         #else
+        ToolbarItem(placement: .topBarLeading) {
+            songInfoBar
+        }
+
         ToolbarItem(placement: .principal) {
-            nowPlayingInfo
+            transportInfoBar
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -949,11 +965,26 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         #endif
     }
 
-    private var nowPlayingInfo: some View {
+    private var songInfoBar: some View {
         LiveSetlistNowPlayingInfoView(
+            section: .songInfo,
             coordinator: coordinator,
             audioEngine: audioEngine,
             isLoaded: isLoaded,
+            infoPanelHeight: $infoPanelHeight,
+            onStop: onStop,
+            onPlay: onPlay,
+            onPause: onPause
+        )
+    }
+
+    private var transportInfoBar: some View {
+        LiveSetlistNowPlayingInfoView(
+            section: .transportAndPosition,
+            coordinator: coordinator,
+            audioEngine: audioEngine,
+            isLoaded: isLoaded,
+            infoPanelHeight: $infoPanelHeight,
             onStop: onStop,
             onPlay: onPlay,
             onPause: onPause

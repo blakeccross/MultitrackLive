@@ -110,9 +110,11 @@ enum MeasureTiming {
         tempoChanges: [TempoChange],
         contentWidth: CGFloat,
         timeSignatureChanges: [TimeSignatureChange],
-        minimumPixelSpacing: CGFloat = 10
+        minimumPixelSpacing: CGFloat = 10,
+        maximumTime: TimeInterval? = nil
     ) -> [TimeInterval] {
         let safeDuration = max(duration, 0.001)
+        let timeLimit = max(safeDuration, maximumTime ?? safeDuration)
         guard safeDuration > 0, contentWidth > 0, !tempoChanges.isEmpty else { return [] }
 
         var boundaries: [TimeInterval] = []
@@ -123,7 +125,7 @@ enum MeasureTiming {
                 tempoChanges: tempoChanges,
                 timeSignatureChanges: timeSignatureChanges
             )
-            guard time < safeDuration - 0.0001 else { break }
+            guard time < timeLimit - 0.0001 else { break }
             boundaries.append(time)
             measure += 1
         }

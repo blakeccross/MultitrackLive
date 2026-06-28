@@ -95,7 +95,7 @@ struct SongDetailView: View {
                     EditView(
                         song: song,
                         viewModel: viewModel,
-                        arrangementMarkers: arrangementMarkers,
+                        arrangementMarkers: $arrangementMarkers,
                         arrangementSlots: $arrangementSlots,
                         clipTrims: $clipTrims,
                         removedClips: $removedClips,
