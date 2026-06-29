@@ -15,6 +15,7 @@ final class TrackMemoryPlayer {
         let sampleRate: Double
         var mapper: ArrangementTimelineMapper
         var mix = MixState()
+        let peakMeter = PeakMeterHolder()
 
         init(
             transport: AudioPlaybackTransport,
@@ -57,6 +58,10 @@ final class TrackMemoryPlayer {
                     frameCount: frameCount,
                     outputBuffer: outputBuffer
                 )
+            }
+
+            if mix.isAudible {
+                peakMeter.report(Self.peakAmplitude(in: outputBuffer, frameCount: frameCount))
             }
         }
 
@@ -358,6 +363,24 @@ final class TrackMemoryPlayer {
             let theta = (pan + 1) * Float.pi / 4
             return (mix.volume * cos(theta), mix.volume * sin(theta))
         }
+
+        private static func peakAmplitude(
+            in outputBuffer: UnsafeMutablePointer<AudioBufferList>,
+            frameCount: AVAudioFrameCount
+        ) -> Float {
+            let buffers = UnsafeMutableAudioBufferListPointer(outputBuffer)
+            guard frameCount > 0, !buffers.isEmpty else { return 0 }
+
+            var peak: Float = 0
+            for buffer in buffers {
+                guard let data = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
+                let count = min(Int(frameCount), Int(buffer.mDataByteSize) / MemoryLayout<Float>.size)
+                for index in 0..<count {
+                    peak = max(peak, abs(data[index]))
+                }
+            }
+            return peak
+        }
     }
 
     let trackID: UUID
@@ -401,6 +424,10 @@ final class TrackMemoryPlayer {
 
     func updateMix(volume: Float, pan: Float, isAudible: Bool) {
         renderContext.mix = MixState(volume: volume, pan: pan, isAudible: isAudible)
+    }
+
+    func consumePeakMeter(decay: Float = 0.55) -> Float {
+        renderContext.peakMeter.consume(decay: decay)
     }
 
     /// Warms the backing sample source for playback starting at the given master

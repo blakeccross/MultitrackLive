@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import CoreGraphics
+import SwiftData
 
 struct LiveSongWaveformSnapshot: Identifiable {
     let songID: UUID
@@ -36,6 +37,7 @@ final class PlaybackCoordinator {
     private var loadGeneration = 0
 
     var routingProvider: (() -> OutputRoutingSnapshot)?
+    var groupMixProvider: (() -> GroupMixSnapshot)?
 
     var currentSong: Song? {
         guard songs.indices.contains(currentIndex) else { return nil }
@@ -207,6 +209,17 @@ final class PlaybackCoordinator {
         loadCurrentSong(autoPlay: wasPlaying, preservedTime: preservedTime)
     }
 
+    func updateGroupMix(context: ModelContext) {
+        guard let snapshot = groupMixProvider?() else { return }
+        audioEngine.applyGroupMix(snapshot)
+        try? context.save()
+    }
+
+    private func applyGroupMixFromProvider() {
+        guard let snapshot = groupMixProvider?() else { return }
+        audioEngine.applyGroupMix(snapshot)
+    }
+
     @MainActor
     private func performLoadCurrentSong(autoPlay: Bool, preservedTime: TimeInterval?) async {
         loadGeneration += 1
@@ -251,6 +264,7 @@ final class PlaybackCoordinator {
                     routing: routing
                 )
                 applySongEngineState(for: song)
+                applyGroupMixFromProvider()
                 currentWaveformSnapshot = nil
                 nextWaveformSnapshot = nextSong?.isClickOnly == true ? nil : nextSong.flatMap { Self.makeWaveformSnapshot(for: $0) }
                 loadedSongID = song.id
@@ -310,6 +324,7 @@ final class PlaybackCoordinator {
                 try audioEngine.loadPreparedTracks(prepared, routing: routing)
                 applySongEngineState(for: song)
                 configureMIDIPlayback(for: song)
+                applyGroupMixFromProvider()
                 currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
                 nextWaveformSnapshot = nextSong.flatMap { Self.makeWaveformSnapshot(for: $0) }
                 loadedSongID = song.id

@@ -52,6 +52,7 @@ final class AudioEngineManager {
     private var arrangementSectionsByTrack: [UUID: [ArrangementDisplaySection]] = [:]
     private var arrangementRemovedClips: [ArrangementRemovedClip] = []
     private var routingSnapshot: OutputRoutingSnapshot?
+    private var groupMixSnapshot = GroupMixSnapshot.default
     private var usesOutputRouting = false
     private var tempoChanges: [TempoChange] = []
     private var referenceBPM: Double = 0
@@ -69,6 +70,8 @@ final class AudioEngineManager {
     }
 
     private var clickOnlyState: ClickOnlyState?
+
+    private(set) var groupMeterLevels: [UUID: Float] = [:]
 
     /// Practical upper bound for open-ended click-only playback and transport clamping.
     static let openEndedTimelineDuration: TimeInterval = 86_400 * 365
@@ -543,6 +546,33 @@ final class AudioEngineManager {
         refreshTrackMappers()
     }
 
+    func applyGroupMix(_ snapshot: GroupMixSnapshot) {
+        groupMixSnapshot = snapshot
+        applyAllMixSettings()
+    }
+
+    func refreshGroupMeters(decay: Float = 0.55) {
+        var levels: [UUID: Float] = [:]
+
+        if clickOnlyState != nil {
+            groupMeterLevels = levels
+            return
+        }
+
+        for track in tracks.values {
+            let peak = track.memoryPlayer.consumePeakMeter(decay: decay)
+            let groupKey = track.groupID ?? OutputRoutingStore.ungroupedRouteID
+            levels[groupKey] = max(levels[groupKey] ?? 0, peak)
+        }
+
+        groupMeterLevels = levels
+    }
+
+    func groupMeterLevel(for groupID: UUID?) -> Float {
+        let key = groupID ?? OutputRoutingStore.ungroupedRouteID
+        return groupMeterLevels[key] ?? 0
+    }
+
     func applyAllMixSettings() {
         if clickOnlyState != nil {
             applyClickOnlyMixSettings()
@@ -550,6 +580,7 @@ final class AudioEngineManager {
         }
 
         let anySolo = tracks.values.contains { $0.settings.isSolo }
+        let snapshot = groupMixSnapshot
 
         for id in tracks.keys {
             guard let track = tracks[id] else { continue }
@@ -565,6 +596,17 @@ final class AudioEngineManager {
                 effectiveVolume = 0
                 isAudible = false
             }
+
+            let groupVolume: Float
+            let groupMuted: Bool
+            if let groupID = track.groupID {
+                groupVolume = snapshot.volumeByGroupID[groupID] ?? 1
+                groupMuted = snapshot.mutedGroupIDs.contains(groupID)
+            } else {
+                groupVolume = snapshot.ungroupedVolume
+                groupMuted = snapshot.ungroupedIsMuted
+            }
+            effectiveVolume *= groupMuted ? 0 : groupVolume
 
             track.memoryPlayer.updateMix(
                 volume: effectiveVolume,

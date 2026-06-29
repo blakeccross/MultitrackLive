@@ -127,58 +127,6 @@ struct TrackLaneHeaderView: View {
     }
 }
 
-private struct TrackMixButton: View {
-    let label: String
-    let isActive: Bool
-    let activeColor: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .frame(width: 22, height: 20)
-                .foregroundStyle(isActive ? Color.black.opacity(0.85) : Color.primary.opacity(0.75))
-                .background(isActive ? activeColor : Color.dawMixButtonBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 3))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 3)
-                        .stroke(Color.primary.opacity(isActive ? 0 : 0.12), lineWidth: 1)
-                }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct TrackMixSliderRow: View {
-    let label: String
-    let valueLabel: String
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    let onEditingEnded: () -> Void
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(label)
-                .font(.system(size: 8, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 18, alignment: .leading)
-
-            Slider(value: $value, in: range) { editing in
-                if !editing {
-                    onEditingEnded()
-                }
-            }
-            .controlSize(.mini)
-
-            Text(valueLabel)
-                .font(.system(size: 8, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(width: 24, alignment: .trailing)
-        }
-    }
-}
-
 struct WaveformLaneView: View {
     private enum TimelineDragSpace {
         static let name = "waveformLaneTimeline"

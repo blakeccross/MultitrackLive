@@ -90,6 +90,10 @@
 		AA0000010000000000000076 /* ProjectFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000076 /* ProjectFileStore.swift */; };
 		AA0000010000000000000077 /* SongProjectBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000077 /* SongProjectBridge.swift */; };
 		AA0000010000000000000078 /* MediaConsolidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000078 /* MediaConsolidator.swift */; };
+		AA0000010000000000000079 /* GroupMixStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000079 /* GroupMixStore.swift */; };
+		AA000001000000000000007A /* TrackMixControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000007A /* TrackMixControls.swift */; };
+		AA000001000000000000007B /* LiveGroupMixerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000007B /* LiveGroupMixerView.swift */; };
+		AA000001000000000000007C /* PeakMeterHolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000007C /* PeakMeterHolder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -182,6 +186,10 @@
 		AA0000020000000000000076 /* ProjectFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectFileStore.swift; sourceTree = "<group>"; };
 		AA0000020000000000000077 /* SongProjectBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongProjectBridge.swift; sourceTree = "<group>"; };
 		AA0000020000000000000078 /* MediaConsolidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaConsolidator.swift; sourceTree = "<group>"; };
+		AA0000020000000000000079 /* GroupMixStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupMixStore.swift; sourceTree = "<group>"; };
+		AA000002000000000000007A /* TrackMixControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackMixControls.swift; sourceTree = "<group>"; };
+		AA000002000000000000007B /* LiveGroupMixerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveGroupMixerView.swift; sourceTree = "<group>"; };
+		AA000002000000000000007C /* PeakMeterHolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeakMeterHolder.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -329,6 +337,8 @@
 				AA0000020000000000000076 /* ProjectFileStore.swift */,
 				AA0000020000000000000077 /* SongProjectBridge.swift */,
 				AA0000020000000000000078 /* MediaConsolidator.swift */,
+				AA0000020000000000000079 /* GroupMixStore.swift */,
+				AA000002000000000000007C /* PeakMeterHolder.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -363,10 +373,19 @@
 			isa = PBXGroup;
 			children = (
 				AA000002000000000000000B /* RootView.swift */,
+				AA000005000000000000000A /* Shared */,
 				AA0000050000000000000008 /* Songs */,
 				AA0000050000000000000009 /* Setlists */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		AA000005000000000000000A /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				AA000002000000000000007A /* TrackMixControls.swift */,
+			);
+			path = Shared;
 			sourceTree = "<group>";
 		};
 		AA0000050000000000000008 /* Songs */ = {
@@ -397,6 +416,7 @@
 				AA0000020000000000000013 /* LivePlaybackView.swift */,
 				AA0000020000000000000042 /* LiveSetlistNowPlayingInfoView.swift */,
 				AA0000020000000000000028 /* LiveSongWaveformView.swift */,
+				AA000002000000000000007B /* LiveGroupMixerView.swift */,
 			);
 			path = Setlists;
 			sourceTree = "<group>";
@@ -587,6 +607,10 @@
 				AA0000010000000000000076 /* ProjectFileStore.swift in Sources */,
 				AA0000010000000000000077 /* SongProjectBridge.swift in Sources */,
 				AA0000010000000000000078 /* MediaConsolidator.swift in Sources */,
+				AA0000010000000000000079 /* GroupMixStore.swift in Sources */,
+				AA000001000000000000007A /* TrackMixControls.swift in Sources */,
+				AA000001000000000000007B /* LiveGroupMixerView.swift in Sources */,
+				AA000001000000000000007C /* PeakMeterHolder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

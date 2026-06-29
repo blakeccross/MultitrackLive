@@ -51,6 +51,7 @@ struct LivePlaybackView: View {
     @State private var songPendingTrackImport: Song?
     @State private var songImportFeedback: SongImportFeedback?
     @State private var infoPanelHeight: CGFloat = 0
+    @State private var mixerDetent: LiveGroupMixerDetent = .hidden
 
     private var activeSetlist: Setlist? {
         if let activeSetlistID,
@@ -97,13 +98,26 @@ struct LivePlaybackView: View {
     }
 
     private func playbackBody(for setlist: Setlist) -> some View {
-        VStack(spacing: 0) {
-            currentSongSection
-                .padding()
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                currentSongSection
+                    .padding()
 
-            Divider()
+                Divider()
 
-            setlistSection
+                setlistSection
+
+                if mixerDetent == .visible {
+                    LiveGroupMixerPanel(
+                        containerHeight: geometry.size.height,
+                        onMixChange: {
+                            coordinator.updateGroupMix(context: modelContext)
+                        }
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.spring(response: 0.34, dampingFraction: 0.86), value: mixerDetent)
         }
         #if os(macOS)
         .navigationTitle("")
@@ -170,6 +184,9 @@ struct LivePlaybackView: View {
                 )
                 return OutputRoutingStore.snapshot(in: modelContext, channelCount: channelCount)
             }
+            coordinator.groupMixProvider = {
+                GroupMixStore.snapshot(in: modelContext)
+            }
             coordinator.configure(setlist: setlist)
             markSetlistOpened(setlist)
         }
@@ -208,6 +225,7 @@ struct LivePlaybackView: View {
             showingSongLibrary: $showingSongLibrary,
             showingAddSong: $showingAddSong,
             showingManageOutputs: $showingManageOutputs,
+            mixerDetent: $mixerDetent,
             onRequestFolderImport: {
                 showingSongLibrary = false
                 showingSongFolderImporter = true
@@ -870,6 +888,7 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @Binding var showingSongLibrary: Bool
     @Binding var showingAddSong: Bool
     @Binding var showingManageOutputs: Bool
+    @Binding var mixerDetent: LiveGroupMixerDetent
     let onRequestFolderImport: () -> Void
     let onRequestTrackImport: (Song) -> Void
     let onEditSong: (Song) -> Void
@@ -909,6 +928,11 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
                 manageOutputsButton
             }
             .sharedBackgroundVisibility(.hidden)
+
+            ToolbarItem(placement: .automatic) {
+                mixerButton
+            }
+            .sharedBackgroundVisibility(.hidden)
         } else {
             ToolbarItem(placement: .navigation) {
                 songInfoBar
@@ -932,6 +956,10 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
 
             ToolbarItem(placement: .automatic) {
                 manageOutputsButton
+            }
+
+            ToolbarItem(placement: .automatic) {
+                mixerButton
             }
         }
         #else
@@ -957,6 +985,10 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
 
         ToolbarItem(placement: .automatic) {
             manageOutputsButton
+        }
+
+        ToolbarItem(placement: .automatic) {
+            mixerButton
         }
 
         ToolbarItem(placement: .automatic) {
@@ -1032,6 +1064,19 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         Button("Manage Outputs") {
             showingManageOutputs = true
         }
+    }
+
+    private var mixerButton: some View {
+        Button {
+            toggleMixerDrawer()
+        } label: {
+            Label("Mixer", systemImage: "slider.vertical.3")
+        }
+        .help("Group Mixer")
+    }
+
+    private func toggleMixerDrawer() {
+        mixerDetent = mixerDetent == .hidden ? .visible : .hidden
     }
 }
 
