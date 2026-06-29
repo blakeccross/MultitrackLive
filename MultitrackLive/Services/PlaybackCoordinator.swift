@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import CoreGraphics
 import SwiftData
+import os
 
 struct LiveSongWaveformSnapshot: Identifiable {
     let songID: UUID
@@ -21,6 +22,8 @@ struct LiveSongWaveformSnapshot: Identifiable {
 
 @Observable
 final class PlaybackCoordinator {
+    private static let overlapLog = Logger(subsystem: "com.blakecross.MultitrackLive", category: "SongOverlap")
+
     private let audioEngine = AudioEngineManager.shared
 
     private(set) var songs: [Song] = []
@@ -35,6 +38,13 @@ final class PlaybackCoordinator {
     private var loadedSongID: UUID?
     private var loadTask: Task<Void, Never>?
     private var loadGeneration = 0
+    private var prefetchTask: Task<Void, Never>?
+    private var prefetchedNextSong: (songID: UUID, payloads: [AudioEngineManager.PreparedTrackPayload])?
+    private var isInOverlap = false
+    private var overlapIncomingStartTime: TimeInterval?
+    private var overlapOutgoingEndTime: TimeInterval?
+
+    private static let overlapPrefetchBuffer: TimeInterval = 15
 
     var routingProvider: (() -> OutputRoutingSnapshot)?
     var groupMixProvider: (() -> GroupMixSnapshot)?
@@ -61,16 +71,41 @@ final class PlaybackCoordinator {
         return transitions[currentIndex]
     }
 
-    /// Binds this coordinator as the owner of the shared engine's finished callback.
+    var isInOverlapTransition: Bool {
+        isInOverlap
+    }
+
+    var playbackDisplayTime: TimeInterval {
+        if isInOverlap, let start = overlapIncomingStartTime, audioEngine.isInOverlap {
+            return max(0, audioEngine.currentTime - start)
+        }
+        return audioEngine.currentTime
+    }
+
+    /// Binds this coordinator as the owner of the shared engine's playback callbacks.
     /// Must be called from a stable lifecycle point (not `init`), because SwiftUI
     /// constructs throwaway `@State` default instances on every view re-render,
     /// and an `init`-time assignment would let those throwaways clobber the callback.
-    private func bindPlaybackFinishedHandler() {
+    func bindPlaybackHandlers() {
         audioEngine.onPlaybackFinished = { [weak self] in
             Task { @MainActor in
                 self?.handlePlaybackFinished()
             }
         }
+        audioEngine.onPlaybackTimeUpdate = { [weak self] currentTime, duration in
+            Task { @MainActor in
+                self?.handlePlaybackTimeUpdate(currentTime: currentTime, duration: duration)
+            }
+        }
+    }
+
+    func unbindPlaybackHandlers() {
+        audioEngine.onPlaybackFinished = nil
+        audioEngine.onPlaybackTimeUpdate = nil
+    }
+
+    private func bindPlaybackFinishedHandler() {
+        bindPlaybackHandlers()
     }
 
     func configure(setlist: Setlist) {
@@ -121,8 +156,129 @@ final class PlaybackCoordinator {
     }
 
     private func handlePlaybackFinished() {
-        guard transitionAfterCurrentSong == .continue else { return }
-        advanceToNextSong(autoPlay: true)
+        Self.overlapLog.info(
+            "playback finished transition=\(String(describing: self.transitionAfterCurrentSong)) isInOverlap=\(self.isInOverlap) songIndex=\(self.currentIndex)"
+        )
+        clearOverlapTransitionStateIfNeeded()
+
+        switch transitionAfterCurrentSong {
+        case .continue, .overlap:
+            advanceToNextSong(autoPlay: true)
+        case .stop, .none:
+            break
+        }
+    }
+
+    private func clearOverlapTransitionStateIfNeeded() {
+        guard isInOverlap else { return }
+        isInOverlap = false
+        overlapIncomingStartTime = nil
+        overlapOutgoingEndTime = nil
+        clearOverlapPrefetchState()
+    }
+
+    private func handlePlaybackTimeUpdate(currentTime: TimeInterval, duration: TimeInterval) {
+        startPrefetchIfNeeded(currentTime: currentTime, duration: duration)
+        tryBeginOverlap(currentTime: currentTime, duration: duration)
+    }
+
+    private func clearOverlapPrefetchState() {
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        prefetchedNextSong = nil
+    }
+
+    private func canUseOverlapTransition(for song: Song?, next: Song?) -> Bool {
+        guard let song, let next else { return false }
+        return !song.isClickOnly && !next.isClickOnly
+    }
+
+    private func startPrefetchIfNeeded(currentTime: TimeInterval, duration: TimeInterval) {
+        guard transitionAfterCurrentSong == .overlap,
+              !isInOverlap,
+              !audioEngine.isInOverlap,
+              let next = nextSong,
+              canUseOverlapTransition(for: currentSong, next: next),
+              prefetchedNextSong?.songID != next.id,
+              prefetchTask == nil else { return }
+
+        let leadTime = SetlistTransition.overlapLeadTime
+        let prefetchStart = max(0, duration - leadTime - Self.overlapPrefetchBuffer)
+        guard currentTime >= prefetchStart || duration <= leadTime else { return }
+
+        let songID = next.id
+        prefetchTask = Task { @MainActor in
+            let payloads = await Self.preparePayloads(for: next)
+            guard !Task.isCancelled else { return }
+            if let payloads, prefetchedNextSong?.songID != songID {
+                prefetchedNextSong = (songID: songID, payloads: payloads)
+            }
+            prefetchTask = nil
+        }
+    }
+
+    private func tryBeginOverlap(currentTime: TimeInterval, duration: TimeInterval) {
+        guard transitionAfterCurrentSong == .overlap,
+              !isInOverlap,
+              !audioEngine.isInOverlap,
+              let next = nextSong,
+              canUseOverlapTransition(for: currentSong, next: next),
+              let prefetched = prefetchedNextSong,
+              prefetched.songID == next.id else { return }
+
+        let leadTime = SetlistTransition.overlapLeadTime
+        let incomingStartTime = max(0, duration - leadTime)
+        guard currentTime + 0.05 >= incomingStartTime else { return }
+
+        beginOverlapTransition(
+            to: next,
+            payloads: prefetched.payloads,
+            outgoingEndTime: duration,
+            incomingStartTime: incomingStartTime
+        )
+    }
+
+    private func beginOverlapTransition(
+        to nextSong: Song,
+        payloads: [AudioEngineManager.PreparedTrackPayload],
+        outgoingEndTime: TimeInterval,
+        incomingStartTime: TimeInterval
+    ) {
+        let layout = songEngineLayout(for: nextSong)
+        let routing = routingProvider?()
+
+        do {
+            let configuration = AudioEngineManager.SongOverlapConfiguration(
+                payloads: payloads,
+                sectionsByTrack: layout.sectionsByTrack,
+                masterSections: layout.masterSections,
+                removedClips: layout.removedClips,
+                tempoChanges: layout.tempoChanges,
+                referenceBPM: layout.tempoChanges.referenceBPM,
+                timeSignatureChanges: layout.timeSignatureChanges,
+                midiEvents: layout.midiEvents,
+                incomingStartTime: incomingStartTime,
+                outgoingEndTime: outgoingEndTime
+            )
+            try audioEngine.beginSongOverlap(configuration)
+            applyGroupMixFromProvider()
+
+            overlapIncomingStartTime = incomingStartTime
+            overlapOutgoingEndTime = outgoingEndTime
+            isInOverlap = true
+            clearOverlapPrefetchState()
+
+            guard currentIndex < songs.count - 1 else { return }
+            currentIndex += 1
+            loadedSongID = nextSong.id
+            refreshWaveformSnapshots()
+
+            Self.overlapLog.info(
+                "coordinator overlap began song=\(nextSong.name) index=\(self.currentIndex) incomingStart=\(incomingStartTime, format: .fixed(precision: 2))"
+            )
+        } catch {
+            loadError = error.localizedDescription
+        }
     }
 
     func loadCurrentSong(autoPlay: Bool = false, preservedTime: TimeInterval? = nil) {
@@ -143,6 +299,11 @@ final class PlaybackCoordinator {
 
     func stop() {
         loadTask?.cancel()
+        clearOverlapPrefetchState()
+        isInOverlap = false
+        overlapIncomingStartTime = nil
+        overlapOutgoingEndTime = nil
+        audioEngine.cancelOverlapState()
         audioEngine.stop()
     }
 
@@ -154,7 +315,11 @@ final class PlaybackCoordinator {
     }
 
     func seek(to time: TimeInterval) {
-        audioEngine.seek(to: time)
+        if isInOverlap, audioEngine.isInOverlap, let start = overlapIncomingStartTime {
+            audioEngine.seek(to: time + start)
+        } else {
+            audioEngine.seek(to: time)
+        }
     }
 
     func scheduleSectionTransition(to markerStart: TimeInterval, at transitionTime: TimeInterval) {
@@ -195,6 +360,11 @@ final class PlaybackCoordinator {
     }
 
     private func reloadAndMaybePlay(autoPlay: Bool) {
+        clearOverlapPrefetchState()
+        isInOverlap = false
+        overlapIncomingStartTime = nil
+        overlapOutgoingEndTime = nil
+        audioEngine.cancelOverlapState()
         audioEngine.cancelScheduledTransition()
         audioEngine.stop()
         loadCurrentSong(autoPlay: autoPlay)
@@ -246,6 +416,11 @@ final class PlaybackCoordinator {
             currentWaveformSnapshot = nil
         }
 
+        clearOverlapPrefetchState()
+        isInOverlap = false
+        overlapIncomingStartTime = nil
+        overlapOutgoingEndTime = nil
+        audioEngine.cancelOverlapState()
         audioEngine.stop()
 
         if song.isClickOnly {
@@ -366,6 +541,97 @@ final class PlaybackCoordinator {
         }
         currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
         nextWaveformSnapshot = nextSong.flatMap { Self.makeWaveformSnapshot(for: $0) }
+    }
+
+    private struct SongEngineLayout {
+        let sectionsByTrack: [UUID: [ArrangementDisplaySection]]
+        let masterSections: [ArrangementDisplaySection]
+        let removedClips: [ArrangementRemovedClip]
+        let tempoChanges: [TempoChange]
+        let timeSignatureChanges: [TimeSignatureChange]
+        let midiEvents: [MIDIScheduler.ScheduledEvent]
+    }
+
+    private func songEngineLayout(for song: Song) -> SongEngineLayout {
+        let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
+        let markers = projectState.markers
+        let arrangement = projectState.arrangement
+        let trackIDs = song.sortedTracks.map(\.id)
+
+        func sourceDuration(for trackID: UUID) -> TimeInterval {
+            guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
+                  let url = FileStore.trackURL(for: song, track: track) else { return 1 }
+            return FileStore.fileDuration(at: url) ?? 1
+        }
+
+        let inputs = SongArrangementStore.makeLayoutInputs(
+            markers: markers,
+            trackIDs: trackIDs,
+            sourceDurationForTrack: sourceDuration
+        )
+        let layout = SongArrangementStore.playbackLayoutSnapshot(
+            slots: arrangement.slots,
+            clipTrims: arrangement.clipTrims,
+            removedClips: arrangement.removedClips,
+            clipGaps: arrangement.clipGaps,
+            clipRegions: arrangement.clipRegions,
+            tracks: song.sortedTracks.map { track in
+                (
+                    id: track.id,
+                    trimStart: track.trimStartSeconds,
+                    trimEnd: track.trimEndSeconds ?? sourceDuration(for: track.id)
+                )
+            },
+            inputs: inputs
+        )
+
+        let events = SongProjectBridge.projectStateOrDefaults(for: song).midiEvents
+        let resolvedMIDI = MIDIScheduler.scheduledEvents(events: events, tracks: song.sortedMIDITracks)
+
+        return SongEngineLayout(
+            sectionsByTrack: layout.trackSections,
+            masterSections: layout.rulerSections,
+            removedClips: arrangement.removedClips,
+            tempoChanges: projectState.tempoChanges,
+            timeSignatureChanges: projectState.timeSignatureChanges,
+            midiEvents: resolvedMIDI
+        )
+    }
+
+    private static func preparePayloads(for song: Song) async -> [AudioEngineManager.PreparedTrackPayload]? {
+        guard !song.isClickOnly else { return nil }
+
+        let trackInputs = SongTrackLoader.trackInputs(for: song)
+        let preparationResult: Result<[AudioEngineManager.PreparedTrackPayload], Error> =
+            await Task.detached(priority: .userInitiated) {
+                do {
+                    return .success(
+                        try SongTrackLoader.streamingPayloads(trackInputs: trackInputs)
+                    )
+                } catch {
+                    return .failure(error)
+                }
+            }.value
+
+        guard case .success(var prepared) = preparationResult else { return nil }
+
+        let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
+        do {
+            try SongTrackLoader.appendClickTrackIfNeeded(
+                to: &prepared,
+                song: song,
+                sourceDurationForTrack: { trackID in
+                    guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
+                          let url = FileStore.trackURL(for: song, track: track) else { return 1 }
+                    return FileStore.fileDuration(at: url) ?? 1
+                },
+                tempoChanges: projectState.tempoChanges,
+                timeSignatureChanges: projectState.timeSignatureChanges
+            )
+            return prepared
+        } catch {
+            return nil
+        }
     }
 
     private func configureMIDIPlayback(for song: Song) {

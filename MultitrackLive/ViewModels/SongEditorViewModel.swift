@@ -22,7 +22,17 @@ final class SongEditorViewModel {
     }
 
     func loadSong() {
+        claimEngineForSongEditing()
         reloadSong()
+    }
+
+    /// Detaches live setlist playback from the shared engine so editing owns it.
+    private func claimEngineForSongEditing() {
+        audioEngine.onPlaybackFinished = nil
+        audioEngine.onPlaybackTimeUpdate = nil
+        audioEngine.cancelOverlapState()
+        audioEngine.applyGroupMix(.default)
+        audioEngine.pause()
     }
 
     func applyKeyChange(context: ModelContext, highQuality: Bool) async {
@@ -93,6 +103,8 @@ final class SongEditorViewModel {
 
     @MainActor
     private func performReload() async {
+        claimEngineForSongEditing()
+        audioEngine.stop()
         reloadGeneration += 1
         let generation = reloadGeneration
         isReloadingSong = true

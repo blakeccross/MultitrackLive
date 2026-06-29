@@ -26,6 +26,7 @@ struct LiveSongWaveformView: View {
     let cueFlashPhase: Bool
     var showsPlayhead = true
     var isInteractive = true
+    var playheadTimeProvider: (() -> TimeInterval)?
     let onSeek: (TimeInterval) -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
 
@@ -275,18 +276,25 @@ struct LiveSongWaveformView: View {
             if audioEngine.isPlaying {
                 TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { _ in
                     playheadMarker(
-                        at: audioEngine.livePlayheadTime(),
+                        at: resolvedPlayheadTime(live: true),
                         contentWidth: contentWidth
                     )
                 }
             } else {
                 playheadMarker(
-                    at: audioEngine.currentTime,
+                    at: resolvedPlayheadTime(live: false),
                     contentWidth: contentWidth
                 )
             }
         }
         .allowsHitTesting(false)
+    }
+
+    private func resolvedPlayheadTime(live: Bool) -> TimeInterval {
+        if let playheadTimeProvider {
+            return playheadTimeProvider()
+        }
+        return live ? audioEngine.livePlayheadTime() : audioEngine.currentTime
     }
 
     @ViewBuilder
@@ -333,6 +341,7 @@ struct LiveSetlistWaveformScrollView: View {
     let currentSnapshot: LiveSongWaveformSnapshot
     let nextSnapshot: LiveSongWaveformSnapshot?
     let transitionToNext: SetlistTransition?
+    let playheadTimeProvider: () -> TimeInterval
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
     let onSeek: (TimeInterval) -> Void
@@ -430,6 +439,7 @@ struct LiveSetlistWaveformScrollView: View {
                 cueFlashPhase: isCurrent ? cueFlashPhase : false,
                 showsPlayhead: isCurrent,
                 isInteractive: isCurrent,
+                playheadTimeProvider: isCurrent ? playheadTimeProvider : nil,
                 onSeek: onSeek,
                 onCueSection: onCueSection
             )

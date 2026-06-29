@@ -4,6 +4,10 @@ import SwiftUI
 enum SetlistTransition: String, CaseIterable, Identifiable {
     case `continue`
     case stop
+    case overlap
+
+    /// Default lead time before the outgoing song ends when the next song begins.
+    static let overlapLeadTime: TimeInterval = 4
 
     var id: String { rawValue }
 
@@ -13,6 +17,8 @@ enum SetlistTransition: String, CaseIterable, Identifiable {
             return "Continue"
         case .stop:
             return "Stop"
+        case .overlap:
+            return "Overlap"
         }
     }
 
@@ -22,6 +28,8 @@ enum SetlistTransition: String, CaseIterable, Identifiable {
             return "arrow.right"
         case .stop:
             return "stop.fill"
+        case .overlap:
+            return "square.2.layers.3d"
         }
     }
 
@@ -31,6 +39,8 @@ enum SetlistTransition: String, CaseIterable, Identifiable {
             return .accentColor
         case .stop:
             return .orange
+        case .overlap:
+            return .purple
         }
     }
 }

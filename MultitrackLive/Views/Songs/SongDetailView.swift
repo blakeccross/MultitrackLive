@@ -119,6 +119,11 @@ struct SongDetailView: View {
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
                     }
                 }
+                .onChange(of: viewModel.isReloadingSong) { wasReloading, isReloading in
+                    guard wasReloading, !isReloading else { return }
+                    syncArrangementPlayback()
+                    syncTempoPlayback()
+                }
             } else {
                 ProgressView("Loading song...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -141,6 +146,12 @@ struct SongDetailView: View {
     #endif
 
     private func handleAppear() {
+        let audioEngine = AudioEngineManager.shared
+        audioEngine.pause()
+        audioEngine.onPlaybackFinished = nil
+        audioEngine.onPlaybackTimeUpdate = nil
+        audioEngine.cancelOverlapState()
+
         if viewModel == nil {
             let model = SongEditorViewModel(song: song)
             model.loadSong()

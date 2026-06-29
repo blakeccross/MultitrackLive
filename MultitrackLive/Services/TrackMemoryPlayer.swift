@@ -15,6 +15,8 @@ final class TrackMemoryPlayer {
         let sampleRate: Double
         var mapper: ArrangementTimelineMapper
         var mix = MixState()
+        var playbackTimelineOffset: TimeInterval = 0
+        var playbackEndTimeline: TimeInterval?
         let peakMeter = PeakMeterHolder()
 
         init(
@@ -43,20 +45,29 @@ final class TrackMemoryPlayer {
             guard transportState.isPlaying else { return }
 
             let masterStart = transportState.timelineSeconds
+            if let endTimeline = playbackEndTimeline, masterStart >= endTimeline {
+                return
+            }
+
+            let effectiveStart = masterStart - playbackTimelineOffset
+            guard effectiveStart >= 0 else { return }
+
             let ratio = transportState.playbackRatio
 
             if abs(ratio - 1.0) < 0.0001 {
                 renderConstantTempo(
-                    masterStart: masterStart,
+                    masterStart: effectiveStart,
                     frameCount: frameCount,
-                    outputBuffer: outputBuffer
+                    outputBuffer: outputBuffer,
+                    transportMasterStart: masterStart
                 )
             } else {
                 renderResampledTempo(
-                    masterStart: masterStart,
+                    masterStart: effectiveStart,
                     ratio: ratio,
                     frameCount: frameCount,
-                    outputBuffer: outputBuffer
+                    outputBuffer: outputBuffer,
+                    transportMasterStart: masterStart
                 )
             }
 
@@ -82,14 +93,20 @@ final class TrackMemoryPlayer {
         private func renderConstantTempo(
             masterStart: TimeInterval,
             frameCount: AVAudioFrameCount,
-            outputBuffer: UnsafeMutablePointer<AudioBufferList>
+            outputBuffer: UnsafeMutablePointer<AudioBufferList>,
+            transportMasterStart: TimeInterval
         ) {
             let (leftGain, rightGain) = Self.channelGains(for: mix)
 
             var renderedFrames: AVAudioFrameCount = 0
             var masterTime = masterStart
+            var transportTime = transportMasterStart
 
             while renderedFrames < frameCount {
+                if let endTimeline = playbackEndTimeline, transportTime >= endTimeline {
+                    break
+                }
+
                 let bufferRemaining = Double(frameCount - renderedFrames) / sampleRate
                 let regionSeconds = mapper.regionRemainingSeconds(
                     fromMasterTimeline: masterTime,
@@ -106,13 +123,21 @@ final class TrackMemoryPlayer {
                     guard skipFrames > 0 else { break }
                     renderedFrames += skipFrames
                     masterTime += Double(skipFrames) / sampleRate
+                    transportTime += Double(skipFrames) / sampleRate
                     continue
                 }
 
-                let runFrames = silentGapSkipFrames(
+                var runFrames = silentGapSkipFrames(
                     regionSeconds: regionSeconds,
                     remainingFrames: frameCount - renderedFrames
                 )
+                if let endTimeline = playbackEndTimeline {
+                    let framesUntilEnd = silentGapSkipFrames(
+                        regionSeconds: endTimeline - transportTime,
+                        remainingFrames: runFrames
+                    )
+                    runFrames = min(runFrames, framesUntilEnd)
+                }
                 guard runFrames > 0 else { break }
 
                 let sourceFrame = Int((sourceStart * sampleRate).rounded(.toNearestOrAwayFromZero))
@@ -127,6 +152,7 @@ final class TrackMemoryPlayer {
 
                 renderedFrames += runFrames
                 masterTime += Double(runFrames) / sampleRate
+                transportTime += Double(runFrames) / sampleRate
             }
         }
 
@@ -134,7 +160,8 @@ final class TrackMemoryPlayer {
             masterStart: TimeInterval,
             ratio: Double,
             frameCount: AVAudioFrameCount,
-            outputBuffer: UnsafeMutablePointer<AudioBufferList>
+            outputBuffer: UnsafeMutablePointer<AudioBufferList>,
+            transportMasterStart: TimeInterval
         ) {
             let outputFrames = Int(frameCount)
             guard outputFrames > 0 else { return }
@@ -165,7 +192,8 @@ final class TrackMemoryPlayer {
                 outputBuffers: outputBuffers,
                 outputChannelCount: outputChannelCount,
                 leftGain: leftGain,
-                rightGain: rightGain
+                rightGain: rightGain,
+                transportMasterStart: transportMasterStart
             )
         }
 
@@ -202,13 +230,19 @@ final class TrackMemoryPlayer {
             outputBuffers: UnsafeMutableAudioBufferListPointer,
             outputChannelCount: Int,
             leftGain: Float,
-            rightGain: Float
+            rightGain: Float,
+            transportMasterStart: TimeInterval
         ) {
             var renderedFrames = 0
             var masterTime = masterStart
+            var transportTime = transportMasterStart
             let masterStep = ratio / sampleRate
 
             while renderedFrames < outputFrames {
+                if let endTimeline = playbackEndTimeline, transportTime >= endTimeline {
+                    break
+                }
+
                 let bufferRemaining = Double(outputFrames - renderedFrames) / sampleRate
                 let regionSeconds = mapper.regionRemainingSeconds(
                     fromMasterTimeline: masterTime,
@@ -225,13 +259,21 @@ final class TrackMemoryPlayer {
                     guard skipFrames > 0 else { break }
                     renderedFrames += skipFrames
                     masterTime += Double(skipFrames) / sampleRate
+                    transportTime += Double(skipFrames) / sampleRate
                     continue
                 }
 
-                let runFrames = silentGapSkipFrames(
+                var runFrames = silentGapSkipFrames(
                     regionSeconds: regionSeconds,
                     remainingFrames: outputFrames - renderedFrames
                 )
+                if let endTimeline = playbackEndTimeline {
+                    let framesUntilEnd = silentGapSkipFrames(
+                        regionSeconds: endTimeline - transportTime,
+                        remainingFrames: runFrames
+                    )
+                    runFrames = min(runFrames, framesUntilEnd)
+                }
                 guard runFrames > 0 else { break }
 
                 var sourceFrame = sourceStart * sampleRate
@@ -247,6 +289,7 @@ final class TrackMemoryPlayer {
                     )
                     sourceFrame += ratio
                     masterTime += masterStep
+                    transportTime += masterStep
                 }
 
                 renderedFrames += runFrames
@@ -426,6 +469,11 @@ final class TrackMemoryPlayer {
         renderContext.mix = MixState(volume: volume, pan: pan, isAudible: isAudible)
     }
 
+    func setPlaybackWindow(offset: TimeInterval, endTimeline: TimeInterval?) {
+        renderContext.playbackTimelineOffset = offset
+        renderContext.playbackEndTimeline = endTimeline
+    }
+
     func consumePeakMeter(decay: Float = 0.55) -> Float {
         renderContext.peakMeter.consume(decay: decay)
     }
@@ -433,7 +481,9 @@ final class TrackMemoryPlayer {
     /// Warms the backing sample source for playback starting at the given master
     /// timeline position, so streaming sources have audio resident before play.
     func prewarm(atTimelineSeconds timeline: TimeInterval) {
-        let sourceSeconds = renderContext.mapper.sourceSeconds(atMasterTimeline: timeline) ?? 0
+        let effectiveTimeline = timeline - renderContext.playbackTimelineOffset
+        guard effectiveTimeline >= 0 else { return }
+        let sourceSeconds = renderContext.mapper.sourceSeconds(atMasterTimeline: effectiveTimeline) ?? 0
         let sourceFrame = Int(sourceSeconds * renderContext.sampleRate)
         renderContext.buffer.prewarm(aroundSourceFrame: sourceFrame)
     }

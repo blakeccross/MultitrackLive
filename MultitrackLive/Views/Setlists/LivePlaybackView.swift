@@ -208,6 +208,12 @@ struct LivePlaybackView: View {
             stopPlayback()
         }
         .onChange(of: songToEditID) { _, newValue in
+            if newValue != nil {
+                clearMarkerCue()
+                sectionLoop.reset()
+                coordinator.unbindPlaybackHandlers()
+                coordinator.pause()
+            }
             handleSongEditorDismissed(newValue)
         }
         .navigationDestination(isPresented: songEditorDestination) {
@@ -283,6 +289,7 @@ struct LivePlaybackView: View {
 
     private func handleSongEditorDismissed(_ songToEditID: UUID?) {
         guard songToEditID == nil else { return }
+        coordinator.bindPlaybackHandlers()
         coordinator.loadCurrentSong()
     }
 
@@ -413,6 +420,7 @@ struct LivePlaybackView: View {
                             currentSnapshot: snapshot,
                             nextSnapshot: coordinator.nextWaveformSnapshot,
                             transitionToNext: coordinator.transitionAfterCurrentSong,
+                            playheadTimeProvider: { coordinator.playbackDisplayTime },
                             cuedSectionID: cuedSectionID,
                             cueFlashPhase: cueFlashPhase,
                             onSeek: coordinator.seek,
