@@ -414,37 +414,8 @@ struct LivePlaybackView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             } else {
-                Group {
-                    if let snapshot = coordinator.currentWaveformSnapshot {
-                        LiveSetlistWaveformScrollView(
-                            currentSnapshot: snapshot,
-                            nextSnapshot: coordinator.nextWaveformSnapshot,
-                            transitionToNext: coordinator.transitionAfterCurrentSong,
-                            playheadTimeProvider: { coordinator.playbackDisplayTime },
-                            cuedSectionID: cuedSectionID,
-                            cueFlashPhase: cueFlashPhase,
-                            onSeek: coordinator.seek,
-                            onCueSection: cueSection
-                        )
-                        .overlay {
-                            if coordinator.isLoadingSong {
-                                loadingOverlay
-                            }
-                        }
-                    } else if coordinator.currentSong?.isClickOnly == true, coordinator.isLoaded {
-                        LiveClickTrackNowPlayingView(song: coordinator.currentSong)
-                            .overlay {
-                                if coordinator.isLoadingSong {
-                                    loadingOverlay
-                                }
-                            }
-                    } else if coordinator.isLoadingSong {
-                        LiveSetlistWaveformLoadingPlaceholder(
-                            message: loadingMessage(for: coordinator.currentSong)
-                        )
-                    } else {
-                        LiveSetlistWaveformLoadingPlaceholder()
-                    }
+                LiveSetlistWaveformResizablePanel {
+                    waveformContent
                 }
             }
 
@@ -457,6 +428,40 @@ struct LivePlaybackView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var waveformContent: some View {
+        if let snapshot = coordinator.currentWaveformSnapshot {
+            LiveSetlistWaveformScrollView(
+                currentSnapshot: snapshot,
+                nextSnapshot: coordinator.nextWaveformSnapshot,
+                transitionToNext: coordinator.transitionAfterCurrentSong,
+                playheadTimeProvider: { coordinator.playbackDisplayTime },
+                cuedSectionID: cuedSectionID,
+                cueFlashPhase: cueFlashPhase,
+                onSeek: coordinator.seek,
+                onCueSection: cueSection
+            )
+            .overlay {
+                if coordinator.isLoadingSong {
+                    loadingOverlay
+                }
+            }
+        } else if coordinator.currentSong?.isClickOnly == true, coordinator.isLoaded {
+            LiveClickTrackNowPlayingView(song: coordinator.currentSong)
+                .overlay {
+                    if coordinator.isLoadingSong {
+                        loadingOverlay
+                    }
+                }
+        } else if coordinator.isLoadingSong {
+            LiveSetlistWaveformLoadingPlaceholder(
+                message: loadingMessage(for: coordinator.currentSong)
+            )
+        } else {
+            LiveSetlistWaveformLoadingPlaceholder()
         }
     }
 
@@ -478,6 +483,12 @@ struct LivePlaybackView: View {
 
     private struct LiveClickTrackNowPlayingView: View {
         let song: Song?
+
+        @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
+
+        private var panelHeight: CGFloat {
+            LiveSetlistWaveformMetrics.laneHeight(for: waveformHeight)
+        }
 
         private var projectState: SongProjectBridge.ProjectState {
             guard let song else {
@@ -524,17 +535,17 @@ struct LivePlaybackView: View {
                     .padding()
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 96)
+                .frame(height: panelHeight)
         }
     }
 
     private struct LiveSetlistWaveformLoadingPlaceholder: View {
         var message: String?
 
-        private let waveformHeight: CGFloat = 72
+        @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
 
-        private var laneHeight: CGFloat {
-            waveformHeight + 24
+        private var panelHeight: CGFloat {
+            LiveSetlistWaveformMetrics.laneHeight(for: waveformHeight)
         }
 
         var body: some View {
@@ -549,7 +560,7 @@ struct LivePlaybackView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: laneHeight)
+                .frame(height: panelHeight)
                 .redacted(reason: message == nil ? .placeholder : [])
         }
     }

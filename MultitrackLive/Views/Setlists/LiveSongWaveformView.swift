@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 enum ArrangementSectionPalette {
     private static let pairs: [(background: Color, accent: Color)] = [
@@ -12,6 +15,136 @@ enum ArrangementSectionPalette {
 
     static func colors(for index: Int) -> (background: Color, accent: Color) {
         pairs[index % pairs.count]
+    }
+}
+
+enum LiveSetlistWaveformMetrics {
+    static let appStorageKey = "liveSetlistWaveformHeight"
+    static let defaultWaveformHeight: CGFloat = 96
+    static let defaultWaveformHeightStorageValue = Double(defaultWaveformHeight)
+    static let minimumWaveformHeight: CGFloat = 56
+    static let maximumWaveformHeight: CGFloat = 200
+    static let laneVerticalPadding: CGFloat = 24
+
+    static func clampedWaveformHeight(_ height: CGFloat) -> CGFloat {
+        min(maximumWaveformHeight, max(minimumWaveformHeight, height))
+    }
+
+    static func waveformHeight(fromStorage value: Double) -> CGFloat {
+        clampedWaveformHeight(CGFloat(value))
+    }
+
+    static func storageValue(for waveformHeight: CGFloat) -> Double {
+        Double(clampedWaveformHeight(waveformHeight))
+    }
+
+    static func laneHeight(for waveformHeight: CGFloat) -> CGFloat {
+        clampedWaveformHeight(waveformHeight) + laneVerticalPadding
+    }
+}
+
+private struct LiveSetlistWaveformHeightKey: EnvironmentKey {
+    static let defaultValue = LiveSetlistWaveformMetrics.defaultWaveformHeight
+}
+
+extension EnvironmentValues {
+    var liveSetlistWaveformHeight: CGFloat {
+        get { self[LiveSetlistWaveformHeightKey.self] }
+        set { self[LiveSetlistWaveformHeightKey.self] = newValue }
+    }
+}
+
+struct LiveSetlistWaveformResizablePanel<Content: View>: View {
+    @AppStorage(LiveSetlistWaveformMetrics.appStorageKey)
+    private var storedWaveformHeight = LiveSetlistWaveformMetrics.defaultWaveformHeightStorageValue
+
+    @State private var waveformHeight = LiveSetlistWaveformMetrics.defaultWaveformHeight
+
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content()
+                .environment(\.liveSetlistWaveformHeight, waveformHeight)
+
+            LiveSetlistWaveformResizeHandle(
+                height: $waveformHeight,
+                onResizeEnded: persistWaveformHeight
+            )
+        }
+        .animation(.none, value: waveformHeight)
+        .onAppear {
+            waveformHeight = LiveSetlistWaveformMetrics.waveformHeight(fromStorage: storedWaveformHeight)
+        }
+    }
+
+    private func persistWaveformHeight() {
+        storedWaveformHeight = LiveSetlistWaveformMetrics.storageValue(for: waveformHeight)
+    }
+}
+
+private struct LiveSetlistWaveformResizeHandle: View {
+    @Binding var height: CGFloat
+    let onResizeEnded: () -> Void
+
+    @State private var dragStartHeight: CGFloat?
+
+    private static let hitAreaHeight: CGFloat = 20
+    private static let adjustmentStep: CGFloat = 8
+
+    var body: some View {
+        ZStack {
+            Color.clear
+
+            Capsule()
+                .fill(Color.primary.opacity(0.18))
+                .frame(width: 44, height: 4)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: Self.hitAreaHeight)
+        .contentShape(Rectangle())
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { value in
+                    if dragStartHeight == nil {
+                        dragStartHeight = height
+                    }
+                    let proposed = (dragStartHeight ?? height) + value.translation.height
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        height = LiveSetlistWaveformMetrics.clampedWaveformHeight(proposed)
+                    }
+                }
+                .onEnded { _ in
+                    dragStartHeight = nil
+                    onResizeEnded()
+                }
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Waveform height")
+        .accessibilityValue("\(Int(LiveSetlistWaveformMetrics.clampedWaveformHeight(height))) points")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment:
+                height = LiveSetlistWaveformMetrics.clampedWaveformHeight(height + Self.adjustmentStep)
+            case .decrement:
+                height = LiveSetlistWaveformMetrics.clampedWaveformHeight(height - Self.adjustmentStep)
+            @unknown default:
+                break
+            }
+            onResizeEnded()
+        }
+        #if os(macOS)
+        .onContinuousHover { phase in
+            switch phase {
+            case .active:
+                NSCursor.resizeUpDown.push()
+            case .ended:
+                NSCursor.pop()
+            }
+        }
+        #endif
     }
 }
 
@@ -32,10 +165,10 @@ struct LiveSongWaveformView: View {
 
     @Bindable private var audioEngine = AudioEngineManager.shared
 
+    @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
+
     @State private var sourcePeaks: [Float] = []
     @State private var cachedDisplayPeaks: [Float] = []
-
-    private let waveformHeight: CGFloat = 72
 
     private var safeTimelineDuration: TimeInterval {
         max(timelineDuration, 0.001)
@@ -76,6 +209,7 @@ struct LiveSongWaveformView: View {
             }
         }
         .frame(width: contentWidth, height: waveformHeight)
+        .animation(.none, value: waveformHeight)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
@@ -347,63 +481,70 @@ struct LiveSetlistWaveformScrollView: View {
     let onSeek: (TimeInterval) -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
 
-    private let waveformHeight: CGFloat = 72
+    @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
+
+    @State private var viewportWidth: CGFloat = 1
+
     private let laneSpacing: CGFloat = 24
 
     private var laneHeight: CGFloat {
-        waveformHeight + 24
+        LiveSetlistWaveformMetrics.laneHeight(for: waveformHeight)
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            let viewportWidth = geometry.size.width
-            if viewportWidth > 0 {
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: true) {
-                        HStack(alignment: .top, spacing: laneSpacing) {
-                            waveformLane(
-                                snapshot: currentSnapshot,
-                                isCurrent: true,
-                                scrollID: "current"
-                            )
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: true) {
+                HStack(alignment: .top, spacing: laneSpacing) {
+                    waveformLane(
+                        snapshot: currentSnapshot,
+                        isCurrent: true,
+                        scrollID: "current"
+                    )
 
-                            if let nextSnapshot {
-                                if let transitionToNext {
-                                    VStack {
-                                        Spacer()
-                                        SetlistTransitionBadge(transition: transitionToNext)
-                                        Spacer()
-                                    }
-                                    .frame(height: laneHeight)
-                                }
-
-                                waveformLane(
-                                    snapshot: nextSnapshot,
-                                    isCurrent: false,
-                                    scrollID: "next"
-                                )
+                    if let nextSnapshot {
+                        if let transitionToNext {
+                            VStack {
+                                Spacer()
+                                SetlistTransitionBadge(transition: transitionToNext)
+                                Spacer()
                             }
+                            .frame(height: laneHeight)
                         }
-                        .fixedSize(horizontal: true, vertical: false)
-                        .padding(.vertical, 2)
-                        .frame(minWidth: viewportWidth, alignment: .leading)
-                    }
-                    .defaultScrollAnchor(.leading)
-                    .scrollTargetBehavior(.viewAligned)
-                    .onAppear {
-                        scrollToCurrent(proxy)
-                    }
-                    .onChange(of: currentSnapshot.songID) { _, _ in
-                        scrollToCurrent(proxy)
-                    }
-                    .onChange(of: nextSnapshot?.songID) { _, _ in
-                        scrollToCurrent(proxy)
+
+                        waveformLane(
+                            snapshot: nextSnapshot,
+                            isCurrent: false,
+                            scrollID: "next"
+                        )
                     }
                 }
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.vertical, 2)
+                .frame(minWidth: viewportWidth, alignment: .leading)
+            }
+            .defaultScrollAnchor(.leading)
+            .scrollTargetBehavior(.viewAligned)
+            .onAppear {
+                scrollToCurrent(proxy)
+            }
+            .onChange(of: currentSnapshot.songID) { _, _ in
+                scrollToCurrent(proxy)
+            }
+            .onChange(of: nextSnapshot?.songID) { _, _ in
+                scrollToCurrent(proxy)
+            }
+        }
+        .background {
+            GeometryReader { geometry in
+                Color.clear
+                    .onChange(of: geometry.size.width, initial: true) { _, width in
+                        viewportWidth = max(width, 1)
+                    }
             }
         }
         .frame(maxWidth: .infinity)
         .frame(height: laneHeight)
+        .animation(.none, value: waveformHeight)
     }
 
     private func scrollToCurrent(_ proxy: ScrollViewProxy) {
