@@ -11,15 +11,11 @@ struct TrackMixButton: View {
             Text(label)
                 .font(.system(size: 10, weight: .bold, design: .rounded))
                 .frame(width: 22, height: 20)
-                .foregroundStyle(isActive ? Color.black.opacity(0.85) : Color.primary.opacity(0.75))
-                .background(isActive ? activeColor : Color.dawMixButtonBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 3))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 3)
-                        .stroke(Color.primary.opacity(isActive ? 0 : 0.12), lineWidth: 1)
-                }
+                .foregroundStyle(isActive ? Color.black.opacity(0.85) : AppColors.textSecondary)
+                .background(isActive ? activeColor : AppColors.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
+        .appPressable()
     }
 }
 
@@ -34,7 +30,7 @@ struct TrackMixSliderRow: View {
         HStack(spacing: 4) {
             Text(label)
                 .font(.system(size: 8, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppColors.textTertiary)
                 .frame(width: 18, alignment: .leading)
 
             Slider(value: $value, in: range) { editing in
@@ -43,10 +39,11 @@ struct TrackMixSliderRow: View {
                 }
             }
             .controlSize(.mini)
+            .tint(AppColors.accent)
 
             Text(valueLabel)
                 .font(.system(size: 8, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppColors.textSecondary)
                 .frame(width: 24, alignment: .trailing)
         }
     }
@@ -86,6 +83,8 @@ struct MixerFaderColumn: View {
     let height: CGFloat
     let onValueChanged: () -> Void
 
+    @State private var isDragging = false
+
     private let trackWidth: CGFloat = 6
     private let thumbWidth: CGFloat = 26
     private let thumbHeight: CGFloat = 24
@@ -110,7 +109,7 @@ struct MixerFaderColumn: View {
 
             ZStack(alignment: .top) {
                 RoundedRectangle(cornerRadius: trackWidth / 2, style: .continuous)
-                    .fill(Color.primary.opacity(0.14))
+                    .fill(AppColors.separator)
                     .frame(width: trackWidth)
                     .frame(maxHeight: .infinity)
 
@@ -124,7 +123,11 @@ struct MixerFaderColumn: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { drag in
+                        isDragging = true
                         setValue(fromCenterY: drag.location.y, trackHeight: trackHeight, travel: travel)
+                    }
+                    .onEnded { _ in
+                        isDragging = false
                     }
             )
         }
@@ -132,15 +135,15 @@ struct MixerFaderColumn: View {
     }
 
     private var faderThumb: some View {
-        RoundedRectangle(cornerRadius: 4, style: .continuous)
-            .fill(Color.primary.opacity(0.32))
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(isDragging ? AppColors.accent.opacity(0.35) : AppColors.surfaceElevated)
             .overlay {
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .stroke(Color.primary.opacity(0.2), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isDragging ? AppColors.accent : AppColors.separator, lineWidth: 1)
             }
             .overlay {
                 Rectangle()
-                    .fill(Color.primary.opacity(0.55))
+                    .fill(AppColors.textSecondary.opacity(0.55))
                     .frame(height: 1)
             }
             .frame(width: thumbWidth, height: thumbHeight)
@@ -151,7 +154,7 @@ struct MixerFaderColumn: View {
             ForEach(MixerFaderScale.attenuationMarks, id: \.self) { mark in
                 let y = markY(forDB: Double(mark), in: trackHeight)
                 Rectangle()
-                    .fill(Color.primary.opacity(mark == 0 ? 0.35 : 0.18))
+                    .fill(AppColors.textTertiary.opacity(mark == 0 ? 0.5 : 0.25))
                     .frame(width: mark == 0 ? thumbWidth : 8, height: 1)
                     .offset(x: (thumbWidth - (mark == 0 ? thumbWidth : 8)) / 2, y: y)
             }
@@ -163,7 +166,7 @@ struct MixerFaderColumn: View {
             ForEach(MixerFaderScale.attenuationMarks, id: \.self) { mark in
                 Text("\(mark)")
                     .font(.system(size: 9, weight: mark == 0 ? .semibold : .regular, design: .monospaced))
-                    .foregroundStyle(mark == 0 ? Color.primary : Color.secondary)
+                    .foregroundStyle(mark == 0 ? AppColors.textPrimary : AppColors.textTertiary)
                     .frame(width: scaleWidth, alignment: .trailing)
                     .offset(y: markY(forDB: Double(mark), in: height) - 5)
             }
@@ -175,17 +178,16 @@ struct MixerFaderColumn: View {
         GeometryReader { geometry in
             ZStack(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(Color.primary.opacity(0.12))
+                    .fill(AppColors.separator)
 
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(Color.green.opacity(0.9))
+                    .fill(AppColors.accent.opacity(0.85))
                     .frame(height: geometry.size.height * MixerFaderScale.meterFillFraction(forPeak: meterLevel))
             }
         }
         .frame(width: meterWidth, height: height)
     }
 
-    /// Y coordinate for a dB mark's center line, aligned with fader thumb center.
     private func markY(forDB db: Double, in trackHeight: CGFloat) -> CGFloat {
         let normalized = db / MixerFaderScale.maxAttenuationDB
         return thumbHeight / 2 + CGFloat(normalized) * max(trackHeight - thumbHeight, 1)

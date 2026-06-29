@@ -15,66 +15,67 @@ struct TrackImportView: View {
     @State private var importedSectionCount = 0
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                Text("Import stems for \(song.name)")
-                    .font(.headline)
+        AppSheetContainer {
+            NavigationStack {
+                VStack(spacing: AppSpacing.md) {
+                    Text("Import stems for \(song.name)")
+                        .appTitle()
 
-                if importedCount > 0 {
-                    Text("\(importedCount) track\(importedCount == 1 ? "" : "s") imported")
-                        .foregroundStyle(.secondary)
-                    if importedSectionCount > 0 {
-                        Text("\(importedSectionCount) Ableton section\(importedSectionCount == 1 ? "" : "s") imported")
-                            .foregroundStyle(.secondary)
+                    if importedCount > 0 {
+                        Text("\(importedCount) track\(importedCount == 1 ? "" : "s") imported")
+                            .appCaptionText()
+                        if importedSectionCount > 0 {
+                            Text("\(importedSectionCount) Ableton section\(importedSectionCount == 1 ? "" : "s") imported")
+                                .appCaptionText()
+                        }
+                    } else {
+                        Text("Select audio files or a folder containing a Multitracks subfolder and an optional Ableton file.")
+                            .font(.subheadline)
+                            .foregroundStyle(AppColors.textTertiary)
+                            .multilineTextAlignment(.center)
                     }
-                } else {
-                    Text("Select audio files or a folder containing a Multitracks subfolder and an optional Ableton file.")
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
 
-                Button("Choose Files") {
+                    AppPrimaryButton(title: "Choose Files") {
+                        showingImporter = true
+                    }
+
+                    AppSecondaryButton(title: "Choose Folder") {
+                        showingFolderImporter = true
+                    }
+
+                    if importedCount > 0 {
+                        AppSecondaryButton(title: "Done") {
+                            dismiss()
+                        }
+                    }
+                }
+                .padding(AppSpacing.lg)
+                .navigationTitle("Import Tracks")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            dismiss()
+                        }
+                        .foregroundStyle(AppColors.textSecondary)
+                    }
+                }
+                .fileImporter(
+                    isPresented: $showingImporter,
+                    allowedContentTypes: FileStore.supportedTypes,
+                    allowsMultipleSelection: true
+                ) { result in
+                    handleImport(result)
+                }
+                .fileImporter(
+                    isPresented: $showingFolderImporter,
+                    allowedContentTypes: [.folder],
+                    allowsMultipleSelection: false
+                ) { result in
+                    handleFolderImport(result)
+                }
+                .onAppear {
                     showingImporter = true
                 }
-                .buttonStyle(.borderedProminent)
-
-                Button("Choose Folder") {
-                    showingFolderImporter = true
-                }
-                .buttonStyle(.bordered)
-
-                if importedCount > 0 {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .buttonStyle(.bordered)
-                }
-            }
-            .padding()
-            .navigationTitle("Import Tracks")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
-            .fileImporter(
-                isPresented: $showingImporter,
-                allowedContentTypes: FileStore.supportedTypes,
-                allowsMultipleSelection: true
-            ) { result in
-                handleImport(result)
-            }
-            .fileImporter(
-                isPresented: $showingFolderImporter,
-                allowedContentTypes: [.folder],
-                allowsMultipleSelection: false
-            ) { result in
-                handleFolderImport(result)
-            }
-            .onAppear {
-                showingImporter = true
             }
         }
     }

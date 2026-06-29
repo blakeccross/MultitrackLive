@@ -15,36 +15,36 @@ struct ArrangementEditorMenu: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Song Arrangement")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            AppSectionHeader(title: "Song Arrangement")
 
             Text("Drag to reorder. Duplicate or remove sections below.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppColors.textTertiary)
 
             if slots.isEmpty {
-                ContentUnavailableView(
-                    "No Sections",
+                AppEmptyState(
+                    title: "No Sections",
                     systemImage: "music.note.list",
-                    description: Text("Import an Ableton file to add section markers.")
+                    description: "Import an Ableton file to add section markers."
                 )
                 .frame(minWidth: 300, minHeight: 180)
             } else {
                 List {
                     ForEach(Array(slots.enumerated()), id: \.element.id) { index, slot in
-                        HStack(spacing: 10) {
+                        HStack(spacing: AppSpacing.sm) {
                             Image(systemName: "line.3.horizontal")
                                 .font(.caption)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(AppColors.textTertiary)
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(displayName(for: slot, at: index))
                                     .font(.body.weight(.medium))
+                                    .foregroundStyle(AppColors.textPrimary)
                                 if let marker = markersByID[slot.markerID] {
                                     Text(formatSourceTime(marker.startSeconds))
                                         .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(AppColors.textSecondary)
                                 }
                             }
 
@@ -54,6 +54,7 @@ struct ArrangementEditorMenu: View {
                                 duplicate(slot)
                             } label: {
                                 Image(systemName: "plus.square.on.square")
+                                    .foregroundStyle(AppColors.textSecondary)
                             }
                             .buttonStyle(.borderless)
                             .help("Duplicate section")
@@ -71,13 +72,15 @@ struct ArrangementEditorMenu: View {
                     .onMove(perform: move)
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .frame(minWidth: 320, minHeight: 220, maxHeight: 420)
                 #if os(iOS)
                 .environment(\.editMode, .constant(.active))
                 #endif
             }
         }
-        .padding()
+        .padding(AppSpacing.md)
+        .background(AppColors.surfaceElevated, in: RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
     }
 
     private func displayName(for slot: ArrangementSlot, at index: Int) -> String {

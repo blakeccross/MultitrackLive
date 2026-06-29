@@ -7,10 +7,17 @@ struct TrackLaneHeaderView: View {
     @Bindable var track: AudioTrack
     let fileDuration: TimeInterval
     let laneHeight: CGFloat
+    let trackColorIndex: Int
+    let isSelected: Bool
     let groups: [TrackGroup]
+    let onSelect: () -> Void
     let onMixChange: () -> Void
     let onGroupChange: () -> Void
     let onManageGroups: () -> Void
+
+    private var trackColors: (header: Color, body: Color) {
+        TrackClipPalette.colors(for: trackColorIndex)
+    }
 
     private var effectiveEnd: TimeInterval {
         track.trimEndSeconds ?? fileDuration
@@ -21,12 +28,13 @@ struct TrackLaneHeaderView: View {
             HStack(alignment: .top, spacing: 6) {
                 Text(track.displayName)
                     .font(.caption.weight(.semibold))
+                    .foregroundStyle(isSelected ? AppColors.textPrimary : AppColors.textSecondary)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(formatTime(effectiveEnd - track.trimStartSeconds))
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppColors.textTertiary)
             }
 
             groupPicker
@@ -72,7 +80,21 @@ struct TrackLaneHeaderView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .frame(width: TimelineLayout.trackHeaderWidth, height: laneHeight, alignment: .topLeading)
-        .background(Color.dawTrackHeaderBackground)
+        .background {
+            if isSelected {
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.dawTrackHeaderSelected)
+
+                    Rectangle()
+                        .fill(trackColors.header)
+                        .frame(width: 3)
+                        .padding(.vertical, 6)
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
     }
 
     private var panLabel: String {
@@ -108,7 +130,7 @@ struct TrackLaneHeaderView: View {
                     .font(.system(size: 8, weight: .semibold))
             }
             .font(.caption2)
-            .foregroundStyle(track.group == nil ? .secondary : .primary)
+            .foregroundStyle(track.group == nil ? AppColors.textTertiary : AppColors.textPrimary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
@@ -289,7 +311,9 @@ struct WaveformLaneView: View {
     }
 
     private var waveformArea: some View {
-        ZStack(alignment: .leading) {
+        let palette = TrackClipPalette.colors(for: trackColorIndex)
+
+        return ZStack(alignment: .leading) {
             Color.clear
                 .frame(width: timelineContentWidth, height: laneHeight)
                 .contentShape(Rectangle())
@@ -300,6 +324,7 @@ struct WaveformLaneView: View {
             clipLayer
         }
         .frame(width: timelineContentWidth, height: laneHeight)
+        .background(palette.body.opacity(0.12))
         .coordinateSpace(name: TimelineDragSpace.name)
     }
 
@@ -314,8 +339,8 @@ struct WaveformLaneView: View {
     private var clipLayer: some View {
         ZStack(alignment: .leading) {
             if usesArrangementLayout {
-                ForEach(Array(arrangementSections.enumerated()), id: \.element.id) { index, section in
-                    arrangementClip(for: section, sectionIndex: index)
+                ForEach(arrangementSections) { section in
+                    arrangementClip(for: section)
                 }
             } else {
                 ForEach(sourceTrackClipSegments, id: \.id) { segment in
@@ -401,7 +426,7 @@ struct WaveformLaneView: View {
     }
 
     @ViewBuilder
-    private func arrangementClip(for section: ArrangementDisplaySection, sectionIndex: Int) -> some View {
+    private func arrangementClip(for section: ArrangementDisplaySection) -> some View {
         let bounds = clipTimelineBounds(for: section)
         let startX = TimelineLayout.xPosition(
             for: bounds.start,
@@ -419,7 +444,7 @@ struct WaveformLaneView: View {
             clipID: section.id,
             slotID: section.slotID,
             title: section.name,
-            colorIndex: sectionIndex,
+            colorIndex: trackColorIndex,
             clipWidth: clipWidth,
             timelineStart: bounds.start,
             timelineEnd: bounds.end,
@@ -464,7 +489,6 @@ struct WaveformLaneView: View {
         let selection = matchingClipSelection(for: clipID)
         let isSelected = selection != nil
         let isWholeSelected = selection?.isWholeClip == true
-        let clipBackground = palette.body.opacity(isSelected ? 0.95 : 0.72)
         let editTime = clipEditTime(clipID: clipID)
         let committedRange = committedSelectionRange(
             clipID: clipID,
@@ -479,11 +503,12 @@ struct WaveformLaneView: View {
                 timelineEnd: timelineEnd
             ) : nil
         }
+        let clipHeight = laneHeight - TimelineLayout.clipLaneInset * 2
 
         return VStack(spacing: 0) {
             clipHeader(
                 title: title,
-                accentColor: palette.header,
+                headerColor: palette.header,
                 isSelected: isSelected,
                 clipID: clipID,
                 slotID: slotID,
@@ -500,7 +525,7 @@ struct WaveformLaneView: View {
                 WaveformBarsCanvas(
                     bars: clipDisplayPeaks(timelineStart: timelineStart, timelineEnd: timelineEnd),
                     showsEmptyBaseline: showsFullSourceWaveform,
-                    fillColor: palette.header.opacity(0.82)
+                    fillColor: Color.white.opacity(0.55)
                 )
                 .allowsHitTesting(false)
 
@@ -529,7 +554,7 @@ struct WaveformLaneView: View {
                     )
                 }
             }
-            .frame(width: clipWidth, height: clipBodyHeight)
+            .frame(width: clipWidth, height: max(0, clipHeight - TimelineLayout.clipHeaderHeight))
             .contentShape(Rectangle())
             .gesture(
                 clipBodySelectionGesture(
@@ -541,14 +566,22 @@ struct WaveformLaneView: View {
                 )
             )
         }
-        .background(clipBackground)
+        .background(palette.body, in: RoundedRectangle(cornerRadius: TimelineLayout.clipCornerRadius, style: .continuous))
         .overlay {
-            if isWholeSelected {
-                Rectangle()
-                    .stroke(Color.dawClipBorder, lineWidth: 2)
-            }
+            let borderWidth = isWholeSelected
+                ? TimelineLayout.clipSelectionBorderWidth
+                : TimelineLayout.clipBorderWidth
+            let borderColor = isWholeSelected
+                ? AppColors.accent
+                : palette.header.opacity(0.6)
+
+            RoundedRectangle(cornerRadius: TimelineLayout.clipCornerRadius, style: .continuous)
+                .stroke(borderColor, lineWidth: borderWidth)
+                .padding(-borderWidth)
+                .allowsHitTesting(false)
         }
-        .frame(width: clipWidth, height: laneHeight, alignment: .topLeading)
+        .frame(width: clipWidth, height: clipHeight, alignment: .topLeading)
+        .padding(.vertical, TimelineLayout.clipLaneInset)
     }
 
     private enum ClipHeaderEdge {
@@ -565,7 +598,7 @@ struct WaveformLaneView: View {
 
     private func clipHeader(
         title: String,
-        accentColor: Color,
+        headerColor: Color,
         isSelected: Bool,
         clipID: UUID,
         slotID: UUID,
@@ -576,12 +609,13 @@ struct WaveformLaneView: View {
         sourceTrimLeading: Bool,
         sourceTrimTrailing: Bool
     ) -> some View {
-        let foregroundColor = isSelected ? Color.white.opacity(0.95) : accentColor.opacity(0.95)
+        let foregroundColor = isSelected
+            ? Color.white.opacity(0.92)
+            : Color.white.opacity(0.65)
 
         return ZStack {
             if isSelected {
-                Rectangle()
-                    .fill(accentColor)
+                headerColor
             }
 
             Text(title)
@@ -616,6 +650,15 @@ struct WaveformLaneView: View {
                 )
             }
         }
+        .clipShape(
+            UnevenRoundedRectangle(
+                topLeadingRadius: TimelineLayout.clipCornerRadius,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: TimelineLayout.clipCornerRadius,
+                style: .continuous
+            )
+        )
         .contentShape(Rectangle())
         .onTapGesture {
             selectWholeClip(clipID: clipID, slotID: slotID)

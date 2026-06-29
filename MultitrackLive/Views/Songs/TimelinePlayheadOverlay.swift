@@ -1,9 +1,67 @@
 import SwiftUI
 
-/// A single playhead line spanning the ruler and all track lanes.
-/// Updates on a display-linked cadence during playback without invalidating waveform views.
-struct TimelinePlayheadOverlay: View {
+// MARK: - Playhead metrics
+
+private enum PlayheadMetrics {
+    static let handleWidth: CGFloat = 12
+    static let handleBodyHeight: CGFloat = 9
+    static let handleTipHeight: CGFloat = 5
+    static let lineWidth: CGFloat = 1
+    static let borderWidth: CGFloat = 1
+
+    static var handleHeight: CGFloat { handleBodyHeight + handleTipHeight }
+    static var lineTotalWidth: CGFloat { lineWidth + borderWidth * 2 }
+}
+
+// MARK: - Playhead clock
+
+/// Drives playhead position from a single display-linked clock.
+struct TimelinePlayheadTimeReader<Content: View>: View {
     @Bindable private var audioEngine = AudioEngineManager.shared
+    @ViewBuilder let content: (TimeInterval) -> Content
+
+    var body: some View {
+        if audioEngine.isPlaying {
+            TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { _ in
+                content(audioEngine.livePlayheadTime())
+            }
+        } else {
+            content(audioEngine.currentTime)
+        }
+    }
+}
+
+// MARK: - Playhead layer
+
+/// Pins timeline content under a single playhead overlay so the handle and line stay in sync.
+struct TimelinePlayheadLayer<Content: View>: View {
+    let duration: TimeInterval
+    let contentWidth: CGFloat
+    let displayWidth: CGFloat
+    let height: CGFloat
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        TimelinePlayheadTimeReader { playheadTime in
+            ZStack(alignment: .topLeading) {
+                content()
+                TimelinePlayheadOverlay(
+                    playheadTime: playheadTime,
+                    duration: duration,
+                    contentWidth: contentWidth,
+                    height: height
+                )
+            }
+            .frame(width: displayWidth, alignment: .leading)
+        }
+    }
+}
+
+/// Logic Pro–style playhead drawn in one canvas pass with a shared pixel-aligned center.
+struct TimelinePlayheadOverlay: View {
+    @Environment(\.displayScale) private var displayScale
+
+    let playheadTime: TimeInterval
     let duration: TimeInterval
     let contentWidth: CGFloat
     let height: CGFloat
@@ -12,32 +70,88 @@ struct TimelinePlayheadOverlay: View {
         max(duration, 0.001)
     }
 
+    private var clampedTime: TimeInterval {
+        min(max(0, playheadTime), safeDuration)
+    }
+
     var body: some View {
-        Group {
-            if audioEngine.isPlaying {
-                TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { _ in
-                    playheadLine(at: audioEngine.livePlayheadTime())
-                }
-            } else {
-                playheadLine(at: audioEngine.currentTime)
-            }
+        Canvas { context, size in
+            let centerX = pixelAligned(
+                TimelineLayout.xPosition(
+                    for: clampedTime,
+                    duration: safeDuration,
+                    contentWidth: contentWidth
+                ),
+                scale: displayScale
+            )
+            drawPlayhead(in: context, size: size, centerX: centerX)
         }
         .frame(width: contentWidth, height: height, alignment: .topLeading)
         .allowsHitTesting(false)
     }
 
-    @ViewBuilder
-    private func playheadLine(at time: TimeInterval) -> some View {
-        let x = TimelineLayout.xPosition(
-            for: min(max(0, time), safeDuration),
-            duration: safeDuration,
-            contentWidth: contentWidth
-        )
+    private func drawPlayhead(in context: GraphicsContext, size: CGSize, centerX: CGFloat) {
+        drawLine(in: context, size: size, centerX: centerX)
+        drawHandle(in: context, centerX: centerX)
+    }
 
-        Rectangle()
-            .fill(Color.orange)
-            .frame(width: 2, height: height)
-            .offset(x: x - 1)
+    private func drawLine(in context: GraphicsContext, size: CGSize, centerX: CGFloat) {
+        let lineTop = PlayheadMetrics.handleHeight
+        let lineHeight = max(0, size.height - lineTop)
+        guard lineHeight > 0 else { return }
+
+        let lineLeft = pixelAligned(centerX - PlayheadMetrics.lineTotalWidth / 2, scale: displayScale)
+        let borderRect = CGRect(
+            x: lineLeft,
+            y: lineTop,
+            width: PlayheadMetrics.lineTotalWidth,
+            height: lineHeight
+        )
+        context.fill(Path(borderRect), with: .color(.dawPlayheadBorder))
+
+        let innerRect = CGRect(
+            x: lineLeft + PlayheadMetrics.borderWidth,
+            y: lineTop,
+            width: PlayheadMetrics.lineWidth,
+            height: lineHeight
+        )
+        context.fill(Path(innerRect), with: .color(.dawPlayheadFill))
+    }
+
+    private func drawHandle(in context: GraphicsContext, centerX: CGFloat) {
+        let handleLeft = pixelAligned(centerX - PlayheadMetrics.handleWidth / 2, scale: displayScale)
+        let handleRect = CGRect(
+            x: handleLeft,
+            y: 0,
+            width: PlayheadMetrics.handleWidth,
+            height: PlayheadMetrics.handleHeight
+        )
+        let handlePath = playheadHandlePath(in: handleRect)
+
+        context.fill(handlePath, with: .color(.dawPlayheadFill))
+        context.stroke(
+            handlePath,
+            with: .color(.dawPlayheadBorder),
+            style: StrokeStyle(lineWidth: PlayheadMetrics.borderWidth)
+        )
+    }
+
+    private func playheadHandlePath(in rect: CGRect) -> Path {
+        let bodyBottom = rect.height * (PlayheadMetrics.handleBodyHeight / PlayheadMetrics.handleHeight)
+
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + bodyBottom))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + bodyBottom))
+        path.closeSubpath()
+        return path
+    }
+
+    private func pixelAligned(_ value: CGFloat, scale: CGFloat) -> CGFloat {
+        guard scale > 0 else { return value.rounded(.toNearestOrAwayFromZero) }
+        return (value * scale).rounded(.toNearestOrAwayFromZero) / scale
     }
 }
 
@@ -138,7 +252,7 @@ struct TransportElapsedTimeLabel: View {
     private func timeLabel(_ currentTime: TimeInterval) -> some View {
         Text("\(formatTime(currentTime)) / \(formatTime(duration))")
             .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(AppColors.textSecondary)
     }
 
     private func formatTime(_ value: TimeInterval) -> String {
@@ -158,19 +272,25 @@ struct TransportControls: View {
     let onStop: () -> Void
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 20) {
-                Button(action: onStop) {
-                    Image(systemName: "stop.fill")
-                        .font(.title2)
+        VStack(spacing: AppSpacing.xs) {
+            HStack(spacing: AppSpacing.lg) {
+                AppIconButton(systemImage: "stop", size: 48, isEnabled: isLoaded, accessibilityLabel: "Stop") {
+                    onStop()
                 }
-                .disabled(!isLoaded)
 
-                Button(action: audioEngine.isPlaying ? onPause : onPlay) {
-                    Image(systemName: audioEngine.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.largeTitle)
+                AppIconButton(
+                    systemImage: audioEngine.isPlaying ? "pause" : "play",
+                    size: 56,
+                    isActive: audioEngine.isPlaying,
+                    isEnabled: isLoaded,
+                    accessibilityLabel: audioEngine.isPlaying ? "Pause" : "Play"
+                ) {
+                    if audioEngine.isPlaying {
+                        onPause()
+                    } else {
+                        onPlay()
+                    }
                 }
-                .disabled(!isLoaded)
             }
 
             TransportElapsedTimeLabel(audioEngine: audioEngine, duration: duration)

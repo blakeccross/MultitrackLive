@@ -43,6 +43,7 @@ struct EditView: View {
     @State private var sectionPendingRename: ArrangementDisplaySection?
     @State private var renameSectionName = ""
     @State private var clipSelection: TimelineClipSelection?
+    @State private var selectedTrackID: UUID?
     @FocusState private var isTimelineFocused: Bool
     @State private var cachedRulerSections: [ArrangementDisplaySection] = []
     @State private var cachedTrackSections: [UUID: [ArrangementDisplaySection]] = [:]
@@ -425,10 +426,10 @@ struct EditView: View {
             if hasTimelineContent {
                 dawTimeline
             } else {
-                ContentUnavailableView(
-                    "No Tracks",
+                AppEmptyState(
+                    title: "No Tracks",
                     systemImage: "waveform",
-                    description: Text("Import stems before editing, or add an Ableton file for section markers.")
+                    description: "Import stems before editing, or add an Ableton file for section markers."
                 )
                 .frame(maxHeight: .infinity)
             }
@@ -447,6 +448,9 @@ struct EditView: View {
             reconfigureMIDI()
         }
         .onChange(of: clipSelection) { _, newValue in
+            if let trackID = newValue?.trackID {
+                selectedTrackID = trackID
+            }
             if newValue != nil {
                 isTimelineFocused = true
             }
@@ -549,7 +553,7 @@ struct EditView: View {
                 onPersistArrangement: persistArrangement
             )
         }
-        .toolbarBackground(.bar, for: .windowToolbar)
+        .toolbarBackground(AppColors.surfaceElevated, for: .windowToolbar)
         .modifier(EditViewMacToolbarBackgroundVisibilityModifier())
 #endif
     }
@@ -1126,26 +1130,24 @@ struct EditView: View {
         GeometryReader { geometry in
             HStack(alignment: .top, spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        timelineRulerStack
-                            .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight)
+                    TimelinePlayheadLayer(
+                        duration: timelineDuration,
+                        contentWidth: timelineContentWidth,
+                        displayWidth: timelineDisplayWidth,
+                        height: geometry.size.height
+                    ) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            timelineRulerStack
+                                .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight)
 
-                        ZStack(alignment: .topLeading) {
                             Rectangle()
                                 .fill(Color.dawTimelineBackground)
                                 .frame(
                                     width: timelineDisplayWidth,
                                     height: max(0, geometry.size.height - TimelineLayout.rulerTotalHeight)
                                 )
-
-                            TimelinePlayheadOverlay(
-                                duration: timelineDuration,
-                                contentWidth: timelineContentWidth,
-                                height: max(0, geometry.size.height - TimelineLayout.rulerTotalHeight)
-                            )
                         }
                     }
-                    .frame(width: timelineDisplayWidth, alignment: .leading)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onGeometryChange(for: CGFloat.self) { proxy in
@@ -1187,24 +1189,30 @@ struct EditView: View {
 
             HStack(alignment: .top, spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        timelineRulerStack
-                            .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight)
+                    TimelinePlayheadLayer(
+                        duration: timelineDuration,
+                        contentWidth: timelineContentWidth,
+                        displayWidth: timelineDisplayWidth,
+                        height: TimelineLayout.rulerTotalHeight + tracksViewportHeight
+                    ) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            timelineRulerStack
+                                .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight)
 
-                        ScrollView(.vertical, showsIndicators: true) {
-                            VStack(spacing: 0) {
-                                TimelineVerticalScrollOffsetReporter(
-                                    coordinateSpaceName: timelineVerticalScrollSpace
-                                )
-                                trackTimelineScrollContent
-                                    .frame(width: timelineDisplayWidth, alignment: .leading)
+                            ScrollView(.vertical, showsIndicators: true) {
+                                VStack(spacing: 0) {
+                                    TimelineVerticalScrollOffsetReporter(
+                                        coordinateSpaceName: timelineVerticalScrollSpace
+                                    )
+                                    trackTimelineScrollContent
+                                        .frame(width: timelineDisplayWidth, alignment: .leading)
+                                }
                             }
+                            .coordinateSpace(name: timelineVerticalScrollSpace)
+                            .modifier(TimelineVerticalScrollOffsetObserver(offset: $timelineVerticalScrollOffset))
+                            .frame(height: tracksViewportHeight)
                         }
-                        .coordinateSpace(name: timelineVerticalScrollSpace)
-                        .modifier(TimelineVerticalScrollOffsetObserver(offset: $timelineVerticalScrollOffset))
-                        .frame(height: tracksViewportHeight)
                     }
-                    .frame(width: timelineDisplayWidth, alignment: .leading)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onGeometryChange(for: CGFloat.self) { proxy in
@@ -1241,12 +1249,6 @@ struct EditView: View {
                     rulerHeight: TimelineLayout.rulerTotalHeight
                 )
                 .allowsHitTesting(false)
-
-                TimelinePlayheadOverlay(
-                    duration: timelineDuration,
-                    contentWidth: timelineContentWidth,
-                    height: TimelineLayout.rulerTotalHeight
-                )
             }
             .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight, alignment: .leading)
         }
@@ -1365,12 +1367,6 @@ struct EditView: View {
             )
 
             trackLanesContent
-
-            TimelinePlayheadOverlay(
-                duration: timelineDuration,
-                contentWidth: timelineContentWidth,
-                height: trackAreaHeight
-            )
         }
         .frame(width: timelineDisplayWidth, height: trackAreaHeight, alignment: .leading)
     }
@@ -1413,13 +1409,14 @@ struct EditView: View {
                 }
             }
 
-            ForEach(midiTracks) { track in
+            ForEach(Array(midiTracks.enumerated()), id: \.element.id) { index, track in
                 MIDILaneView(
                     track: track,
                     device: track.device,
                     timelineDuration: timelineDuration,
                     timelineContentWidth: timelineContentWidth,
                     laneHeight: TimelineLayout.laneHeight,
+                    trackColorIndex: song.sortedTracks.count + index,
                     events: $midiEvents,
                     tempoChanges: normalizedTempoChanges,
                     timeSignatureChanges: normalizedTimeSignatureChanges,
@@ -1431,12 +1428,18 @@ struct EditView: View {
 
     private var trackHeaderList: some View {
         VStack(spacing: TimelineLayout.laneSpacing) {
-            ForEach(song.sortedTracks) { track in
+            ForEach(Array(song.sortedTracks.enumerated()), id: \.element.id) { index, track in
                 TrackLaneHeaderView(
                     track: track,
                     fileDuration: viewModel.fileDuration(for: track),
                     laneHeight: TimelineLayout.laneHeight,
+                    trackColorIndex: index,
+                    isSelected: selectedTrackID == track.id,
                     groups: trackGroups,
+                    onSelect: {
+                        selectedTrackID = track.id
+                        clipSelection = nil
+                    },
                     onMixChange: {
                         viewModel.updateMix(for: track, context: modelContext)
                     },
@@ -1449,10 +1452,16 @@ struct EditView: View {
                 )
             }
 
-            ForEach(midiTracks) { track in
+            ForEach(Array(midiTracks.enumerated()), id: \.element.id) { index, track in
                 MIDITrackHeaderView(
                     track: track,
                     laneHeight: TimelineLayout.laneHeight,
+                    trackColorIndex: song.sortedTracks.count + index,
+                    isSelected: selectedTrackID == track.id,
+                    onSelect: {
+                        selectedTrackID = track.id
+                        clipSelection = nil
+                    },
                     onConfigChange: commitMIDIConfig,
                     onSendTest: { sendMIDITest(for: track) },
                     onEditDevice: { editDevice(for: track) },
@@ -1597,11 +1606,11 @@ private struct EditTransportStatusStrip: View {
         if let loadError = viewModel.loadError {
             Text(loadError)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppColors.textTertiary)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal)
                 .padding(.vertical, 6)
-                .background(.bar)
+                .background(AppColors.surfaceElevated)
         }
     }
 }
@@ -1725,7 +1734,7 @@ private struct EditSongToolbarContent: ToolbarContent {
             onClearMarkerCue()
             viewModel.stop()
         } label: {
-            Image(systemName: "stop.fill")
+            Image(systemName: "stop")
                 .font(.title2)
         }
         .buttonStyle(.plain)
@@ -1734,7 +1743,7 @@ private struct EditSongToolbarContent: ToolbarContent {
 
     private var transportPlayButton: some View {
         Button(action: audioEngine.isPlaying ? viewModel.pause : viewModel.play) {
-            Image(systemName: audioEngine.isPlaying ? "pause.fill" : "play.fill")
+            Image(systemName: audioEngine.isPlaying ? "pause" : "play")
                 .font(.title2)
         }
         .buttonStyle(.plain)
@@ -1751,7 +1760,7 @@ private struct EditSongToolbarContent: ToolbarContent {
             )
             .labelStyle(.titleAndIcon)
         }
-        .buttonStyle(.bordered)
+        .appEditorToolbarPill()
         .popover(isPresented: $showingTempoToolbarEditor, arrowEdge: .bottom) {
             TempoEditorMenu(
                 song: song,
@@ -1766,10 +1775,10 @@ private struct EditSongToolbarContent: ToolbarContent {
         Button {
             showingChangeKey = true
         } label: {
-            Label(changeKeyButtonTitle, systemImage: "key.fill")
+            Label(changeKeyButtonTitle, systemImage: "key")
                 .labelStyle(.titleAndIcon)
         }
-        .buttonStyle(.bordered)
+        .appEditorToolbarPill()
         .disabled(song.isClickOnly || song.sortedTracks.isEmpty)
     }
 
@@ -1798,7 +1807,7 @@ private struct EditSongToolbarContent: ToolbarContent {
             )
             .labelStyle(.titleAndIcon)
         }
-        .buttonStyle(.bordered)
+        .appEditorToolbarPill()
         .popover(isPresented: $showingTimeSignatureEditor, arrowEdge: .bottom) {
             TimeSignatureEditorMenu(
                 song: song,
@@ -1816,7 +1825,7 @@ private struct EditSongToolbarContent: ToolbarContent {
             Label("Arrangement", systemImage: "list.bullet.rectangle")
                 .labelStyle(.titleAndIcon)
         }
-        .buttonStyle(.bordered)
+        .appEditorToolbarPill()
         .popover(isPresented: $showingArrangementEditor, arrowEdge: .bottom) {
             ArrangementEditorMenu(
                 slots: $arrangementSlots,
@@ -1883,13 +1892,13 @@ private struct EditTransportBar: View {
                         onClearMarkerCue()
                         viewModel.stop()
                     } label: {
-                        Image(systemName: "stop.fill")
+                        Image(systemName: "stop")
                             .font(.title2)
                     }
                     .disabled(!viewModel.isLoaded)
 
                     Button(action: audioEngine.isPlaying ? viewModel.pause : viewModel.play) {
-                        Image(systemName: audioEngine.isPlaying ? "pause.fill" : "play.fill")
+                        Image(systemName: audioEngine.isPlaying ? "pause" : "play")
                             .font(.title2)
                     }
                     .disabled(!viewModel.isLoaded)
@@ -1903,8 +1912,8 @@ private struct EditTransportBar: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 12)
-        .background(.bar)
+        .padding(.vertical, AppSpacing.sm)
+        .background(AppColors.surfaceElevated)
     }
 
     private var tempoEditorButton: some View {
@@ -1917,7 +1926,7 @@ private struct EditTransportBar: View {
             )
             .labelStyle(.titleAndIcon)
         }
-        .buttonStyle(.bordered)
+        .appEditorToolbarPill()
         .popover(isPresented: $showingTempoToolbarEditor, arrowEdge: .bottom) {
             TempoEditorMenu(
                 song: song,
@@ -1932,10 +1941,10 @@ private struct EditTransportBar: View {
         Button {
             showingChangeKey = true
         } label: {
-            Label(changeKeyButtonTitle, systemImage: "key.fill")
+            Label(changeKeyButtonTitle, systemImage: "key")
                 .labelStyle(.titleAndIcon)
         }
-        .buttonStyle(.bordered)
+        .appEditorToolbarPill()
         .disabled(song.isClickOnly || song.sortedTracks.isEmpty)
     }
 
@@ -1964,7 +1973,7 @@ private struct EditTransportBar: View {
             )
             .labelStyle(.titleAndIcon)
         }
-        .buttonStyle(.bordered)
+        .appEditorToolbarPill()
         .popover(isPresented: $showingTimeSignatureEditor, arrowEdge: .bottom) {
             TimeSignatureEditorMenu(
                 song: song,
@@ -1982,7 +1991,7 @@ private struct EditTransportBar: View {
             Label("Arrangement", systemImage: "list.bullet.rectangle")
                 .labelStyle(.titleAndIcon)
         }
-        .buttonStyle(.bordered)
+        .appEditorToolbarPill()
         .popover(isPresented: $showingArrangementEditor, arrowEdge: .bottom) {
             ArrangementEditorMenu(
                 slots: $arrangementSlots,
@@ -2050,8 +2059,8 @@ private struct TimeSignatureEditorMenu: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(isSelected(numerator: preset.numerator, denominator: preset.denominator) ? .accentColor : .secondary)
+                    .appEditorToolbarPill()
+                    .tint(isSelected(numerator: preset.numerator, denominator: preset.denominator) ? AppColors.accent : .secondary)
                 }
             }
 
@@ -2253,6 +2262,7 @@ private struct TempoMarkerEditorMenu: View {
                     onApply(bpm)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(AppColors.accent)
             }
 
             if canDelete {
@@ -2930,10 +2940,10 @@ private struct TimeSignatureMarkerEditorMenu: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
                     }
-                    .buttonStyle(.bordered)
+                    .appEditorToolbarPill()
                     .tint(
                         numerator == preset.numerator && denominator == preset.denominator
-                            ? .accentColor
+                            ? AppColors.accent
                             : .secondary
                     )
                 }
@@ -2960,6 +2970,7 @@ private struct TimeSignatureMarkerEditorMenu: View {
                 onApply(numerator, denominator)
             }
             .buttonStyle(.borderedProminent)
+            .tint(AppColors.accent)
 
             if canDelete {
                 Divider()
@@ -3125,8 +3136,8 @@ private struct ClickTrackEditorButton: View {
             Label("Click", systemImage: "cursorarrow.click")
                 .labelStyle(.titleAndIcon)
         }
-        .buttonStyle(.bordered)
-        .tint(song.clickTrackEnabled ? .accentColor : nil)
+        .appEditorToolbarPill()
+        .tint(song.clickTrackEnabled ? AppColors.accent : nil)
         .popover(isPresented: $showingEditor, arrowEdge: .bottom) {
             ClickTrackEditorMenu(song: song, viewModel: viewModel)
         }

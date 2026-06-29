@@ -16,10 +16,11 @@ struct MultitrackLiveApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .preferredColorScheme(.dark)
         }
         .modelContainer(modelContainer)
         #if os(macOS)
-        .windowToolbarStyle(.expanded)
+        .windowToolbarStyle(.unified)
         .commands {
             FileMenuCommands()
             SongMenuCommands()

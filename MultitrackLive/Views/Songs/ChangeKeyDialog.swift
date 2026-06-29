@@ -21,37 +21,40 @@ struct ChangeKeyDialog: View {
     @State private var applyError: String?
 
     var body: some View {
-        NavigationStack {
-            Group {
-                switch step {
-                case .semitones:
-                    semitoneStep
-                case .tracks:
-                    trackSelectionStep
-                }
-            }
-            .navigationTitle("Change Key")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
+        AppSheetContainer {
+            NavigationStack {
+                Group {
+                    switch step {
+                    case .semitones:
+                        semitoneStep
+                    case .tracks:
+                        trackSelectionStep
                     }
-                    .disabled(isApplying)
                 }
-            }
-            .frame(minWidth: 360, minHeight: step == .semitones ? 220 : 380)
-            .padding()
-            .onAppear(perform: resetFromSong)
-            .alert("Pitch Shift Failed", isPresented: Binding(
-                get: { applyError != nil },
-                set: { if !$0 { applyError = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(applyError ?? "")
+                .navigationTitle("Change Key")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            dismiss()
+                        }
+                        .foregroundStyle(AppColors.textSecondary)
+                        .disabled(isApplying)
+                    }
+                }
+                .frame(minWidth: 360, minHeight: step == .semitones ? 220 : 380)
+                .padding(AppSpacing.lg)
+                .onAppear(perform: resetFromSong)
+                .alert("Pitch Shift Failed", isPresented: Binding(
+                    get: { applyError != nil },
+                    set: { if !$0 { applyError = nil } }
+                )) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(applyError ?? "")
+                }
             }
         }
         .interactiveDismissDisabled(isApplying)
@@ -67,60 +70,58 @@ struct ChangeKeyDialog: View {
     }
 
     private var semitoneStep: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: AppSpacing.xl) {
             Text("Transpose by semitones")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppColors.textSecondary)
 
-            HStack(spacing: 20) {
-                Button {
+            HStack(spacing: AppSpacing.lg) {
+                AppIconButton(
+                    systemImage: "minus.circle",
+                    size: 48,
+                    isEnabled: semitones > -5
+                ) {
                     semitones = max(-5, semitones - 1)
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.title)
                 }
-                .buttonStyle(.plain)
-                .disabled(semitones <= -5)
 
                 Text(semitoneLabel)
                     .font(.title2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(AppColors.textPrimary)
                     .frame(minWidth: 140)
 
-                Button {
+                AppIconButton(
+                    systemImage: "plus.circle",
+                    size: 48,
+                    isEnabled: semitones < 5
+                ) {
                     semitones = min(5, semitones + 1)
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title)
                 }
-                .buttonStyle(.plain)
-                .disabled(semitones >= 5)
             }
 
             Text("Range: -5 to +5 semitones")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppColors.textTertiary)
 
             Spacer(minLength: 0)
 
-            Button("Next") {
+            AppPrimaryButton(title: "Next") {
                 step = .tracks
             }
-            .buttonStyle(.borderedProminent)
             .frame(maxWidth: .infinity)
         }
     }
 
     private var trackSelectionStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
             Text("Select tracks to transpose \(semitoneLabel.lowercased()).")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppColors.textSecondary)
 
             if song.sortedTracks.isEmpty {
-                ContentUnavailableView(
-                    "No Tracks",
+                AppEmptyState(
+                    title: "No Tracks",
                     systemImage: "waveform",
-                    description: Text("Import stems before changing key.")
+                    description: "Import stems before changing key."
                 )
             } else {
                 List {
@@ -128,47 +129,50 @@ struct ChangeKeyDialog: View {
                         Toggle(isOn: transposeBinding(for: track.id)) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(track.displayName)
+                                    .foregroundStyle(AppColors.textPrimary)
                                 if let groupName = track.group?.name {
                                     Text(groupName)
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(AppColors.textTertiary)
                                 }
                             }
                         }
+                        .tint(AppColors.accent)
                     }
                 }
                 .listStyle(.inset)
+                .scrollContentBackground(.hidden)
             }
 
             Toggle(isOn: $useHighQuality) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("High quality (slower)")
+                        .foregroundStyle(AppColors.textPrimary)
                     Text("Uses Rubber Band offline processing. Unchecked applies transpose instantly during playback.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppColors.textTertiary)
                 }
             }
+            .tint(AppColors.accent)
             .disabled(isApplying)
 
-            HStack(spacing: 12) {
-                Button("Back") {
+            HStack(spacing: AppSpacing.sm) {
+                AppSecondaryButton(title: "Back", isEnabled: !isApplying) {
                     step = .semitones
                 }
-                .buttonStyle(.bordered)
-                .disabled(isApplying)
 
-                Button {
-                    applyChanges()
-                } label: {
-                    if isApplying {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Text("Apply")
+                if isApplying {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(AppColors.accent)
+                } else {
+                    AppPrimaryButton(
+                        title: "Apply",
+                        isEnabled: !song.sortedTracks.isEmpty
+                    ) {
+                        applyChanges()
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(song.sortedTracks.isEmpty || isApplying)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }

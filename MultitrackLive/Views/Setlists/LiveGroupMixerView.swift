@@ -24,15 +24,20 @@ struct LivePlaybackSidebarLayout<Sidebar: View, MainContent: View>: View {
             if isVisible {
                 sidebar()
                     .frame(width: LivePlaybackSidebarMetrics.sidebarWidth)
-                    .transition(.move(edge: .leading))
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .leading).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
 
-                Divider()
+                Rectangle()
+                    .fill(AppColors.separator)
+                    .frame(width: 0.5)
             }
 
             mainContent()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .animation(.easeInOut(duration: 0.25), value: isVisible)
+        .animation(AppAnimation.springSmooth, value: isVisible)
     }
 }
 
@@ -67,7 +72,7 @@ struct LivePlaybackMixerSplitLayout<MainContent: View>: View {
                 mainContent()
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: mixerDetent)
+        .animation(AppAnimation.fadeQuick, value: mixerDetent)
     }
     #endif
 
@@ -81,7 +86,7 @@ struct LivePlaybackMixerSplitLayout<MainContent: View>: View {
                     }
                 }
         }
-        .animation(.easeInOut(duration: 0.2), value: mixerDetent)
+        .animation(AppAnimation.fadeQuick, value: mixerDetent)
     }
 }
 
@@ -101,21 +106,23 @@ struct LiveGroupMixerPanel: View {
         .background {
             #if os(iOS)
             drawerShape
-                .fill(Color(uiColor: .systemBackground))
+                .fill(AppColors.surfaceElevated)
                 .ignoresSafeArea(.all, edges: .bottom)
             #else
-            Color(nsColor: .windowBackgroundColor)
+            AppColors.surfaceElevated
             #endif
         }
         .overlay(alignment: .top) {
-            Divider()
+            Rectangle()
+                .fill(AppColors.separator)
+                .frame(height: 0.5)
         }
     }
 
     #if os(iOS)
     private var drawerHandle: some View {
         Capsule()
-            .fill(Color.secondary.opacity(0.5))
+            .fill(AppColors.textTertiary.opacity(0.6))
             .frame(width: 40, height: 5)
             .padding(.top, 10)
             .padding(.bottom, 8)
@@ -126,10 +133,10 @@ struct LiveGroupMixerPanel: View {
     #if os(iOS)
     private var drawerShape: UnevenRoundedRectangle {
         UnevenRoundedRectangle(
-            topLeadingRadius: 14,
+            topLeadingRadius: AppRadius.lg,
             bottomLeadingRadius: 0,
             bottomTrailingRadius: 0,
-            topTrailingRadius: 14,
+            topTrailingRadius: AppRadius.lg,
             style: .continuous
         )
     }
@@ -154,7 +161,7 @@ struct LiveGroupMixerView: View {
             let contentHeight = geometry.size.height
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: AppSpacing.sm) {
                     ForEach(groups) { group in
                         LiveGroupChannelStrip(
                             title: group.name,
@@ -191,9 +198,9 @@ struct LiveGroupMixerView: View {
                         )
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-                .padding(.bottom, 12)
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.top, AppSpacing.xs)
+                .padding(.bottom, AppSpacing.sm)
             }
         }
         .safeAreaPadding(.bottom, 4)
@@ -218,7 +225,7 @@ private struct LiveGroupChannelStrip: View {
     private var controlsHeight: CGFloat { 20 + 6 + 36 }
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: AppSpacing.xs) {
             MixerFaderColumn(
                 value: $volume,
                 meterLevel: meterLevel,
@@ -237,16 +244,18 @@ private struct LiveGroupChannelStrip: View {
 
             Text(title)
                 .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppColors.textSecondary)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(width: stripWidth, alignment: .center)
                 .frame(minHeight: 28)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, AppSpacing.xs)
                 .padding(.vertical, 5)
-                .background(Color.dawMixButtonBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .background(AppColors.surface, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
         }
-        .frame(width: stripWidth, height: stripHeight, alignment: .top)
+        .padding(AppSpacing.sm)
+        .background(AppColors.surface, in: RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        .frame(width: stripWidth + AppSpacing.md * 2, height: stripHeight, alignment: .top)
     }
 }

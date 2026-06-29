@@ -3,21 +3,29 @@ import SwiftUI
 struct MIDITrackHeaderView: View {
     @Bindable var track: MIDITrack
     let laneHeight: CGFloat
+    let trackColorIndex: Int
+    let isSelected: Bool
+    let onSelect: () -> Void
     let onConfigChange: () -> Void
     let onSendTest: () -> Void
     let onEditDevice: () -> Void
     let onDelete: () -> Void
+
+    private var trackColors: (header: Color, body: Color) {
+        TrackClipPalette.colors(for: trackColorIndex)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: "pianokeys")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppColors.textTertiary)
 
                 TextField("MIDI Track", text: $track.displayName)
                     .textFieldStyle(.plain)
                     .font(.caption.weight(.semibold))
+                    .foregroundStyle(isSelected ? AppColors.textPrimary : AppColors.textSecondary)
                     .onSubmit { onConfigChange() }
 
                 Button(role: .destructive, action: onDelete) {
@@ -25,7 +33,7 @@ struct MIDITrackHeaderView: View {
                         .font(.system(size: 10))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppColors.textTertiary)
             }
 
             Button(action: onEditDevice) {
@@ -37,18 +45,18 @@ struct MIDITrackHeaderView: View {
                         .font(.system(size: 8, weight: .semibold))
                 }
                 .font(.caption2)
-                .foregroundStyle(track.device == nil ? .secondary : .primary)
+                .foregroundStyle(track.device == nil ? AppColors.textTertiary : AppColors.textPrimary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(Color.dawMixButtonBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 3))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
 
             HStack(spacing: 6) {
                 Text(routingLabel)
                     .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppColors.textTertiary)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
@@ -59,7 +67,7 @@ struct MIDITrackHeaderView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(Color.dawMixButtonBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSendTest)
@@ -68,7 +76,21 @@ struct MIDITrackHeaderView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .frame(width: TimelineLayout.trackHeaderWidth, height: laneHeight, alignment: .topLeading)
-        .background(Color.dawTrackHeaderBackground)
+        .background {
+            if isSelected {
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.dawTrackHeaderSelected)
+
+                    Rectangle()
+                        .fill(trackColors.header)
+                        .frame(width: 3)
+                        .padding(.vertical, 6)
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
     }
 
     private var deviceLabel: String {
@@ -93,6 +115,7 @@ struct MIDILaneView: View {
     let timelineDuration: TimeInterval
     let timelineContentWidth: CGFloat
     let laneHeight: CGFloat
+    let trackColorIndex: Int
     @Binding var events: [MIDIEvent]
     let tempoChanges: [TempoChange]
     let timeSignatureChanges: [TimeSignatureChange]
@@ -102,7 +125,9 @@ struct MIDILaneView: View {
     @State private var draggingEventID: UUID?
     @State private var dragPreviewTime: TimeInterval?
 
-    private let accent = Color.orange
+    private var trackColors: (header: Color, body: Color) {
+        TrackClipPalette.colors(for: trackColorIndex)
+    }
 
     private var safeDuration: TimeInterval {
         max(timelineDuration, 0.001)
@@ -116,7 +141,9 @@ struct MIDILaneView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Color.dawLaneBackground
+            RoundedRectangle(cornerRadius: TimelineLayout.clipCornerRadius, style: .continuous)
+                .fill(trackColors.body.opacity(0.35))
+                .padding(.vertical, TimelineLayout.clipLaneInset)
 
             Color.clear
                 .contentShape(Rectangle())
@@ -127,6 +154,7 @@ struct MIDILaneView: View {
             }
         }
         .frame(width: timelineContentWidth, height: laneHeight)
+        .background(trackColors.body.opacity(0.12))
         .sheet(isPresented: editorPresented) {
             if let id = editingEventID, let event = events.first(where: { $0.id == id }) {
                 MIDIEventEditorView(
@@ -199,11 +227,11 @@ struct MIDILaneView: View {
                 .padding(.horizontal, 5)
                 .padding(.vertical, 2)
                 .foregroundStyle(.white)
-                .background(accent)
-                .clipShape(RoundedRectangle(cornerRadius: 3))
+                .background(trackColors.header)
+                .clipShape(RoundedRectangle(cornerRadius: TimelineLayout.clipCornerRadius, style: .continuous))
 
             Rectangle()
-                .fill(accent)
+                .fill(trackColors.header)
                 .frame(width: 2)
                 .frame(maxHeight: .infinity)
         }
@@ -283,52 +311,53 @@ struct MIDIEventEditorView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Form {
-                Section("Command") {
-                    if commands.isEmpty {
-                        Text("This track's device has no commands. Edit the device to add commands.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Picker("Command", selection: $commandID) {
-                            ForEach(commands) { command in
-                                Text(commandLabel(command)).tag(command.id)
+        AppSheetContainer {
+            VStack(spacing: 0) {
+                Form {
+                    Section("Command") {
+                        if commands.isEmpty {
+                            Text("This track's device has no commands. Edit the device to add commands.")
+                                .font(.caption)
+                                .foregroundStyle(AppColors.textTertiary)
+                        } else {
+                            Picker("Command", selection: $commandID) {
+                                ForEach(commands) { command in
+                                    Text(commandLabel(command)).tag(command.id)
+                                }
                             }
+                        }
+
+                        if let selectedCommand {
+                            LabeledContent("Note", value: "\(selectedCommand.note)")
                         }
                     }
 
-                    if let selectedCommand {
-                        LabeledContent("Note", value: "\(selectedCommand.note)")
+                    Section {
+                        LabeledContent("Time", value: formattedTime)
+                        Button("Send Now") {
+                            sendTest()
+                        }
+                        .disabled(!canSend)
+
+                        Button("Delete Event", role: .destructive) {
+                            onDelete()
+                        }
                     }
                 }
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
 
-                Section {
-                    LabeledContent("Time", value: formattedTime)
-                    Button("Send Now") {
-                        sendTest()
+                HStack {
+                    AppSecondaryButton(title: "Cancel") {
+                        dismiss()
                     }
-                    .disabled(!canSend)
-
-                    Button("Delete Event", role: .destructive) {
-                        onDelete()
+                    Spacer()
+                    AppPrimaryButton(title: "Save", isEnabled: !commands.isEmpty) {
+                        onSave(makeEvent())
                     }
                 }
+                .padding(AppSpacing.md)
             }
-            .formStyle(.grouped)
-
-            HStack {
-                Button("Cancel") {
-                    dismiss()
-                }
-                Spacer()
-                Button("Save") {
-                    onSave(makeEvent())
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(commands.isEmpty)
-            }
-            .padding()
         }
         .frame(minWidth: 320, minHeight: 320)
     }

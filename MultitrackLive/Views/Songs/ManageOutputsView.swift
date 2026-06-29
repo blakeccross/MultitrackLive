@@ -28,25 +28,29 @@ struct ManageOutputsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    deviceSection
-                    groupOutputsSection
-                    footerText
+        AppSheetContainer {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppSpacing.xl) {
+                        deviceSection
+                        groupOutputsSection
+                        footerText
+                    }
+                    .padding(AppSpacing.lg)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .navigationTitle("Manage Outputs")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
+                .scrollContentBackground(.hidden)
+                .navigationTitle("Manage Outputs")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            dismiss()
+                        }
+                        .foregroundStyle(AppColors.accent)
                     }
                 }
+                .onAppear(perform: loadState)
             }
-            .onAppear(perform: loadState)
         }
         #if os(macOS)
         .frame(minWidth: 500, idealWidth: 520, minHeight: 520)
@@ -54,12 +58,12 @@ struct ManageOutputsView: View {
     }
 
     private var deviceSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("Output Device")
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            AppSectionHeader(title: "Output Device")
 
             if devices.isEmpty {
                 Text("No output devices found.")
-                    .foregroundStyle(.secondary)
+                    .appCaptionText()
             } else {
                 Picker(selection: $selectedDeviceUID) {
                     ForEach(devices) { device in
@@ -70,65 +74,67 @@ struct ManageOutputsView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(AppSpacing.sm)
+                .background(AppColors.surface, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
                 .onChange(of: selectedDeviceUID) { _, newValue in
                     applyDeviceSelection(newValue)
                 }
             }
 
             Text("\(channelCount) output channels available")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .appCaptionText()
 
             #if os(iOS)
             Text("On iOS, connect a multi-channel USB interface for additional outputs. Device selection follows the current audio route.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppColors.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
             #endif
         }
     }
 
     private var groupOutputsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("Group Outputs")
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            AppSectionHeader(title: "Group Outputs")
 
             VStack(spacing: 0) {
                 ForEach(groups) { group in
                     groupRouteRow(title: group.name, routeID: group.id)
                     if group.id != groups.last?.id {
-                        Divider()
+                        Rectangle()
+                            .fill(AppColors.separator)
+                            .frame(height: 0.5)
+                            .padding(.leading, AppSpacing.sm)
                     }
                 }
 
                 if !groups.isEmpty {
-                    Divider()
+                    Rectangle()
+                        .fill(AppColors.separator)
+                        .frame(height: 0.5)
+                        .padding(.leading, AppSpacing.sm)
                 }
 
                 groupRouteRow(title: "No Group", routeID: OutputRoutingStore.ungroupedRouteID)
             }
-            .padding(.vertical, 4)
-            .background(controlBackgroundColor)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .padding(.vertical, AppSpacing.xs)
+            .background(AppColors.surface, in: RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
         }
     }
 
     private var footerText: some View {
         Text("Assign each track group to a stereo pair or mono output channel on the selected device.")
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(AppColors.textTertiary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.headline)
-    }
-
     @ViewBuilder
     private func groupRouteRow(title: String, routeID: UUID) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: AppSpacing.sm) {
             Text(title)
+                .foregroundStyle(AppColors.textPrimary)
                 .lineLimit(1)
                 .frame(width: groupNameWidth, alignment: .leading)
 
@@ -140,8 +146,9 @@ struct ManageOutputsView: View {
             )
             .frame(width: destinationControlWidth, alignment: .trailing)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.vertical, AppSpacing.xs)
+        .frame(minHeight: AppSpacing.rowMinHeight)
     }
 
     private func binding(for routeID: UUID) -> Binding<OutputDestination> {
@@ -204,39 +211,23 @@ struct ManageOutputsView: View {
                 }
             }
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: AppSpacing.xs) {
                 Text(label)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppColors.textTertiary)
             }
             .font(.callout)
-            .padding(.horizontal, 10)
+            .foregroundStyle(AppColors.textPrimary)
+            .padding(.horizontal, AppSpacing.sm)
             .padding(.vertical, 5)
             .frame(maxWidth: .infinity)
-            .background(secondaryControlBackgroundColor)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .background(AppColors.surfaceElevated, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
         }
         .menuStyle(.borderlessButton)
         .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var controlBackgroundColor: Color {
-        #if os(macOS)
-        Color(nsColor: .controlBackgroundColor)
-        #else
-        Color(uiColor: .secondarySystemGroupedBackground)
-        #endif
-    }
-
-    private var secondaryControlBackgroundColor: Color {
-        #if os(macOS)
-        Color(nsColor: .windowBackgroundColor)
-        #else
-        Color(uiColor: .tertiarySystemGroupedBackground)
-        #endif
     }
 
     private func loadState() {

@@ -83,7 +83,7 @@ struct SongLibraryPanel: View {
             songList
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color.dawTrackHeaderBackground)
+        .background(AppColors.backgroundSecondary)
         .alert("New Song", isPresented: $showingNewSongAlert) {
             TextField("Song name", text: $newSongName)
             Button("Create") {
@@ -176,24 +176,25 @@ struct SongLibraryPanel: View {
     private var headerBar: some View {
         ZStack {
             Text("Songs")
-                .font(.headline)
+                .appLargeTitle()
 
             HStack {
-                Button(action: onDismiss) {
-                    Image(systemName: "chevron.left")
-                        .font(.body.weight(.semibold))
+                AppIconButton(
+                    systemImage: "chevron.left",
+                    size: 40,
+                    accessibilityLabel: "Close songs library"
+                ) {
+                    onDismiss()
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close songs library")
 
                 Spacer()
 
                 addSongMenu
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.top, AppSpacing.sm)
+        .padding(.bottom, AppSpacing.xs)
     }
 
     private var addSongMenu: some View {
@@ -224,21 +225,17 @@ struct SongLibraryPanel: View {
                 Label("Open Project File…", systemImage: "doc")
             }
         } label: {
-            Image(systemName: "plus.circle.fill")
-                .foregroundStyle(Color.accentColor)
+            Image(systemName: "plus.circle")
+                .foregroundStyle(AppColors.accent)
+                .font(.title3)
         }
         .menuStyle(.borderlessButton)
         .accessibilityLabel("Add song")
     }
 
     private var searchBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-                .font(.subheadline)
-
-            TextField("Search", text: $searchText)
-                .textFieldStyle(.plain)
+        HStack(spacing: AppSpacing.xs) {
+            AppSearchField(text: $searchText)
 
             if hasActiveFilters {
                 Button("Clear") {
@@ -246,6 +243,7 @@ struct SongLibraryPanel: View {
                     activeFilter = .all
                 }
                 .font(.subheadline)
+                .foregroundStyle(AppColors.textSecondary)
                 .buttonStyle(.plain)
             }
 
@@ -257,59 +255,49 @@ struct SongLibraryPanel: View {
                 }
             } label: {
                 Image(systemName: "line.3.horizontal.decrease.circle")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppColors.textTertiary)
             }
             .menuStyle(.borderlessButton)
             .accessibilityLabel("Sort songs")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.primary.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.bottom, AppSpacing.xs)
     }
 
     private var filterChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: AppSpacing.xs) {
                 ForEach(SongLibraryFilter.allCases) { filter in
-                    Button {
+                    AppChip(
+                        title: filter.rawValue,
+                        isSelected: activeFilter == filter
+                    ) {
                         activeFilter = filter
-                    } label: {
-                        Text(filter.rawValue)
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(
-                                activeFilter == filter
-                                    ? Color.accentColor
-                                    : Color.primary.opacity(0.08)
-                            )
-                            .foregroundStyle(activeFilter == filter ? Color.white : Color.accentColor)
-                            .clipShape(Capsule())
                     }
-                    .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, AppSpacing.sm)
         }
-        .padding(.bottom, 8)
+        .padding(.bottom, AppSpacing.xs)
     }
 
     @ViewBuilder
     private var songList: some View {
         if songs.isEmpty {
-            ContentUnavailableView(
-                "No Songs Yet",
+            AppEmptyState(
+                title: "No Songs Yet",
                 systemImage: "music.note",
-                description: Text("Create a song or import a folder with multitrack stems and an Ableton file.")
+                description: "Create a song or import a folder with multitrack stems and an Ableton file."
             )
-            .padding(.top, 12)
+            .padding(.top, AppSpacing.sm)
             Spacer(minLength: 0)
         } else if filteredSongs.isEmpty {
-            ContentUnavailableView.search(text: searchText)
-                .padding(.top, 12)
+            AppEmptyState(
+                title: "No Results",
+                systemImage: "magnifyingglass",
+                description: "No songs match \"\(searchText)\"."
+            )
+            .padding(.top, AppSpacing.sm)
             Spacer(minLength: 0)
         } else {
             List {
@@ -338,6 +326,7 @@ struct SongLibraryPanel: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .listRowSeparatorTint(AppColors.separator)
         }
     }
 
@@ -619,58 +608,64 @@ private struct NewClickTrackSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Name:", text: $name)
+        AppSheetContainer {
+            NavigationStack {
+                Form {
+                    TextField("Name:", text: $name)
 
-                LabeledContent("Tempo:") {
-                    Stepper(value: $bpm, in: TempoChange.validBPMRange, step: 1) {
-                        Text("\(Int(bpm.rounded())) BPM")
-                            .monospacedDigit()
-                    }
-                }
-
-                LabeledContent("Meter:") {
-                    HStack(spacing: 8) {
-                        Picker("Beats:", selection: $numerator) {
-                            ForEach(1...32, id: \.self) { value in
-                                Text("\(value)").tag(value)
-                            }
+                    LabeledContent("Tempo:") {
+                        Stepper(value: $bpm, in: TempoChange.validBPMRange, step: 1) {
+                            Text("\(Int(bpm.rounded())) BPM")
+                                .monospacedDigit()
+                                .foregroundStyle(AppColors.textPrimary)
                         }
-                        .labelsHidden()
-                        .frame(width: 72)
+                    }
 
-                        Text("/")
-                            .foregroundStyle(.secondary)
-
-                        Picker("Beat value:", selection: $denominator) {
-                            ForEach(TimeSignatureChange.validDenominators.filter { $0 != 1 }, id: \.self) { value in
-                                Text("\(value)").tag(value)
+                    LabeledContent("Meter:") {
+                        HStack(spacing: AppSpacing.xs) {
+                            Picker("Beats:", selection: $numerator) {
+                                ForEach(1...32, id: \.self) { value in
+                                    Text("\(value)").tag(value)
+                                }
                             }
-                        }
-                        .labelsHidden()
-                        .frame(width: 72)
-                    }
-                }
+                            .labelsHidden()
+                            .frame(width: 72)
 
-                Picker("Subdivision:", selection: $subdivision) {
-                    ForEach(ClickTrackSubdivision.allCases) { option in
-                        Text(option.displayName).tag(option)
+                            Text("/")
+                                .foregroundStyle(AppColors.textSecondary)
+
+                            Picker("Beat value:", selection: $denominator) {
+                                ForEach(TimeSignatureChange.validDenominators.filter { $0 != 1 }, id: \.self) { value in
+                                    Text("\(value)").tag(value)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 72)
+                        }
+                    }
+
+                    Picker("Subdivision:", selection: $subdivision) {
+                        ForEach(ClickTrackSubdivision.allCases) { option in
+                            Text(option.displayName).tag(option)
+                        }
                     }
                 }
-            }
-            .formStyle(.grouped)
-            .navigationTitle("New Click Track")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: onCancel)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create", action: onCreate)
-                        .disabled(!canCreate)
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+                .navigationTitle("New Click Track")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel", action: onCancel)
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Create", action: onCreate)
+                            .foregroundStyle(canCreate ? AppColors.accent : AppColors.textTertiary)
+                            .disabled(!canCreate)
+                    }
                 }
             }
         }
@@ -700,44 +695,43 @@ private struct SongLibraryRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.dawClipBackground)
-                .frame(width: 32, height: 32)
+        HStack(spacing: AppSpacing.sm) {
+            RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                .fill(AppColors.surface)
+                .frame(width: 36, height: 36)
                 .overlay {
                     Image(systemName: iconName)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.dawClipBorder)
+                        .foregroundStyle(AppColors.textSecondary)
                 }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.name)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(2)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(AppColors.textPrimary)
                 Text(subtitle)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppColors.textTertiary)
                     .lineLimit(1)
             }
 
             Spacer(minLength: 0)
 
-            Button(action: onAddToSetlist) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(Color.accentColor)
+            AppIconButton(
+                systemImage: "plus.circle",
+                size: 36,
+                accessibilityLabel: "Add to setlist"
+            ) {
+                onAddToSetlist()
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Add to setlist")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.primary.opacity(0.001))
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.vertical, AppSpacing.xs)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Color.dawTimelineDivider)
-                .frame(height: 1)
+                .fill(AppColors.separator)
+                .frame(height: 0.5)
         }
     }
 }

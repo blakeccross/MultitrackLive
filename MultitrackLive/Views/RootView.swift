@@ -8,6 +8,7 @@ struct RootView: View {
         NavigationStack {
             LivePlaybackView()
         }
+        .appBackground(.primary)
         .onAppear {
             TrackGroupStore.ensureDefaults(in: modelContext)
             OutputRoutingStore.ensureConfig(in: modelContext)

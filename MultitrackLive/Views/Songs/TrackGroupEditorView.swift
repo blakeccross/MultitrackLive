@@ -12,45 +12,51 @@ struct TrackGroupEditorView: View {
     @State private var nameError: String?
 
     var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Rename, add, or remove groups. Tracks assigned to a deleted group become unassigned.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                List {
-                    ForEach(groups) { group in
-                        TrackGroupNameRow(group: group, onNameError: { nameError = $0 })
-                    }
-                    .onDelete(perform: deleteGroups)
-                }
-                .listStyle(.plain)
-
-                HStack(spacing: 8) {
-                    TextField("New group name", text: $newGroupName)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(addGroup)
-
-                    Button("Add Group") {
-                        addGroup()
-                    }
-                    .disabled(
-                        newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    )
-                }
-
-                if let nameError {
-                    Text(nameError)
+        AppSheetContainer {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    Text("Rename, add, or remove groups. Tracks assigned to a deleted group become unassigned.")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(AppColors.textTertiary)
+
+                    List {
+                        ForEach(groups) { group in
+                            TrackGroupNameRow(group: group, onNameError: { nameError = $0 })
+                        }
+                        .onDelete(perform: deleteGroups)
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+
+                    HStack(spacing: AppSpacing.xs) {
+                        TextField("New group name", text: $newGroupName)
+                            .textFieldStyle(.plain)
+                            .padding(AppSpacing.sm)
+                            .background(AppColors.surface, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                            .onSubmit(addGroup)
+
+                        AppPrimaryButton(
+                            title: "Add Group",
+                            isEnabled: !newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ) {
+                            addGroup()
+                        }
+                    }
+
+                    if let nameError {
+                        Text(nameError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
-            }
-            .padding()
-            .navigationTitle("Track Groups")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
+                .padding(AppSpacing.md)
+                .navigationTitle("Track Groups")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            dismiss()
+                        }
+                        .foregroundStyle(AppColors.accent)
                     }
                 }
             }
@@ -94,6 +100,7 @@ private struct TrackGroupNameRow: View {
     var body: some View {
         TextField("Group name", text: $draftName)
             .textFieldStyle(.plain)
+            .foregroundStyle(AppColors.textPrimary)
             .focused($isEditing)
             .onAppear {
                 draftName = group.name

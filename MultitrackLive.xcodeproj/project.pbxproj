@@ -94,6 +94,20 @@
 		AA000001000000000000007A /* TrackMixControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000007A /* TrackMixControls.swift */; };
 		AA000001000000000000007B /* LiveGroupMixerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000007B /* LiveGroupMixerView.swift */; };
 		AA000001000000000000007C /* PeakMeterHolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000007C /* PeakMeterHolder.swift */; };
+		AA0000010000000000000080 /* AppColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000080 /* AppColors.swift */; };
+		AA0000010000000000000081 /* AppTypography.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000081 /* AppTypography.swift */; };
+		AA0000010000000000000082 /* AppSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000082 /* AppSpacing.swift */; };
+		AA0000010000000000000083 /* AppAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000083 /* AppAnimation.swift */; };
+		AA0000010000000000000084 /* AppModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000084 /* AppModifiers.swift */; };
+		AA0000010000000000000085 /* AppButtons.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000085 /* AppButtons.swift */; };
+		AA0000010000000000000086 /* AppChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000086 /* AppChip.swift */; };
+		AA0000010000000000000087 /* AppCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000087 /* AppCard.swift */; };
+		AA0000010000000000000088 /* AppListRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000088 /* AppListRow.swift */; };
+		AA0000010000000000000089 /* AppSearchField.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000089 /* AppSearchField.swift */; };
+		AA000001000000000000008A /* AppSectionHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000008A /* AppSectionHeader.swift */; };
+		AA000001000000000000008B /* AppBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000008B /* AppBadge.swift */; };
+		AA000001000000000000008C /* AppSheetContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000008C /* AppSheetContainer.swift */; };
+		AA000001000000000000008D /* AppEmptyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000008D /* AppEmptyState.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -190,6 +204,20 @@
 		AA000002000000000000007A /* TrackMixControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackMixControls.swift; sourceTree = "<group>"; };
 		AA000002000000000000007B /* LiveGroupMixerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveGroupMixerView.swift; sourceTree = "<group>"; };
 		AA000002000000000000007C /* PeakMeterHolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeakMeterHolder.swift; sourceTree = "<group>"; };
+		AA0000020000000000000080 /* AppColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppColors.swift; sourceTree = "<group>"; };
+		AA0000020000000000000081 /* AppTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTypography.swift; sourceTree = "<group>"; };
+		AA0000020000000000000082 /* AppSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSpacing.swift; sourceTree = "<group>"; };
+		AA0000020000000000000083 /* AppAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAnimation.swift; sourceTree = "<group>"; };
+		AA0000020000000000000084 /* AppModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModifiers.swift; sourceTree = "<group>"; };
+		AA0000020000000000000085 /* AppButtons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppButtons.swift; sourceTree = "<group>"; };
+		AA0000020000000000000086 /* AppChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppChip.swift; sourceTree = "<group>"; };
+		AA0000020000000000000087 /* AppCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCard.swift; sourceTree = "<group>"; };
+		AA0000020000000000000088 /* AppListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppListRow.swift; sourceTree = "<group>"; };
+		AA0000020000000000000089 /* AppSearchField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSearchField.swift; sourceTree = "<group>"; };
+		AA000002000000000000008A /* AppSectionHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSectionHeader.swift; sourceTree = "<group>"; };
+		AA000002000000000000008B /* AppBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBadge.swift; sourceTree = "<group>"; };
+		AA000002000000000000008C /* AppSheetContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSheetContainer.swift; sourceTree = "<group>"; };
+		AA000002000000000000008D /* AppEmptyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEmptyState.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -225,6 +253,7 @@
 			children = (
 				AA0000020000000000000001 /* MultitrackLiveApp.swift */,
 				AA000002000000000000003B /* MultitrackLive-Bridging-Header.h */,
+				AA00000500000000000000A2 /* DesignSystem */,
 				AA000005000000000000000E /* Audio */,
 				AA0000050000000000000004 /* Models */,
 				AA0000050000000000000005 /* Services */,
@@ -235,6 +264,35 @@
 				AA0000020000000000000015 /* Info.plist */,
 			);
 			path = MultitrackLive;
+			sourceTree = "<group>";
+		};
+		AA00000500000000000000A2 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000020000000000000080 /* AppColors.swift */,
+				AA0000020000000000000081 /* AppTypography.swift */,
+				AA0000020000000000000082 /* AppSpacing.swift */,
+				AA0000020000000000000083 /* AppAnimation.swift */,
+				AA0000020000000000000084 /* AppModifiers.swift */,
+				AA00000500000000000000A3 /* Components */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		AA00000500000000000000A3 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000020000000000000085 /* AppButtons.swift */,
+				AA0000020000000000000086 /* AppChip.swift */,
+				AA0000020000000000000087 /* AppCard.swift */,
+				AA0000020000000000000088 /* AppListRow.swift */,
+				AA0000020000000000000089 /* AppSearchField.swift */,
+				AA000002000000000000008A /* AppSectionHeader.swift */,
+				AA000002000000000000008B /* AppBadge.swift */,
+				AA000002000000000000008C /* AppSheetContainer.swift */,
+				AA000002000000000000008D /* AppEmptyState.swift */,
+			);
+			path = Components;
 			sourceTree = "<group>";
 		};
 		AA0000050000000000000003 /* Products */ = {
@@ -611,6 +669,20 @@
 				AA000001000000000000007A /* TrackMixControls.swift in Sources */,
 				AA000001000000000000007B /* LiveGroupMixerView.swift in Sources */,
 				AA000001000000000000007C /* PeakMeterHolder.swift in Sources */,
+				AA0000010000000000000080 /* AppColors.swift in Sources */,
+				AA0000010000000000000081 /* AppTypography.swift in Sources */,
+				AA0000010000000000000082 /* AppSpacing.swift in Sources */,
+				AA0000010000000000000083 /* AppAnimation.swift in Sources */,
+				AA0000010000000000000084 /* AppModifiers.swift in Sources */,
+				AA0000010000000000000085 /* AppButtons.swift in Sources */,
+				AA0000010000000000000086 /* AppChip.swift in Sources */,
+				AA0000010000000000000087 /* AppCard.swift in Sources */,
+				AA0000010000000000000088 /* AppListRow.swift in Sources */,
+				AA0000010000000000000089 /* AppSearchField.swift in Sources */,
+				AA000001000000000000008A /* AppSectionHeader.swift in Sources */,
+				AA000001000000000000008B /* AppBadge.swift in Sources */,
+				AA000001000000000000008C /* AppSheetContainer.swift in Sources */,
+				AA000001000000000000008D /* AppEmptyState.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

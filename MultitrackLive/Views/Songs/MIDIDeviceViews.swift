@@ -8,37 +8,41 @@ struct MIDIDevicePickerView: View {
     let onSelect: (MIDIDevice) -> Void
 
     var body: some View {
-        NavigationStack {
-            List {
-                if !devices.isEmpty {
-                    Section("Devices") {
-                        ForEach(devices) { device in
-                            Button {
-                                onSelect(device)
-                                dismiss()
-                            } label: {
-                                deviceRow(device)
+        AppSheetContainer {
+            NavigationStack {
+                List {
+                    if !devices.isEmpty {
+                        Section("Devices") {
+                            ForEach(devices) { device in
+                                Button {
+                                    onSelect(device)
+                                    dismiss()
+                                } label: {
+                                    deviceRow(device)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
-                }
 
-                Section {
-                    NavigationLink {
-                        MIDIDeviceEditorView(device: nil) { created in
-                            onSelect(created)
-                            dismiss()
+                    Section {
+                        NavigationLink {
+                            MIDIDeviceEditorView(device: nil) { created in
+                                onSelect(created)
+                                dismiss()
+                            }
+                        } label: {
+                            Label("Create New Device", systemImage: "plus")
                         }
-                    } label: {
-                        Label("Create New Device", systemImage: "plus")
                     }
                 }
-            }
-            .navigationTitle("Add MIDI Device")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                .scrollContentBackground(.hidden)
+                .navigationTitle("Add MIDI Device")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
                 }
             }
         }
@@ -48,10 +52,10 @@ struct MIDIDevicePickerView: View {
     private func deviceRow(_ device: MIDIDevice) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(device.name)
-                .font(.body)
+                .foregroundStyle(AppColors.textPrimary)
             Text(subtitle(for: device))
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppColors.textTertiary)
         }
     }
 
@@ -121,14 +125,18 @@ struct MIDIDeviceEditorView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(AppColors.backgroundSecondary)
         .navigationTitle(device == nil ? "New Device" : "Edit Device")
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }
+                    .foregroundStyle(isValid ? AppColors.accent : AppColors.textTertiary)
                     .disabled(!isValid)
             }
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
+                    .foregroundStyle(AppColors.textSecondary)
             }
         }
         .onAppear { destinations = MIDIOutputService.shared.availableDestinations() }

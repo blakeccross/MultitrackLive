@@ -33,7 +33,7 @@ struct LiveSetlistNowPlayingInfoView: View {
 
         switch section {
         case .songInfo:
-            infoContainer {
+            AppCard {
                 songInfoGrid(snapshot: snapshot)
             }
             .background {
@@ -50,17 +50,33 @@ struct LiveSetlistNowPlayingInfoView: View {
                 }
             }
         case .transportAndPosition:
-            HStack(alignment: .center, spacing: 12) {
-                HStack(spacing: 12) {
-                    transportButton(systemImage: "stop.fill", size: infoPanelHeight, action: onStop)
-                    transportButton(
-                        systemImage: audioEngine.isPlaying ? "pause.fill" : "play.fill",
-                        size: infoPanelHeight,
-                        action: audioEngine.isPlaying ? onPause : onPlay
-                    )
+            HStack(alignment: .center, spacing: AppSpacing.sm) {
+                HStack(spacing: AppSpacing.sm) {
+                    AppIconButton(
+                        systemImage: "stop",
+                        size: max(infoPanelHeight, 44),
+                        isEnabled: isLoaded,
+                        accessibilityLabel: "Stop"
+                    ) {
+                        onStop()
+                    }
+
+                    AppIconButton(
+                        systemImage: audioEngine.isPlaying ? "pause" : "play",
+                        size: max(infoPanelHeight, 44),
+                        isActive: audioEngine.isPlaying,
+                        isEnabled: isLoaded,
+                        accessibilityLabel: audioEngine.isPlaying ? "Pause" : "Play"
+                    ) {
+                        if audioEngine.isPlaying {
+                            onPause()
+                        } else {
+                            onPlay()
+                        }
+                    }
                 }
 
-                infoContainer {
+                AppCard {
                     positionTimeGrid(snapshot: snapshot)
                 }
             }
@@ -68,7 +84,7 @@ struct LiveSetlistNowPlayingInfoView: View {
     }
 
     private func songInfoGrid(snapshot: DisplaySnapshot) -> some View {
-        Grid(alignment: .center, horizontalSpacing: 16) {
+        Grid(alignment: .center, horizontalSpacing: AppSpacing.md) {
             GridRow(alignment: .center) {
                 InfoFieldValue(snapshot.songTitle)
                 InfoFieldValue(snapshot.bpm)
@@ -79,43 +95,12 @@ struct LiveSetlistNowPlayingInfoView: View {
     }
 
     private func positionTimeGrid(snapshot: DisplaySnapshot) -> some View {
-        Grid(alignment: .leading, horizontalSpacing: 16) {
+        Grid(alignment: .leading, horizontalSpacing: AppSpacing.md) {
             GridRow(alignment: .center) {
                 InfoFieldValue(snapshot.position)
                 InfoFieldValue(snapshot.time)
             }
         }
-    }
-
-    private func infoContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
-            .overlay {
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-            }
-    }
-
-    private func transportButton(
-        systemImage: String,
-        size: CGFloat,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.title3)
-                .frame(width: max(size, 1), height: max(size, 1))
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
-        .disabled(!isLoaded)
     }
 
     private func displaySnapshot(at time: TimeInterval) -> DisplaySnapshot {
@@ -186,7 +171,6 @@ private struct InfoFieldValue: View {
 
     var body: some View {
         Text(text)
-            .font(.title2.monospacedDigit().weight(.medium))
-            .lineLimit(1)
+            .appMonoValue()
     }
 }

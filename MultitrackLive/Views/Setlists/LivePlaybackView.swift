@@ -140,9 +140,10 @@ struct LivePlaybackView: View {
             playbackToolbar(for: setlist)
         }
         #if os(macOS)
-        .toolbarBackground(.bar, for: .windowToolbar)
+        .toolbarBackground(AppColors.surfaceElevated, for: .windowToolbar)
         .modifier(LivePlaybackMacToolbarBackgroundVisibilityModifier())
         #endif
+        .appBackground(.primary)
         .sheet(isPresented: $showingManageOutputs) {
             ManageOutputsView {
                 coordinator.applyOutputRouting()
@@ -399,11 +400,15 @@ struct LivePlaybackView: View {
     private var playbackMainSection: some View {
         VStack(spacing: 0) {
             currentSongSection
-                .padding()
+                .padding(AppSpacing.md)
+                .background(AppColors.backgroundSecondary)
 
-            Divider()
+            Rectangle()
+                .fill(AppColors.separator)
+                .frame(height: 0.5)
 
             setlistSection
+                .background(AppColors.backgroundPrimary)
         }
     }
 
@@ -420,13 +425,9 @@ struct LivePlaybackView: View {
             }
 
             if sectionLoop.isLooping {
-                Button {
+                AppSecondaryButton(title: "End Loop", systemImage: "repeat.circle") {
                     sectionLoop.endLoop()
-                } label: {
-                    Label("End Loop", systemImage: "repeat.circle.fill")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.orange)
             }
         }
     }
@@ -512,15 +513,16 @@ struct LivePlaybackView: View {
         }
 
         var body: some View {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(.secondary.opacity(0.10))
+            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+                .fill(AppColors.surface)
                 .overlay {
-                    VStack(spacing: 8) {
+                    VStack(spacing: AppSpacing.xs) {
                         Image(systemName: "cursorarrow.click")
                             .font(.title2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppColors.textTertiary)
                         Text(song?.name ?? "Click Track")
-                            .font(.headline)
+                            .font(AppTypography.title())
+                            .foregroundStyle(AppColors.textPrimary)
                         Text(
                             String(
                                 format: "%.0f BPM • %d/%d",
@@ -530,7 +532,7 @@ struct LivePlaybackView: View {
                             )
                         )
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppColors.textSecondary)
                     }
                     .padding()
                 }
@@ -549,14 +551,15 @@ struct LivePlaybackView: View {
         }
 
         var body: some View {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(.secondary.opacity(0.10))
+            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+                .fill(AppColors.backgroundSecondary)
                 .overlay {
                     if let message {
                         ProgressView(message)
+                            .tint(AppColors.accent)
                     } else {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+                            .stroke(AppColors.separator, lineWidth: 0.5)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -572,12 +575,12 @@ struct LivePlaybackView: View {
 
     private var setlistList: some View {
         List {
-            Section("Setlist") {
+            Section {
                 if workingSetlist.sortedEntries.isEmpty {
-                    ContentUnavailableView(
-                        "No Songs in Setlist",
+                    AppEmptyState(
+                        title: "No Songs in Setlist",
                         systemImage: "music.note.list",
-                        description: Text("Tap Add Song to build your setlist.")
+                        description: "Tap Add Song to build your setlist."
                     )
                 } else {
                     ForEach(Array(workingSetlist.sortedEntries.enumerated()), id: \.element.id) { index, entry in
@@ -600,6 +603,8 @@ struct LivePlaybackView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .padding(AppSpacing.md)
     }
 
     private func setlistEntryRow(song: Song, entry: SetlistEntry, index: Int) -> some View {
@@ -654,8 +659,9 @@ struct LivePlaybackView: View {
             }
         }
         .listRowBackground(
-            index == coordinator.currentIndex ? Color.accentColor.opacity(0.08) : nil
+            index == coordinator.currentIndex ? AppColors.surfaceElevated : Color.clear
         )
+        .listRowSeparatorTint(AppColors.separator)
     }
 
     private func removeFromSetlist(_ entry: SetlistEntry) {
@@ -776,23 +782,23 @@ private struct SetlistPlaybackRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: AppSpacing.sm) {
             Text("\(index + 1).")
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppColors.textTertiary)
                 .frame(width: 24, alignment: .trailing)
 
             Text(song.name)
                 .font(isCurrent ? .body.weight(.semibold) : .body)
-                .foregroundStyle(isFinished ? .secondary : .primary)
+                .foregroundStyle(isFinished ? AppColors.textTertiary : AppColors.textPrimary)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if isCurrent {
                 PlayingBadge(isPlaying: isPlaying)
             } else if isFinished {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.secondary)
+                Image(systemName: "checkmark.circle")
+                    .foregroundStyle(AppColors.textTertiary)
                     .font(.caption)
             }
         }
@@ -805,17 +811,11 @@ private struct PlayingBadge: View {
     let isPlaying: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: isPlaying ? "waveform" : "pause.fill")
-                .font(.caption2)
-            Text(isPlaying ? "Playing" : "Paused")
-                .font(.caption2.weight(.semibold))
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color.accentColor)
-        .clipShape(Capsule())
+        AppBadge(
+            title: isPlaying ? "Playing" : "Paused",
+            systemImage: isPlaying ? "waveform" : "pause",
+            style: .accent
+        )
     }
 }
 
@@ -952,15 +952,15 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             showingSongLibrary.toggle()
         } label: {
             Label("Songs", systemImage: "music.note.list")
-                .symbolVariant(showingSongLibrary ? .fill : .none)
         }
-        .tint(showingSongLibrary ? Color.accentColor : nil)
+        .tint(showingSongLibrary ? AppColors.accent : AppColors.textSecondary)
     }
 
     private var manageOutputsButton: some View {
         Button("Manage Outputs") {
             showingManageOutputs = true
         }
+        .foregroundStyle(AppColors.textSecondary)
     }
 
     private var mixerButton: some View {
@@ -969,6 +969,7 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         } label: {
             Label("Mixer", systemImage: "slider.vertical.3")
         }
+        .foregroundStyle(mixerDetent == .visible ? AppColors.accent : AppColors.textSecondary)
         .help("Group Mixer")
     }
 

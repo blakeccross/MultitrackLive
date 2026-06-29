@@ -5,12 +5,12 @@ import AppKit
 
 enum ArrangementSectionPalette {
     private static let pairs: [(background: Color, accent: Color)] = [
-        (Color(red: 0.75, green: 0.88, blue: 0.98), Color(red: 0.35, green: 0.55, blue: 0.85)),
-        (Color(red: 0.98, green: 0.95, blue: 0.75), Color(red: 0.85, green: 0.72, blue: 0.25)),
-        (Color(red: 0.98, green: 0.88, blue: 0.72), Color(red: 0.90, green: 0.55, blue: 0.20)),
-        (Color(red: 0.95, green: 0.82, blue: 0.88), Color(red: 0.85, green: 0.35, blue: 0.55)),
-        (Color(red: 0.78, green: 0.92, blue: 0.88), Color(red: 0.25, green: 0.65, blue: 0.60)),
-        (Color(red: 0.88, green: 0.82, blue: 0.98), Color(red: 0.50, green: 0.35, blue: 0.85)),
+        (Color(red: 0.22, green: 0.26, blue: 0.32), Color(red: 0.42, green: 0.52, blue: 0.68)),
+        (Color(red: 0.28, green: 0.26, blue: 0.18), Color(red: 0.62, green: 0.52, blue: 0.22)),
+        (Color(red: 0.30, green: 0.22, blue: 0.16), Color(red: 0.68, green: 0.42, blue: 0.22)),
+        (Color(red: 0.28, green: 0.18, blue: 0.22), Color(red: 0.62, green: 0.32, blue: 0.42)),
+        (Color(red: 0.16, green: 0.26, blue: 0.26), Color(red: 0.28, green: 0.52, blue: 0.48)),
+        (Color(red: 0.22, green: 0.18, blue: 0.30), Color(red: 0.48, green: 0.36, blue: 0.68)),
     ]
 
     static func colors(for index: Int) -> (background: Color, accent: Color) {
@@ -97,7 +97,7 @@ private struct LiveSetlistWaveformResizeHandle: View {
             Color.clear
 
             Capsule()
-                .fill(Color.primary.opacity(0.18))
+                .fill(AppColors.textTertiary.opacity(0.5))
                 .frame(width: 44, height: 4)
         }
         .frame(maxWidth: .infinity)
@@ -210,10 +210,10 @@ struct LiveSongWaveformView: View {
         }
         .frame(width: contentWidth, height: waveformHeight)
         .animation(.none, value: waveformHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+                .stroke(AppColors.separator, lineWidth: 0.5)
         }
         .modifier(WaveformSeekGestureModifier(
             isEnabled: isInteractive && (!usesArrangementLayout || usesSourceLinearTimeline),
@@ -294,8 +294,8 @@ struct LiveSongWaveformView: View {
                         }
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.92))
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .background(AppColors.surfaceElevated.opacity(0.92))
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
                         .padding(.leading, 4)
                         .padding(.top, 4)
                     }
@@ -303,7 +303,7 @@ struct LiveSongWaveformView: View {
                     .overlay {
                         if isCued {
                             Rectangle()
-                                .stroke(Color.yellow.opacity(cueFlashPhase ? 1 : 0.35), lineWidth: 2)
+                                .stroke(AppColors.accent.opacity(cueFlashPhase ? 1 : 0.35), lineWidth: 2)
                         }
                     }
                     .offset(x: startX)
@@ -316,8 +316,8 @@ struct LiveSongWaveformView: View {
                         contentWidth: contentWidth
                     )
                     Rectangle()
-                        .fill(Color.white.opacity(0.85))
-                        .frame(width: 1, height: waveformHeight)
+                        .fill(AppColors.separator)
+                        .frame(width: 0.5, height: waveformHeight)
                         .offset(x: x)
                 }
             }

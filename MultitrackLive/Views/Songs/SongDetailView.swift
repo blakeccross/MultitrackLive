@@ -25,18 +25,16 @@ struct SongDetailView: View {
 
     var body: some View {
         songDetailContent
+            .appBackground(.primary)
             .navigationTitle(song.name)
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.large)
+            #endif
             .navigationBarBackButtonHidden(true)
             .toolbar {
                 ToolbarItem(placement: setlistBackButtonPlacement) {
-                    Button {
+                    AppSecondaryButton(title: displaySetlistName, systemImage: "chevron.left") {
                         dismiss()
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "chevron.left")
-                                .font(.body.weight(.semibold))
-                            Text(displaySetlistName)
-                        }
                     }
                 }
             }
@@ -108,15 +106,17 @@ struct SongDetailView: View {
                     )
 
                     if viewModel.isReloadingSong {
-                        Color.black.opacity(0.2)
+                        Color.black.opacity(0.35)
                             .ignoresSafeArea()
-                        VStack(spacing: 12) {
+                        VStack(spacing: AppSpacing.sm) {
                             ProgressView()
+                                .tint(AppColors.accent)
                             Text(viewModel.isReloadingSong && song.transposeHighQuality ? "Processing audio…" : "Loading audio…")
                                 .font(.headline)
+                                .foregroundStyle(AppColors.textPrimary)
                         }
-                        .padding(24)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .padding(AppSpacing.xl)
+                        .background(AppColors.surfaceElevated, in: RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                     }
                 }
                 .onChange(of: viewModel.isReloadingSong) { wasReloading, isReloading in
@@ -126,6 +126,8 @@ struct SongDetailView: View {
                 }
             } else {
                 ProgressView("Loading song...")
+                    .tint(AppColors.accent)
+                    .foregroundStyle(AppColors.textSecondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
