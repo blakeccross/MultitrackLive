@@ -42,7 +42,6 @@ struct LivePlaybackView: View {
     @State private var cueFlashPhase = false
     @State private var sectionLoop = SectionLoopController()
     @State private var showingSongLibrary = false
-    @State private var showingAddSong = false
     @State private var songToEditID: UUID?
     @State private var showingManageOutputs = false
     @State private var showingSaveSetlistAlert = false
@@ -98,15 +97,39 @@ struct LivePlaybackView: View {
     }
 
     private func playbackBody(for setlist: Setlist) -> some View {
-        LivePlaybackMixerSplitLayout(
-            mixerDetent: $mixerDetent,
-            onMixChange: {
-                coordinator.updateGroupMix(context: modelContext)
-            },
-            mainContent: {
-                playbackMainSection
-            }
-        )
+        LivePlaybackSidebarLayout(isVisible: $showingSongLibrary) {
+            SongLibraryPanel(
+                onEdit: { song in
+                    guard !song.isClickOnly else { return }
+                    showingSongLibrary = false
+                    songToEditID = song.id
+                },
+                onDismiss: {
+                    showingSongLibrary = false
+                },
+                onRequestFolderImport: {
+                    showingSongLibrary = false
+                    showingSongFolderImporter = true
+                },
+                onRequestTrackImport: { song in
+                    showingSongLibrary = false
+                    songPendingTrackImport = song
+                },
+                onAddToSetlist: { song in
+                    addSong(song, at: workingSetlist.sortedEntries.count)
+                }
+            )
+        } mainContent: {
+            LivePlaybackMixerSplitLayout(
+                mixerDetent: $mixerDetent,
+                onMixChange: {
+                    coordinator.updateGroupMix(context: modelContext)
+                },
+                mainContent: {
+                    playbackMainSection
+                }
+            )
+        }
         #if os(macOS)
         .navigationTitle("")
         #else
@@ -180,7 +203,6 @@ struct LivePlaybackView: View {
         }
         .onChange(of: activeSetlistID) { _, _ in
             showingSongLibrary = false
-            showingAddSong = false
         }
         .onDisappear {
             stopPlayback()
@@ -211,19 +233,8 @@ struct LivePlaybackView: View {
             onPlay: coordinator.play,
             onPause: coordinator.pause,
             showingSongLibrary: $showingSongLibrary,
-            showingAddSong: $showingAddSong,
             showingManageOutputs: $showingManageOutputs,
             mixerDetent: $mixerDetent,
-            onRequestFolderImport: {
-                showingSongLibrary = false
-                showingSongFolderImporter = true
-            },
-            onRequestTrackImport: { song in
-                showingSongLibrary = false
-                songPendingTrackImport = song
-            },
-            onEditSong: { songToEditID = $0.id },
-            onAddSong: { addSong($0, at: workingSetlist.sortedEntries.count) },
             infoPanelHeight: $infoPanelHeight
         )
     }
@@ -789,93 +800,6 @@ private struct PlayingBadge: View {
     }
 }
 
-private enum SetlistAddSongKind: String, CaseIterable, Identifiable {
-    case songs = "Songs"
-    case click = "Click"
-
-    var id: String { rawValue }
-}
-
-private struct SetlistAddSongMenu: View {
-    @Query(sort: \Song.name) private var songs: [Song]
-
-    @State private var searchText = ""
-    @State private var kind: SetlistAddSongKind = .songs
-
-    let onSelect: (Song) -> Void
-
-    private var filteredSongs: [Song] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return songs }
-        return songs.filter { $0.name.localizedCaseInsensitiveContains(query) }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            TextField("Search songs", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-
-            Picker("Add", selection: $kind) {
-                ForEach(SetlistAddSongKind.allCases) { option in
-                    Text(option.rawValue).tag(option)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-
-            Group {
-                switch kind {
-                case .songs:
-                    songsPickerContent
-                case .click:
-                    ContentUnavailableView(
-                        "Not Implemented",
-                        systemImage: "cursorarrow.click",
-                        description: Text("Click tracks will be available in a future update.")
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        }
-        .padding()
-        .frame(width: 300, height: 360)
-    }
-
-    @ViewBuilder
-    private var songsPickerContent: some View {
-        if songs.isEmpty {
-            ContentUnavailableView(
-                "No Songs Yet",
-                systemImage: "music.note",
-                description: Text("Create a song in the library first.")
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if filteredSongs.isEmpty {
-            ContentUnavailableView.search(text: searchText)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            List(filteredSongs) { song in
-                Button {
-                    onSelect(song)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(song.name)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                        Text("\(song.tracks.count) tracks")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-            }
-            .listStyle(.plain)
-        }
-    }
-}
-
 private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @ViewBuilder let setlistSwitcher: Switcher
     let coordinator: PlaybackCoordinator
@@ -885,13 +809,8 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     let onPlay: () -> Void
     let onPause: () -> Void
     @Binding var showingSongLibrary: Bool
-    @Binding var showingAddSong: Bool
     @Binding var showingManageOutputs: Bool
     @Binding var mixerDetent: LiveGroupMixerDetent
-    let onRequestFolderImport: () -> Void
-    let onRequestTrackImport: (Song) -> Void
-    let onEditSong: (Song) -> Void
-    let onAddSong: (Song) -> Void
     @Binding var infoPanelHeight: CGFloat
 
     @ToolbarContentBuilder
@@ -905,11 +824,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
 
             ToolbarItem(placement: .principal) {
                 transportInfoBar
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .primaryAction) {
-                addSongButton
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -939,10 +853,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
 
             ToolbarItem(placement: .principal) {
                 transportInfoBar
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                addSongButton
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -968,10 +878,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
 
         ToolbarItem(placement: .principal) {
             transportInfoBar
-        }
-
-        ToolbarItem(placement: .primaryAction) {
-            addSongButton
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -1022,41 +928,14 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         )
     }
 
-    private var addSongButton: some View {
-        Button {
-            showingAddSong = true
-        } label: {
-            Label("Add Song", systemImage: "plus")
-        }
-        .popover(isPresented: $showingAddSong, arrowEdge: .bottom) {
-            SetlistAddSongMenu { song in
-                onAddSong(song)
-                showingAddSong = false
-            }
-        }
-    }
-
     private var songsButton: some View {
         Button {
             showingSongLibrary.toggle()
         } label: {
             Label("Songs", systemImage: "music.note.list")
+                .symbolVariant(showingSongLibrary ? .fill : .none)
         }
-        .popover(isPresented: $showingSongLibrary, arrowEdge: .bottom) {
-            SongLibraryPanel(
-                onEdit: { song in
-                    guard !song.isClickOnly else { return }
-                    showingSongLibrary = false
-                    onEditSong(song)
-                },
-                onDismiss: {
-                    showingSongLibrary = false
-                },
-                onRequestFolderImport: onRequestFolderImport,
-                onRequestTrackImport: onRequestTrackImport
-            )
-            .frame(width: 300, height: 420)
-        }
+        .tint(showingSongLibrary ? Color.accentColor : nil)
     }
 
     private var manageOutputsButton: some View {

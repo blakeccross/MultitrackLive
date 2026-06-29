@@ -10,6 +10,32 @@ enum LiveGroupMixerDetent: Equatable {
     static let minimumMainHeight: CGFloat = 200
 }
 
+enum LivePlaybackSidebarMetrics {
+    static let sidebarWidth: CGFloat = 300
+}
+
+struct LivePlaybackSidebarLayout<Sidebar: View, MainContent: View>: View {
+    @Binding var isVisible: Bool
+    @ViewBuilder let sidebar: () -> Sidebar
+    @ViewBuilder let mainContent: () -> MainContent
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if isVisible {
+                sidebar()
+                    .frame(width: LivePlaybackSidebarMetrics.sidebarWidth)
+                    .transition(.move(edge: .leading))
+
+                Divider()
+            }
+
+            mainContent()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .animation(.easeInOut(duration: 0.25), value: isVisible)
+    }
+}
+
 struct LivePlaybackMixerSplitLayout<MainContent: View>: View {
     @Binding var mixerDetent: LiveGroupMixerDetent
     let onMixChange: () -> Void

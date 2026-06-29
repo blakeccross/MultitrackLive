@@ -2,6 +2,21 @@ import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum SongLibraryFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case multitrack = "Multitrack"
+    case clickTracks = "Click"
+
+    var id: String { rawValue }
+}
+
+private enum SongLibrarySortOrder: String, CaseIterable, Identifiable {
+    case newest = "Newest"
+    case name = "Name"
+
+    var id: String { rawValue }
+}
+
 struct SongLibraryPanel: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Song.createdAt, order: .reverse) private var songs: [Song]
@@ -10,8 +25,11 @@ struct SongLibraryPanel: View {
     var onDismiss: () -> Void
     var onRequestFolderImport: () -> Void
     var onRequestTrackImport: (Song) -> Void
+    var onAddToSetlist: (Song) -> Void
 
     @State private var searchText = ""
+    @State private var activeFilter: SongLibraryFilter = .all
+    @State private var sortOrder: SongLibrarySortOrder = .newest
     @State private var showingNewSongAlert = false
     @State private var showingNewClickTrackSheet = false
     @State private var newSongName = ""
@@ -27,123 +45,45 @@ struct SongLibraryPanel: View {
     @State private var showingProjectImporter = false
     @State private var consolidateSummary: String?
 
+    private var hasActiveFilters: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || activeFilter != .all
+    }
+
     private var filteredSongs: [Song] {
+        var result = songs
+        switch activeFilter {
+        case .multitrack:
+            result = result.filter { !$0.isClickOnly }
+        case .clickTracks:
+            result = result.filter { $0.isClickOnly }
+        case .all:
+            break
+        }
+
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return songs }
-        return songs.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        if !query.isEmpty {
+            result = result.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        }
+
+        switch sortOrder {
+        case .newest:
+            result.sort { $0.createdAt > $1.createdAt }
+        case .name:
+            result.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        }
+
+        return result
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Songs")
-                    .font(.headline)
-                Spacer()
-                Menu {
-                    Button {
-                        newSongName = ""
-                        showingNewSongAlert = true
-                    } label: {
-                        Label("New Song", systemImage: "plus")
-                    }
-
-                    Button {
-                        resetNewClickTrackForm()
-                        showingNewClickTrackSheet = true
-                    } label: {
-                        Label("New Click Track", systemImage: "cursorarrow.click")
-                    }
-
-                    Button {
-                        onRequestFolderImport()
-                    } label: {
-                        Label("Import from Folder", systemImage: "folder")
-                    }
-
-                    Button {
-                        showingProjectImporter = true
-                    } label: {
-                        Label("Open Project File…", systemImage: "doc")
-                    }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .foregroundStyle(Color.accentColor)
-                }
-                .menuStyle(.borderlessButton)
-                .accessibilityLabel("Add song")
-
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close songs menu")
-            }
-            .padding(.horizontal)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
-
-            TextField("Search songs", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
-
-            Group {
-                if songs.isEmpty {
-                    ContentUnavailableView(
-                        "No Songs Yet",
-                        systemImage: "music.note",
-                        description: Text("Create a song or import a folder with multitrack stems and an Ableton file.")
-                    )
-                    .padding(.top, 12)
-
-                    Spacer(minLength: 0)
-                } else if filteredSongs.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
-                        .padding(.top, 12)
-
-                    Spacer(minLength: 0)
-                } else {
-                    List(filteredSongs) { song in
-                        SongLibraryRow(song: song)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                guard !song.isClickOnly else { return }
-                                onEdit(song)
-                            }
-                            .contextMenu {
-                                if !song.isClickOnly {
-                                    Button {
-                                        onEdit(song)
-                                    } label: {
-                                        Label("Edit Song", systemImage: "pencil")
-                                    }
-                                }
-                                Button("Rename") {
-                                    songPendingRename = song
-                                    renameSongName = song.name
-                                }
-                                Button("Duplicate") {
-                                    duplicateSong(song)
-                                }
-                                if SongProjectBridge.projectURL(for: song) != nil {
-                                    Button("Consolidate Media…") {
-                                        consolidateMedia(for: song)
-                                    }
-                                }
-                                Divider()
-                                Button("Remove", role: .destructive) {
-                                    songPendingDelete = song
-                                }
-                            }
-                    }
-                    .listStyle(.plain)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            headerBar
+            searchBar
+            filterChips
+            songList
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.background)
+        .background(Color.dawTrackHeaderBackground)
         .alert("New Song", isPresented: $showingNewSongAlert) {
             TextField("Song name", text: $newSongName)
             Button("Create") {
@@ -230,6 +170,201 @@ struct SongLibraryPanel: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(consolidateSummary ?? "")
+        }
+    }
+
+    private var headerBar: some View {
+        ZStack {
+            Text("Songs")
+                .font(.headline)
+
+            HStack {
+                Button(action: onDismiss) {
+                    Image(systemName: "chevron.left")
+                        .font(.body.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close songs library")
+
+                Spacer()
+
+                addSongMenu
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+
+    private var addSongMenu: some View {
+        Menu {
+            Button {
+                newSongName = ""
+                showingNewSongAlert = true
+            } label: {
+                Label("New Song", systemImage: "plus")
+            }
+
+            Button {
+                resetNewClickTrackForm()
+                showingNewClickTrackSheet = true
+            } label: {
+                Label("New Click Track", systemImage: "cursorarrow.click")
+            }
+
+            Button {
+                onRequestFolderImport()
+            } label: {
+                Label("Import from Folder", systemImage: "folder")
+            }
+
+            Button {
+                showingProjectImporter = true
+            } label: {
+                Label("Open Project File…", systemImage: "doc")
+            }
+        } label: {
+            Image(systemName: "plus.circle.fill")
+                .foregroundStyle(Color.accentColor)
+        }
+        .menuStyle(.borderlessButton)
+        .accessibilityLabel("Add song")
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .font(.subheadline)
+
+            TextField("Search", text: $searchText)
+                .textFieldStyle(.plain)
+
+            if hasActiveFilters {
+                Button("Clear") {
+                    searchText = ""
+                    activeFilter = .all
+                }
+                .font(.subheadline)
+                .buttonStyle(.plain)
+            }
+
+            Menu {
+                Picker("Sort", selection: $sortOrder) {
+                    ForEach(SongLibrarySortOrder.allCases) { order in
+                        Text(order.rawValue).tag(order)
+                    }
+                }
+            } label: {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .accessibilityLabel("Sort songs")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+    }
+
+    private var filterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(SongLibraryFilter.allCases) { filter in
+                    Button {
+                        activeFilter = filter
+                    } label: {
+                        Text(filter.rawValue)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                activeFilter == filter
+                                    ? Color.accentColor
+                                    : Color.primary.opacity(0.08)
+                            )
+                            .foregroundStyle(activeFilter == filter ? Color.white : Color.accentColor)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+        }
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private var songList: some View {
+        if songs.isEmpty {
+            ContentUnavailableView(
+                "No Songs Yet",
+                systemImage: "music.note",
+                description: Text("Create a song or import a folder with multitrack stems and an Ableton file.")
+            )
+            .padding(.top, 12)
+            Spacer(minLength: 0)
+        } else if filteredSongs.isEmpty {
+            ContentUnavailableView.search(text: searchText)
+                .padding(.top, 12)
+            Spacer(minLength: 0)
+        } else {
+            List {
+                ForEach(filteredSongs) { song in
+                    SongLibraryRow(song: song) {
+                        onAddToSetlist(song)
+                    }
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .onTapGesture {
+                        guard !song.isClickOnly else { return }
+                        onEdit(song)
+                    }
+                        .contextMenu {
+                            songContextMenu(for: song)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                songPendingDelete = song
+                            } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                        }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    @ViewBuilder
+    private func songContextMenu(for song: Song) -> some View {
+        if !song.isClickOnly {
+            Button {
+                onEdit(song)
+            } label: {
+                Label("Edit Song", systemImage: "pencil")
+            }
+        }
+        Button("Rename") {
+            songPendingRename = song
+            renameSongName = song.name
+        }
+        Button("Duplicate") {
+            duplicateSong(song)
+        }
+        if SongProjectBridge.projectURL(for: song) != nil {
+            Button("Consolidate Media…") {
+                consolidateMedia(for: song)
+            }
+        }
+        Divider()
+        Button("Remove", role: .destructive) {
+            songPendingDelete = song
         }
     }
 
@@ -547,21 +682,63 @@ private struct NewClickTrackSheet: View {
 
 private struct SongLibraryRow: View {
     let song: Song
+    let onAddToSetlist: () -> Void
+
+    private var subtitle: String {
+        if song.isClickOnly {
+            return song.clickTrackSummary
+        }
+        let trackText = song.tracks.isEmpty ? "No tracks" : "\(song.tracks.count) tracks"
+        if let bpm = song.bpm {
+            return "\(Int(bpm.rounded())) bpm — \(trackText)"
+        }
+        return trackText
+    }
+
+    private var iconName: String {
+        song.isClickOnly ? "cursorarrow.click" : "waveform"
+    }
 
     var body: some View {
         HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.dawClipBackground)
+                .frame(width: 32, height: 32)
+                .overlay {
+                    Image(systemName: iconName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.dawClipBorder)
+                }
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.name)
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(2)
-                Text(song.isClickOnly ? song.clickTrackSummary : "\(song.tracks.count) tracks")
+                    .foregroundStyle(.primary)
+                Text(subtitle)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
 
             Spacer(minLength: 0)
+
+            Button(action: onAddToSetlist) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add to setlist")
         }
-        .contentShape(Rectangle())
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(0.001))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.dawTimelineDivider)
+                .frame(height: 1)
+        }
     }
 }
 
@@ -570,8 +747,9 @@ private struct SongLibraryRow: View {
         onEdit: { _ in },
         onDismiss: {},
         onRequestFolderImport: {},
-        onRequestTrackImport: { _ in }
+        onRequestTrackImport: { _ in },
+        onAddToSetlist: { _ in }
     )
-        .frame(width: 280)
+        .frame(width: 300, height: 600)
         .modelContainer(for: [Song.self, AudioTrack.self], inMemory: true)
 }
