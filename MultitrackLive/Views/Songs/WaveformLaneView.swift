@@ -5,7 +5,6 @@ import AppKit
 
 struct TrackLaneHeaderView: View {
     @Bindable var track: AudioTrack
-    let fileDuration: TimeInterval
     let laneHeight: CGFloat
     let trackColorIndex: Int
     let isSelected: Bool
@@ -19,23 +18,13 @@ struct TrackLaneHeaderView: View {
         TrackClipPalette.colors(for: trackColorIndex)
     }
 
-    private var effectiveEnd: TimeInterval {
-        track.trimEndSeconds ?? fileDuration
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 6) {
-                Text(track.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(isSelected ? AppColors.textPrimary : AppColors.textSecondary)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text(formatTime(effectiveEnd - track.trimStartSeconds))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(AppColors.textTertiary)
-            }
+            Text(track.displayName)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isSelected ? AppColors.textPrimary : AppColors.textSecondary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             groupPicker
 
@@ -123,13 +112,6 @@ struct TrackLaneHeaderView: View {
         }
         .menuStyle(.borderlessButton)
         .controlSize(.small)
-    }
-
-    private func formatTime(_ value: TimeInterval) -> String {
-        let totalSeconds = max(0, Int(value))
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 

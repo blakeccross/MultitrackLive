@@ -1431,7 +1431,6 @@ struct EditView: View {
             ForEach(Array(song.sortedTracks.enumerated()), id: \.element.id) { index, track in
                 TrackLaneHeaderView(
                     track: track,
-                    fileDuration: viewModel.fileDuration(for: track),
                     laneHeight: TimelineLayout.laneHeight,
                     trackColorIndex: index,
                     isSelected: selectedTrackID == track.id,
