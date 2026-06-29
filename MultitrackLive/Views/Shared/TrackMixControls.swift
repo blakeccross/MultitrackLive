@@ -19,33 +19,77 @@ struct TrackMixButton: View {
     }
 }
 
-struct TrackMixSliderRow: View {
-    let label: String
-    let valueLabel: String
+struct LogicStyleVolumeSlider: View {
     @Binding var value: Double
-    let range: ClosedRange<Double>
+    let meterLevel: Float
     let onEditingEnded: () -> Void
 
+    @State private var isDragging = false
+
+    private let controlHeight: CGFloat = 26
+    private let meterBarHeight: CGFloat = 2.5
+    private let meterGreen = Color(red: 0.22, green: 0.82, blue: 0.36)
+
     var body: some View {
-        HStack(spacing: 4) {
-            Text(label)
-                .font(.system(size: 8, weight: .semibold))
-                .foregroundStyle(AppColors.textTertiary)
-                .frame(width: 18, alignment: .leading)
+        GeometryReader { geometry in
+            let trackWidth = geometry.size.width
+            let travel = max(trackWidth - controlHeight, 1)
+            let thumbCenterX = controlHeight / 2 + CGFloat(value) * travel
+            let thumbX = thumbCenterX - controlHeight / 2
+            let meterWidth = trackWidth * MixerFaderScale.meterFillFraction(forPeak: meterLevel)
 
-            Slider(value: $value, in: range) { editing in
-                if !editing {
-                    onEditingEnded()
-                }
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(AppColors.separator.opacity(0.45))
+                    .frame(height: controlHeight)
+
+                meterBars(width: meterWidth)
+                    .padding(.leading, 8)
+                    .frame(height: controlHeight, alignment: .center)
+                    .clipShape(Capsule())
+
+                Circle()
+                    .fill(isDragging ? Color.white.opacity(0.60) : Color.white.opacity(0.45))
+                    .overlay {
+                        Circle()
+                            .stroke(Color.white.opacity(0.25), lineWidth: 0.5)
+                    }
+                    .frame(width: controlHeight, height: controlHeight)
+                    .offset(x: thumbX)
             }
-            .controlSize(.mini)
-            .tint(AppColors.accent)
-
-            Text(valueLabel)
-                .font(.system(size: 8, weight: .medium, design: .monospaced))
-                .foregroundStyle(AppColors.textSecondary)
-                .frame(width: 24, alignment: .trailing)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        isDragging = true
+                        setValue(fromCenterX: drag.location.x, trackWidth: trackWidth, travel: travel)
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                        onEditingEnded()
+                    }
+            )
         }
+        .frame(height: controlHeight)
+    }
+
+    private func meterBars(width: CGFloat) -> some View {
+        VStack(spacing: 3) {
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                .fill(meterGreen)
+                .frame(width: max(0, width - 8), height: meterBarHeight)
+
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                .fill(meterGreen)
+                .frame(width: max(0, width - 8), height: meterBarHeight)
+        }
+    }
+
+    private func setValue(fromCenterX x: CGFloat, trackWidth: CGFloat, travel: CGFloat) {
+        let clampedCenter = min(max(x, controlHeight / 2), trackWidth - controlHeight / 2)
+        let normalized = Double((clampedCenter - controlHeight / 2) / travel)
+        value = min(1, max(0, normalized))
     }
 }
 

@@ -5,6 +5,7 @@ import AppKit
 
 struct TrackLaneHeaderView: View {
     @Bindable var track: AudioTrack
+    @Bindable private var audioEngine = AudioEngineManager.shared
     let laneHeight: CGFloat
     let trackColorIndex: Int
     let isSelected: Bool
@@ -47,13 +48,12 @@ struct TrackLaneHeaderView: View {
                     onMixChange()
                 }
 
-                TrackMixSliderRow(
-                    label: "Vol",
-                    valueLabel: String(format: "%.0f", track.volume * 100),
+                LogicStyleVolumeSlider(
                     value: $track.volume,
-                    range: 0...1,
+                    meterLevel: audioEngine.trackMeterLevel(for: track.id),
                     onEditingEnded: onMixChange
                 )
+                .frame(maxWidth: .infinity)
             }
         }
         .padding(.horizontal, 8)

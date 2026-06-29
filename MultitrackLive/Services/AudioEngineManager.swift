@@ -94,6 +94,7 @@ final class AudioEngineManager {
     private var overlapSession: OverlapSession?
 
     private(set) var groupMeterLevels: [UUID: Float] = [:]
+    private(set) var trackMeterLevels: [UUID: Float] = [:]
 
     /// Practical upper bound for open-ended click-only playback and transport clamping.
     static let openEndedTimelineDuration: TimeInterval = 86_400 * 365
@@ -814,20 +815,28 @@ final class AudioEngineManager {
     }
 
     func refreshGroupMeters(decay: Float = 0.55) {
-        var levels: [UUID: Float] = [:]
+        var groupLevels: [UUID: Float] = [:]
+        var trackLevels: [UUID: Float] = [:]
 
         if clickOnlyState != nil {
-            groupMeterLevels = levels
+            groupMeterLevels = groupLevels
+            trackMeterLevels = trackLevels
             return
         }
 
         for track in tracks.values {
             let peak = track.memoryPlayer.consumePeakMeter(decay: decay)
+            trackLevels[track.trackID] = peak
             let groupKey = track.groupID ?? OutputRoutingStore.ungroupedRouteID
-            levels[groupKey] = max(levels[groupKey] ?? 0, peak)
+            groupLevels[groupKey] = max(groupLevels[groupKey] ?? 0, peak)
         }
 
-        groupMeterLevels = levels
+        groupMeterLevels = groupLevels
+        trackMeterLevels = trackLevels
+    }
+
+    func trackMeterLevel(for trackID: UUID) -> Float {
+        trackMeterLevels[trackID] ?? 0
     }
 
     func groupMeterLevel(for groupID: UUID?) -> Float {

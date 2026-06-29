@@ -1470,6 +1470,9 @@ struct EditView: View {
         }
         .frame(width: TimelineLayout.trackHeaderWidth)
         .background(Color.dawTrackHeaderColumnBackground)
+        .onReceive(Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()) { _ in
+            audioEngine.refreshGroupMeters()
+        }
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(Color.dawTimelineDivider)
