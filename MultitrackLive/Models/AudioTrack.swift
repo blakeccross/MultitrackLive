@@ -11,7 +11,6 @@ final class AudioTrack {
     var mediaBookmarkData: Data?
     var sortOrder: Int
     var volume: Double
-    var pan: Double
     var isMuted: Bool
     var isSolo: Bool
     var trimStartSeconds: Double
@@ -37,7 +36,6 @@ final class AudioTrack {
         self.relativeFilePath = relativeFilePath
         self.sortOrder = sortOrder
         volume = 1.0
-        pan = 0.0
         isMuted = false
         isSolo = false
         trimStartSeconds = 0.0

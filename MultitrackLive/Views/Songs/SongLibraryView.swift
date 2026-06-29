@@ -454,7 +454,6 @@ struct SongLibraryPanel: View {
                 )
                 newTrack.id = newTrackID
                 newTrack.volume = track.volume
-                newTrack.pan = track.pan
                 newTrack.isMuted = track.isMuted
                 newTrack.isSolo = track.isSolo
                 newTrack.trimStartSeconds = track.trimStartSeconds

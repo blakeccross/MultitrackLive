@@ -743,7 +743,6 @@ final class PlaybackCoordinator {
     private static func clickOnlySettings(for song: Song) -> AudioEngineManager.TrackSettings {
         AudioEngineManager.TrackSettings(
             volume: Float(song.clickTrackVolume),
-            pan: 0,
             isMuted: false,
             isSolo: false,
             trimStart: 0,

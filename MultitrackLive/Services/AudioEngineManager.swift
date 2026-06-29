@@ -11,7 +11,6 @@ final class AudioEngineManager {
 
     struct TrackSettings: Equatable {
         var volume: Float
-        var pan: Float
         var isMuted: Bool
         var isSolo: Bool
         var trimStart: TimeInterval
@@ -227,8 +226,7 @@ final class AudioEngineManager {
             timeSignatureChanges: self.timeSignatureChanges,
             subdivision: subdivision,
             isEnabled: isEnabled,
-            volume: settings.volume,
-            pan: settings.pan
+            volume: settings.volume
         )
 
         let player = try RealtimeClickTrackPlayer(
@@ -874,7 +872,6 @@ final class AudioEngineManager {
 
             track.memoryPlayer.updateMix(
                 volume: effectiveVolume,
-                pan: track.settings.pan,
                 isAudible: isAudible
             )
         }
@@ -961,7 +958,6 @@ final class AudioEngineManager {
 
         clickOnly.player.updateMix(
             volume: effectiveVolume,
-            pan: clickOnly.settings.pan,
             isAudible: isAudible
         )
         syncClickOnlyConfiguration()
@@ -975,8 +971,7 @@ final class AudioEngineManager {
                 timeSignatureChanges: timeSignatureChanges,
                 subdivision: clickOnly.subdivision,
                 isEnabled: clickOnly.isEnabled,
-                volume: clickOnly.settings.volume,
-                pan: clickOnly.settings.pan
+                volume: clickOnly.settings.volume
             )
         )
     }
@@ -1270,7 +1265,6 @@ final class AudioEngineManager {
 extension AudioEngineManager.TrackSettings {
     init(track: AudioTrack) {
         volume = Float(track.volume)
-        pan = Float(track.pan)
         isMuted = track.isMuted
         isSolo = track.isSolo
         trimStart = track.trimStartSeconds

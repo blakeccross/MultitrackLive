@@ -9,12 +9,10 @@ final class RealtimeClickTrackPlayer {
         var subdivision: ClickTrackSubdivision
         var isEnabled: Bool
         var volume: Float
-        var pan: Float
     }
 
     private struct MixState: Sendable {
         var volume: Float = 1
-        var pan: Float = 0
         var isAudible: Bool = true
     }
 
@@ -140,10 +138,7 @@ final class RealtimeClickTrackPlayer {
 
         private static func channelGains(for mix: MixState) -> (left: Float, right: Float) {
             guard mix.isAudible, mix.volume > 0 else { return (0, 0) }
-
-            let pan = max(-1, min(1, mix.pan))
-            let theta = (pan + 1) * Float.pi / 4
-            return (mix.volume * cos(theta), mix.volume * sin(theta))
+            return (mix.volume, mix.volume)
         }
     }
 
@@ -185,7 +180,7 @@ final class RealtimeClickTrackPlayer {
         renderContext.configuration = configuration
     }
 
-    func updateMix(volume: Float, pan: Float, isAudible: Bool) {
-        renderContext.mix = MixState(volume: volume, pan: pan, isAudible: isAudible)
+    func updateMix(volume: Float, isAudible: Bool) {
+        renderContext.mix = MixState(volume: volume, isAudible: isAudible)
     }
 }

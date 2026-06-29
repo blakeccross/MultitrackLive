@@ -89,7 +89,6 @@ final class SongEditorViewModel {
     private func clickTrackSettings() -> AudioEngineManager.TrackSettings {
         AudioEngineManager.TrackSettings(
             volume: Float(song.clickTrackVolume),
-            pan: 0,
             isMuted: false,
             isSolo: false,
             trimStart: 0,

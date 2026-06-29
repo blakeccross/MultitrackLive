@@ -39,7 +39,6 @@ struct SongProjectMetadata: Codable, Hashable {
 
 struct ProjectTrackMix: Codable, Hashable {
     var volume: Double
-    var pan: Double
     var isMuted: Bool
     var isSolo: Bool
     var trimStartSeconds: Double
@@ -48,7 +47,6 @@ struct ProjectTrackMix: Codable, Hashable {
 
     init(from track: AudioTrack) {
         volume = track.volume
-        pan = track.pan
         isMuted = track.isMuted
         isSolo = track.isSolo
         trimStartSeconds = track.trimStartSeconds
@@ -58,7 +56,6 @@ struct ProjectTrackMix: Codable, Hashable {
 
     func apply(to track: AudioTrack) {
         track.volume = volume
-        track.pan = pan
         track.isMuted = isMuted
         track.isSolo = isSolo
         track.trimStartSeconds = trimStartSeconds

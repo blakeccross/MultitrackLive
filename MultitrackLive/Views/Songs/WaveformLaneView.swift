@@ -58,23 +58,13 @@ struct TrackLaneHeaderView: View {
                     onMixChange()
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    TrackMixSliderRow(
-                        label: "Vol",
-                        valueLabel: String(format: "%.0f", track.volume * 100),
-                        value: $track.volume,
-                        range: 0...1,
-                        onEditingEnded: onMixChange
-                    )
-
-                    TrackMixSliderRow(
-                        label: "Pan",
-                        valueLabel: panLabel,
-                        value: $track.pan,
-                        range: -1...1,
-                        onEditingEnded: onMixChange
-                    )
-                }
+                TrackMixSliderRow(
+                    label: "Vol",
+                    valueLabel: String(format: "%.0f", track.volume * 100),
+                    value: $track.volume,
+                    range: 0...1,
+                    onEditingEnded: onMixChange
+                )
             }
         }
         .padding(.horizontal, 8)
@@ -95,12 +85,6 @@ struct TrackLaneHeaderView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
-    }
-
-    private var panLabel: String {
-        if track.pan < -0.05 { return "L\(Int(abs(track.pan * 100)))" }
-        if track.pan > 0.05 { return "R\(Int(track.pan * 100))" }
-        return "C"
     }
 
     private var groupPicker: some View {

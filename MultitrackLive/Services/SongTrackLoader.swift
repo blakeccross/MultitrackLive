@@ -255,7 +255,6 @@ enum SongTrackLoader {
 
         let settings = AudioEngineManager.TrackSettings(
             volume: Float(song.clickTrackVolume),
-            pan: 0,
             isMuted: false,
             isSolo: false,
             trimStart: 0,
