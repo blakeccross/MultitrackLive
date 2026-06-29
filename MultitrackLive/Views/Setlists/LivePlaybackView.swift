@@ -98,27 +98,15 @@ struct LivePlaybackView: View {
     }
 
     private func playbackBody(for setlist: Setlist) -> some View {
-        GeometryReader { geometry in
-            VStack(spacing: 0) {
-                currentSongSection
-                    .padding()
-
-                Divider()
-
-                setlistSection
-
-                if mixerDetent == .visible {
-                    LiveGroupMixerPanel(
-                        containerHeight: geometry.size.height,
-                        onMixChange: {
-                            coordinator.updateGroupMix(context: modelContext)
-                        }
-                    )
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
+        LivePlaybackMixerSplitLayout(
+            mixerDetent: $mixerDetent,
+            onMixChange: {
+                coordinator.updateGroupMix(context: modelContext)
+            },
+            mainContent: {
+                playbackMainSection
             }
-            .animation(.spring(response: 0.34, dampingFraction: 0.86), value: mixerDetent)
-        }
+        )
         #if os(macOS)
         .navigationTitle("")
         #else
@@ -388,6 +376,17 @@ struct LivePlaybackView: View {
         modelContext.insert(newSetlist)
         try? modelContext.save()
         switchToSetlist(newSetlist)
+    }
+
+    private var playbackMainSection: some View {
+        VStack(spacing: 0) {
+            currentSongSection
+                .padding()
+
+            Divider()
+
+            setlistSection
+        }
     }
 
     private var currentSongSection: some View {

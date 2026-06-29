@@ -6,44 +6,87 @@ enum LiveGroupMixerDetent: Equatable {
     case visible
 
     static let heightFraction: CGFloat = 0.48
+    static let minimumMixerHeight: CGFloat = 140
+    static let minimumMainHeight: CGFloat = 200
+}
 
-    func height(containerHeight: CGFloat) -> CGFloat {
-        switch self {
-        case .hidden:
-            return 0
-        case .visible:
-            return containerHeight * Self.heightFraction
+struct LivePlaybackMixerSplitLayout<MainContent: View>: View {
+    @Binding var mixerDetent: LiveGroupMixerDetent
+    let onMixChange: () -> Void
+    @ViewBuilder let mainContent: () -> MainContent
+
+    var body: some View {
+        #if os(macOS)
+        macOSLayout
+        #else
+        iOSLayout
+        #endif
+    }
+
+    #if os(macOS)
+    private var macOSLayout: some View {
+        GeometryReader { geometry in
+            if mixerDetent == .visible {
+                VSplitView {
+                    mainContent()
+                        .frame(minHeight: LiveGroupMixerDetent.minimumMainHeight)
+
+                    LiveGroupMixerPanel(onMixChange: onMixChange)
+                        .frame(
+                            minHeight: LiveGroupMixerDetent.minimumMixerHeight,
+                            idealHeight: geometry.size.height * LiveGroupMixerDetent.heightFraction
+                        )
+                }
+            } else {
+                mainContent()
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: mixerDetent)
+    }
+    #endif
+
+    private var iOSLayout: some View {
+        GeometryReader { geometry in
+            mainContent()
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if mixerDetent == .visible {
+                        LiveGroupMixerPanel(onMixChange: onMixChange)
+                            .frame(height: geometry.size.height * LiveGroupMixerDetent.heightFraction)
+                    }
+                }
+        }
+        .animation(.easeInOut(duration: 0.2), value: mixerDetent)
     }
 }
 
 struct LiveGroupMixerPanel: View {
-    let containerHeight: CGFloat
     let onMixChange: () -> Void
-
-    private var panelHeight: CGFloat {
-        containerHeight * LiveGroupMixerDetent.heightFraction
-    }
 
     var body: some View {
         VStack(spacing: 0) {
+            #if os(iOS)
             drawerHandle
+            #endif
 
             LiveGroupMixerView(onMixChange: onMixChange)
                 .frame(maxHeight: .infinity)
         }
-        .frame(height: panelHeight)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
+            #if os(iOS)
             drawerShape
-                .fill(drawerBackgroundFill)
+                .fill(Color(uiColor: .systemBackground))
                 .ignoresSafeArea(.all, edges: .bottom)
+            #else
+            Color(nsColor: .windowBackgroundColor)
+            #endif
         }
         .overlay(alignment: .top) {
             Divider()
         }
     }
 
+    #if os(iOS)
     private var drawerHandle: some View {
         Capsule()
             .fill(Color.secondary.opacity(0.5))
@@ -52,16 +95,9 @@ struct LiveGroupMixerPanel: View {
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity)
     }
+    #endif
 
-    @ViewBuilder
-    private var drawerBackgroundFill: some ShapeStyle {
-        #if os(iOS)
-        Color(uiColor: .systemBackground)
-        #else
-        Color(nsColor: .windowBackgroundColor)
-        #endif
-    }
-
+    #if os(iOS)
     private var drawerShape: UnevenRoundedRectangle {
         UnevenRoundedRectangle(
             topLeadingRadius: 14,
@@ -71,6 +107,7 @@ struct LiveGroupMixerPanel: View {
             style: .continuous
         )
     }
+    #endif
 }
 
 struct LiveGroupMixerView: View {
