@@ -1,12 +1,6 @@
 import SwiftUI
 
 struct LiveSetlistNowPlayingInfoView: View {
-    enum Section {
-        case songInfo
-        case transportAndPosition
-    }
-
-    let section: Section
     let coordinator: PlaybackCoordinator
     @Bindable var audioEngine: AudioEngineManager
     let isLoaded: Bool
@@ -19,23 +13,52 @@ struct LiveSetlistNowPlayingInfoView: View {
         Group {
             if audioEngine.isPlaying {
                 TimelineView(.animation(minimumInterval: 1.0 / 15.0)) { _ in
-                    sectionContent(at: audioEngine.livePlayheadTime())
+                    transportContent(at: audioEngine.livePlayheadTime())
                 }
             } else {
-                sectionContent(at: audioEngine.currentTime)
+                transportContent(at: audioEngine.currentTime)
             }
         }
     }
 
-    @ViewBuilder
-    private func sectionContent(at time: TimeInterval) -> some View {
+    private func transportContent(at time: TimeInterval) -> some View {
         let snapshot = displaySnapshot(at: time)
+        let transportButtonSize = max(infoPanelHeight, 44)
 
-        switch section {
-        case .songInfo:
-            AppCard {
-                songInfoGrid(snapshot: snapshot)
+        return HStack(alignment: .center, spacing: AppSpacing.sm) {
+            HStack(spacing: AppSpacing.sm) {
+                AppIconButton(
+                    systemImage: "stop.fill",
+                    size: transportButtonSize,
+                    isEnabled: isLoaded,
+                    accessibilityLabel: "Stop"
+                ) {
+                    onStop()
+                }
+
+                AppIconButton(
+                    systemImage: audioEngine.isPlaying ? "pause.fill" : "play.fill",
+                    size: transportButtonSize,
+                    isActive: audioEngine.isPlaying,
+                    isEnabled: isLoaded,
+                    cornerRadius: transportButtonSize * 0.25,
+                    activeBackgroundColor: Color(red: 0.22, green: 0.82, blue: 0.36),
+                    accessibilityLabel: audioEngine.isPlaying ? "Pause" : "Play"
+                ) {
+                    if audioEngine.isPlaying {
+                        onPause()
+                    } else {
+                        onPlay()
+                    }
+                }
             }
+
+            TransportStatusReadout(
+                position: snapshot.position,
+                bpm: snapshot.bpm,
+                meter: snapshot.meter,
+                key: snapshot.key
+            )
             .background {
                 GeometryReader { geometry in
                     Color.clear.preference(
@@ -49,66 +72,13 @@ struct LiveSetlistNowPlayingInfoView: View {
                     infoPanelHeight = height
                 }
             }
-        case .transportAndPosition:
-            HStack(alignment: .center, spacing: AppSpacing.sm) {
-                HStack(spacing: AppSpacing.sm) {
-                    AppIconButton(
-                        systemImage: "stop",
-                        size: max(infoPanelHeight, 44),
-                        isEnabled: isLoaded,
-                        accessibilityLabel: "Stop"
-                    ) {
-                        onStop()
-                    }
-
-                    AppIconButton(
-                        systemImage: audioEngine.isPlaying ? "pause" : "play",
-                        size: max(infoPanelHeight, 44),
-                        isActive: audioEngine.isPlaying,
-                        isEnabled: isLoaded,
-                        accessibilityLabel: audioEngine.isPlaying ? "Pause" : "Play"
-                    ) {
-                        if audioEngine.isPlaying {
-                            onPause()
-                        } else {
-                            onPlay()
-                        }
-                    }
-                }
-
-                AppCard {
-                    positionTimeGrid(snapshot: snapshot)
-                }
-            }
-        }
-    }
-
-    private func songInfoGrid(snapshot: DisplaySnapshot) -> some View {
-        Grid(alignment: .center, horizontalSpacing: AppSpacing.md) {
-            GridRow(alignment: .center) {
-                InfoFieldValue(snapshot.songTitle)
-                InfoFieldValue(snapshot.bpm)
-                InfoFieldValue(snapshot.meter)
-                InfoFieldValue(snapshot.key)
-            }
-        }
-    }
-
-    private func positionTimeGrid(snapshot: DisplaySnapshot) -> some View {
-        Grid(alignment: .leading, horizontalSpacing: AppSpacing.md) {
-            GridRow(alignment: .center) {
-                InfoFieldValue(snapshot.position)
-                InfoFieldValue(snapshot.time)
-            }
         }
     }
 
     private func displaySnapshot(at time: TimeInterval) -> DisplaySnapshot {
         guard let song = coordinator.currentSong else {
             return DisplaySnapshot(
-                position: "-",
-                time: "-",
-                songTitle: "-",
+                position: "- - -",
                 bpm: "-",
                 meter: "-",
                 key: "-"
@@ -135,11 +105,9 @@ struct LiveSetlistNowPlayingInfoView: View {
         )
 
         return DisplaySnapshot(
-            position: MeasureTiming.formatPosition(position),
-            time: MeasureTiming.formatElapsedTime(time),
-            songTitle: song.name,
-            bpm: String(format: "%.0f", bpm),
-            meter: "\(signature.numerator)/\(signature.denominator)",
+            position: MeasureTiming.formatTransportPosition(position),
+            bpm: String(format: "%.1f", bpm),
+            meter: "\(signature.numerator) / \(signature.denominator)",
             key: "-"
         )
     }
@@ -155,22 +123,7 @@ private struct InfoPanelHeightPreferenceKey: PreferenceKey {
 
 private struct DisplaySnapshot {
     let position: String
-    let time: String
-    let songTitle: String
     let bpm: String
     let meter: String
     let key: String
-}
-
-private struct InfoFieldValue: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        Text(text)
-            .appMonoValue()
-    }
 }

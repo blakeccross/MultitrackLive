@@ -61,6 +61,7 @@
 		AA0000010000000000000040 /* TrackBakeCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000040 /* TrackBakeCache.swift */; };
 		AA0000010000000000000041 /* SongTrackLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000041 /* SongTrackLoader.swift */; };
 		AA0000010000000000000042 /* LiveSetlistNowPlayingInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000042 /* LiveSetlistNowPlayingInfoView.swift */; };
+		AA000001000000000000008E /* TransportStatusReadout.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000008E /* TransportStatusReadout.swift */; };
 		AA0000010000000000000043 /* ClickTrackGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000043 /* ClickTrackGenerator.swift */; };
 		AA0000010000000000000044 /* click-accent.wav in Resources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000044 /* click-accent.wav */; };
 		AA0000010000000000000045 /* click-normal.wav in Resources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000045 /* click-normal.wav */; };
@@ -174,6 +175,7 @@
 		AA0000020000000000000040 /* TrackBakeCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackBakeCache.swift; sourceTree = "<group>"; };
 		AA0000020000000000000041 /* SongTrackLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongTrackLoader.swift; sourceTree = "<group>"; };
 		AA0000020000000000000042 /* LiveSetlistNowPlayingInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSetlistNowPlayingInfoView.swift; sourceTree = "<group>"; };
+		AA000002000000000000008E /* TransportStatusReadout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportStatusReadout.swift; sourceTree = "<group>"; };
 		AA0000020000000000000043 /* ClickTrackGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackGenerator.swift; sourceTree = "<group>"; };
 		AA0000020000000000000044 /* click-accent.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "click-accent.wav"; sourceTree = "<group>"; };
 		AA0000020000000000000045 /* click-normal.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "click-normal.wav"; sourceTree = "<group>"; };
@@ -473,6 +475,7 @@
 			children = (
 				AA0000020000000000000013 /* LivePlaybackView.swift */,
 				AA0000020000000000000042 /* LiveSetlistNowPlayingInfoView.swift */,
+				AA000002000000000000008E /* TransportStatusReadout.swift */,
 				AA0000020000000000000028 /* LiveSongWaveformView.swift */,
 				AA000002000000000000007B /* LiveGroupMixerView.swift */,
 			);
@@ -616,6 +619,7 @@
 				AA0000010000000000000010 /* TrackImportView.swift in Sources */,
 				AA0000010000000000000013 /* LivePlaybackView.swift in Sources */,
 				AA0000010000000000000042 /* LiveSetlistNowPlayingInfoView.swift in Sources */,
+				AA000001000000000000008E /* TransportStatusReadout.swift in Sources */,
 				AA0000010000000000000015 /* WaveformLoader.swift in Sources */,
 				AA0000010000000000000016 /* WaveformLaneView.swift in Sources */,
 				AA000001000000000000004D /* WaveformBarsCanvas.swift in Sources */,

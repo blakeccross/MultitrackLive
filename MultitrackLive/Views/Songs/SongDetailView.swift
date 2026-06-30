@@ -3,10 +3,8 @@ import SwiftUI
 
 struct SongDetailView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
 
     @Bindable var song: Song
-    let setlistName: String
 
     @State private var viewModel: SongEditorViewModel?
     @State private var showingAbletonImporter = false
@@ -30,14 +28,6 @@ struct SongDetailView: View {
             #if os(iOS)
             .navigationBarTitleDisplayMode(.large)
             #endif
-            .navigationBarBackButtonHidden(true)
-            .toolbar {
-                ToolbarItem(placement: setlistBackButtonPlacement) {
-                    AppSecondaryButton(title: displaySetlistName, systemImage: "chevron.left") {
-                        dismiss()
-                    }
-                }
-            }
             .fileImporter(
                 isPresented: $showingAbletonImporter,
                 allowedContentTypes: [AbletonProjectImporter.abletonLiveSetType],
@@ -69,21 +59,6 @@ struct SongDetailView: View {
                 AudioEngineManager.shared.stop()
                 persistSongState()
             }
-    }
-
-    #if os(iOS)
-    private var setlistBackButtonPlacement: ToolbarItemPlacement {
-        .topBarLeading
-    }
-    #else
-    private var setlistBackButtonPlacement: ToolbarItemPlacement {
-        .navigation
-    }
-    #endif
-
-    private var displaySetlistName: String {
-        let trimmed = setlistName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "Setlist" : trimmed
     }
 
     private var songDetailContent: some View {
@@ -314,6 +289,6 @@ struct SongDetailView: View {
 
 #Preview {
     NavigationStack {
-        SongDetailView(song: Song(name: "Preview"), setlistName: "Preview Setlist")
+        SongDetailView(song: Song(name: "Preview"))
     }
 }

@@ -562,29 +562,21 @@ struct LiveSetlistWaveformScrollView: View {
     ) -> some View {
         let laneContentWidth = snapshot.contentWidth
 
-        VStack(alignment: .leading, spacing: 6) {
-            Text(snapshot.songName)
-                .font(isCurrent ? .subheadline.weight(.semibold) : .caption.weight(.medium))
-                .foregroundStyle(isCurrent ? .primary : .secondary)
-                .lineLimit(1)
-                .frame(width: laneContentWidth, alignment: .leading)
-
-            LiveSongWaveformView(
-                contentWidth: laneContentWidth,
-                trackSources: snapshot.trackSources,
-                fileDuration: snapshot.fileDuration,
-                timelineDuration: snapshot.timelineDuration,
-                sections: snapshot.sections,
-                loopSlotIDs: snapshot.loopSlotIDs,
-                cuedSectionID: isCurrent ? cuedSectionID : nil,
-                cueFlashPhase: isCurrent ? cueFlashPhase : false,
-                showsPlayhead: isCurrent,
-                isInteractive: isCurrent,
-                playheadTimeProvider: isCurrent ? playheadTimeProvider : nil,
-                onSeek: onSeek,
-                onCueSection: onCueSection
-            )
-        }
+        LiveSongWaveformView(
+            contentWidth: laneContentWidth,
+            trackSources: snapshot.trackSources,
+            fileDuration: snapshot.fileDuration,
+            timelineDuration: snapshot.timelineDuration,
+            sections: snapshot.sections,
+            loopSlotIDs: snapshot.loopSlotIDs,
+            cuedSectionID: isCurrent ? cuedSectionID : nil,
+            cueFlashPhase: isCurrent ? cueFlashPhase : false,
+            showsPlayhead: isCurrent,
+            isInteractive: isCurrent,
+            playheadTimeProvider: isCurrent ? playheadTimeProvider : nil,
+            onSeek: onSeek,
+            onCueSection: onCueSection
+        )
         .id(scrollID)
         .opacity(isCurrent ? 1 : 0.72)
     }

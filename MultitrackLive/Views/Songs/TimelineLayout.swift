@@ -430,6 +430,10 @@ enum MeasureTiming {
         "\(position.bar).\(position.beat).\(position.subdivision)"
     }
 
+    static func formatTransportPosition(_ position: MeasurePosition) -> String {
+        "\(position.bar) \(position.beat) \(position.subdivision)"
+    }
+
     static func formatElapsedTime(_ value: TimeInterval) -> String {
         let totalSeconds = max(0, Int(value))
         let hours = totalSeconds / 3600

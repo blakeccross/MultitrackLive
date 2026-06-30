@@ -495,9 +495,11 @@ struct EditView: View {
                 cueFlashPhase.toggle()
             }
         }
+#if os(macOS)
         .onDeleteCommand {
             removeClipSelection()
         }
+#endif
         .sheet(isPresented: $showingGroupEditor) {
             TrackGroupEditorView()
         }

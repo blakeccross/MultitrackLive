@@ -284,7 +284,7 @@ struct LivePlaybackView: View {
     @ViewBuilder
     private func songEditorDestinationContent(for setlist: Setlist) -> some View {
         if let songToEditID, let song = songForEditing(id: songToEditID) {
-            SongDetailView(song: song, setlistName: setlistDisplayName(for: setlist))
+            SongDetailView(song: song)
         }
     }
 
@@ -836,11 +836,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     var body: some ToolbarContent {
         #if os(macOS)
         if #available(macOS 26.0, *) {
-            ToolbarItem(placement: .navigation) {
-                songInfoBar
-            }
-            .sharedBackgroundVisibility(.hidden)
-
             ToolbarItem(placement: .principal) {
                 transportInfoBar
             }
@@ -866,10 +861,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             }
             .sharedBackgroundVisibility(.hidden)
         } else {
-            ToolbarItem(placement: .navigation) {
-                songInfoBar
-            }
-
             ToolbarItem(placement: .principal) {
                 transportInfoBar
             }
@@ -891,10 +882,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             }
         }
         #else
-        ToolbarItem(placement: .topBarLeading) {
-            songInfoBar
-        }
-
         ToolbarItem(placement: .principal) {
             transportInfoBar
         }
@@ -921,22 +908,8 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         #endif
     }
 
-    private var songInfoBar: some View {
-        LiveSetlistNowPlayingInfoView(
-            section: .songInfo,
-            coordinator: coordinator,
-            audioEngine: audioEngine,
-            isLoaded: isLoaded,
-            infoPanelHeight: $infoPanelHeight,
-            onStop: onStop,
-            onPlay: onPlay,
-            onPause: onPause
-        )
-    }
-
     private var transportInfoBar: some View {
         LiveSetlistNowPlayingInfoView(
-            section: .transportAndPosition,
             coordinator: coordinator,
             audioEngine: audioEngine,
             isLoaded: isLoaded,
