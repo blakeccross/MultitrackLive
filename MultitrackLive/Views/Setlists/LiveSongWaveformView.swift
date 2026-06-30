@@ -26,6 +26,12 @@ enum LiveSetlistWaveformMetrics {
     static let maximumWaveformHeight: CGFloat = 200
     static let laneVerticalPadding: CGFloat = 24
 
+    static let horizontalZoomAppStorageKey = "liveSetlistWaveformHorizontalZoom"
+    static let defaultHorizontalZoom: CGFloat = 1
+    static let defaultHorizontalZoomStorageValue = Double(defaultHorizontalZoom)
+    static let minimumHorizontalZoom: CGFloat = 1
+    static let maximumHorizontalZoom: CGFloat = 3
+
     static func clampedWaveformHeight(_ height: CGFloat) -> CGFloat {
         min(maximumWaveformHeight, max(minimumWaveformHeight, height))
     }
@@ -34,12 +40,24 @@ enum LiveSetlistWaveformMetrics {
         clampedWaveformHeight(CGFloat(value))
     }
 
-    static func storageValue(for waveformHeight: CGFloat) -> Double {
+    static func storageValue(forHeight waveformHeight: CGFloat) -> Double {
         Double(clampedWaveformHeight(waveformHeight))
     }
 
     static func laneHeight(for waveformHeight: CGFloat) -> CGFloat {
         clampedWaveformHeight(waveformHeight) + laneVerticalPadding
+    }
+
+    static func clampedHorizontalZoom(_ zoom: CGFloat) -> CGFloat {
+        min(maximumHorizontalZoom, max(minimumHorizontalZoom, zoom))
+    }
+
+    static func horizontalZoom(fromStorage value: Double) -> CGFloat {
+        clampedHorizontalZoom(CGFloat(value))
+    }
+
+    static func storageValue(forZoom horizontalZoom: CGFloat) -> Double {
+        Double(clampedHorizontalZoom(horizontalZoom))
     }
 }
 
@@ -79,7 +97,7 @@ struct LiveSetlistWaveformResizablePanel<Content: View>: View {
     }
 
     private func persistWaveformHeight() {
-        storedWaveformHeight = LiveSetlistWaveformMetrics.storageValue(for: waveformHeight)
+        storedWaveformHeight = LiveSetlistWaveformMetrics.storageValue(forHeight: waveformHeight)
     }
 }
 
@@ -481,11 +499,17 @@ struct LiveSetlistWaveformScrollView: View {
     let onSeek: (TimeInterval) -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
 
+    @AppStorage(LiveSetlistWaveformMetrics.horizontalZoomAppStorageKey)
+    private var storedHorizontalZoom = LiveSetlistWaveformMetrics.defaultHorizontalZoomStorageValue
+
     @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
 
     @State private var viewportWidth: CGFloat = 1
+    @State private var horizontalZoom = LiveSetlistWaveformMetrics.defaultHorizontalZoom
+    @State private var pinchStartZoom: CGFloat?
 
     private let laneSpacing: CGFloat = 24
+    private static let zoomAdjustmentStep: CGFloat = 0.25
 
     private var laneHeight: CGFloat {
         LiveSetlistWaveformMetrics.laneHeight(for: waveformHeight)
@@ -534,6 +558,7 @@ struct LiveSetlistWaveformScrollView: View {
                 scrollToCurrent(proxy)
             }
         }
+        .simultaneousGesture(horizontalPinchGesture)
         .background {
             GeometryReader { geometry in
                 Color.clear
@@ -545,6 +570,56 @@ struct LiveSetlistWaveformScrollView: View {
         .frame(maxWidth: .infinity)
         .frame(height: laneHeight)
         .animation(.none, value: waveformHeight)
+        .animation(.none, value: horizontalZoom)
+        .onAppear {
+            horizontalZoom = LiveSetlistWaveformMetrics.horizontalZoom(fromStorage: storedHorizontalZoom)
+        }
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment:
+                setHorizontalZoom(horizontalZoom + Self.zoomAdjustmentStep)
+            case .decrement:
+                setHorizontalZoom(horizontalZoom - Self.zoomAdjustmentStep)
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    private var horizontalPinchGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { scale in
+                if pinchStartZoom == nil {
+                    pinchStartZoom = horizontalZoom
+                }
+                guard let pinchStartZoom else { return }
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    horizontalZoom = LiveSetlistWaveformMetrics.clampedHorizontalZoom(pinchStartZoom * scale)
+                }
+            }
+            .onEnded { _ in
+                pinchStartZoom = nil
+                persistHorizontalZoom()
+            }
+    }
+
+    private func setHorizontalZoom(_ proposed: CGFloat) {
+        horizontalZoom = LiveSetlistWaveformMetrics.clampedHorizontalZoom(proposed)
+        persistHorizontalZoom()
+    }
+
+    private func persistHorizontalZoom() {
+        storedHorizontalZoom = LiveSetlistWaveformMetrics.storageValue(forZoom: horizontalZoom)
+    }
+
+    private func laneContentWidth(for snapshot: LiveSongWaveformSnapshot) -> CGFloat {
+        let fitWidth = max(
+            viewportWidth,
+            TimelineLayout.contentWidth(for: snapshot.timelineDuration, zoom: 1)
+        )
+        return fitWidth * horizontalZoom
     }
 
     private func scrollToCurrent(_ proxy: ScrollViewProxy) {
@@ -560,7 +635,7 @@ struct LiveSetlistWaveformScrollView: View {
         isCurrent: Bool,
         scrollID: String
     ) -> some View {
-        let laneContentWidth = snapshot.contentWidth
+        let laneContentWidth = laneContentWidth(for: snapshot)
 
         LiveSongWaveformView(
             contentWidth: laneContentWidth,
