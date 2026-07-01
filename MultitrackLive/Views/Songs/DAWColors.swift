@@ -58,6 +58,19 @@ extension Color {
         AppColors.textSecondary.opacity(0.6)
     }
 
+    /// Voice Memos–style live waveform colors.
+    static var liveVoiceMemosPlayed: Color {
+        Color(red: 1.0, green: 0.584, blue: 0.0)
+    }
+
+    static var liveVoiceMemosUnplayed: Color {
+        Color(white: 0.42)
+    }
+
+    static var liveVoiceMemosBackground: Color {
+        Color(white: 0.06)
+    }
+
     static var dawTrackHeaderSelected: Color {
         AppColors.trackHeaderSelected
     }

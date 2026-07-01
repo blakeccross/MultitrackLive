@@ -1197,7 +1197,10 @@ final class AudioEngineManager {
 
     private func startTimer() {
         stopTimer()
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+        // Scheduled in `.common` modes so the playhead keeps advancing while the
+        // run loop is in an event-tracking mode (e.g. an open context menu or an
+        // active scroll), instead of freezing while audio continues to play.
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             guard let self, self.isPlaying else { return }
             self.refreshCurrentTimeFromEngine()
             self.applyTrackPitch(at: self.currentTime)
@@ -1218,6 +1221,8 @@ final class AudioEngineManager {
                 self.onPlaybackFinished?()
             }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        playbackTimer = timer
     }
 
     private func stopTimer() {
