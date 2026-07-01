@@ -302,16 +302,14 @@ struct SongLibraryPanel: View {
         } else {
             List {
                 ForEach(filteredSongs) { song in
-                    SongLibraryRow(song: song) {
-                        onAddToSetlist(song)
-                    }
+                    SongLibraryRow(
+                        song: song,
+                        onSelect: { onEdit(song) },
+                        onAddToSetlist: { onAddToSetlist(song) }
+                    )
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
-                    .onTapGesture {
-                        guard !song.isClickOnly else { return }
-                        onEdit(song)
-                    }
                         .contextMenu {
                             songContextMenu(for: song)
                         }
@@ -676,6 +674,7 @@ private struct NewClickTrackSheet: View {
 
 private struct SongLibraryRow: View {
     let song: Song
+    let onSelect: () -> Void
     let onAddToSetlist: () -> Void
 
     private var subtitle: String {
@@ -695,24 +694,31 @@ private struct SongLibraryRow: View {
 
     var body: some View {
         HStack(spacing: AppSpacing.sm) {
-            RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
-                .fill(AppColors.surface)
-                .frame(width: 36, height: 36)
-                .overlay {
-                    Image(systemName: iconName)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppColors.textSecondary)
-                }
+            HStack(spacing: AppSpacing.sm) {
+                RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                    .fill(AppColors.surface)
+                    .frame(width: 36, height: 36)
+                    .overlay {
+                        Image(systemName: iconName)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(song.name)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
-                    .foregroundStyle(AppColors.textPrimary)
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(AppColors.textTertiary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(song.name)
+                        .font(.body.weight(.semibold))
+                        .lineLimit(2)
+                        .foregroundStyle(AppColors.textPrimary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(AppColors.textTertiary)
+                        .lineLimit(1)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !song.isClickOnly else { return }
+                onSelect()
             }
 
             Spacer(minLength: 0)

@@ -1,5 +1,8 @@
 import SwiftData
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 enum LiveGroupMixerDetent: Equatable {
     case hidden
@@ -11,7 +14,91 @@ enum LiveGroupMixerDetent: Equatable {
 }
 
 enum LivePlaybackSidebarMetrics {
-    static let sidebarWidth: CGFloat = 300
+    static let appStorageKey = "livePlaybackSidebarWidth"
+    static let defaultSidebarWidth: CGFloat = 300
+    static let defaultSidebarWidthStorageValue = Double(defaultSidebarWidth)
+    static let minimumSidebarWidth: CGFloat = 240
+    static let maximumSidebarWidth: CGFloat = 520
+    static let minimumMainWidth: CGFloat = 280
+    static let resizeHitAreaWidth: CGFloat = 10
+    private static let resizeAdjustmentStep: CGFloat = 16
+
+    static func clampedSidebarWidth(_ width: CGFloat, totalWidth: CGFloat) -> CGFloat {
+        let availableMaximum = max(minimumSidebarWidth, totalWidth - minimumMainWidth)
+        let cappedMaximum = min(maximumSidebarWidth, availableMaximum)
+        return min(cappedMaximum, max(minimumSidebarWidth, width))
+    }
+
+    static func sidebarWidth(fromStorage value: Double, totalWidth: CGFloat = .greatestFiniteMagnitude) -> CGFloat {
+        clampedSidebarWidth(CGFloat(value), totalWidth: totalWidth)
+    }
+
+    static func storageValue(forWidth width: CGFloat, totalWidth: CGFloat = .greatestFiniteMagnitude) -> Double {
+        Double(clampedSidebarWidth(width, totalWidth: totalWidth))
+    }
+
+    static func adjustedSidebarWidth(_ width: CGFloat, direction: AccessibilityAdjustmentDirection, totalWidth: CGFloat) -> CGFloat {
+        let delta: CGFloat
+        switch direction {
+        case .increment:
+            delta = resizeAdjustmentStep
+        case .decrement:
+            delta = -resizeAdjustmentStep
+        @unknown default:
+            delta = 0
+        }
+        return clampedSidebarWidth(width + delta, totalWidth: totalWidth)
+    }
+}
+
+private struct LivePlaybackSidebarResizeHandle: View {
+    @Binding var width: CGFloat
+    let totalWidth: CGFloat
+    let onResizeEnded: () -> Void
+
+    @State private var dragStartWidth: CGFloat?
+
+    var body: some View {
+        Color.clear
+            .frame(width: LivePlaybackSidebarMetrics.resizeHitAreaWidth)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+            DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { value in
+                    if dragStartWidth == nil {
+                        dragStartWidth = width
+                    }
+                    let proposed = (dragStartWidth ?? width) + value.translation.width
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        width = LivePlaybackSidebarMetrics.clampedSidebarWidth(proposed, totalWidth: totalWidth)
+                    }
+                }
+                .onEnded { _ in
+                    dragStartWidth = nil
+                    onResizeEnded()
+                }
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Song library width")
+        .accessibilityValue("\(Int(LivePlaybackSidebarMetrics.clampedSidebarWidth(width, totalWidth: totalWidth))) points")
+        .accessibilityAdjustableAction { direction in
+            width = LivePlaybackSidebarMetrics.adjustedSidebarWidth(width, direction: direction, totalWidth: totalWidth)
+            onResizeEnded()
+        }
+        #if os(macOS)
+        .onContinuousHover { phase in
+            switch phase {
+            case .active:
+                NSCursor.resizeLeftRight.push()
+            case .ended:
+                NSCursor.pop()
+            }
+        }
+        #endif
+    }
 }
 
 struct LivePlaybackSidebarLayout<Sidebar: View, MainContent: View>: View {
@@ -19,25 +106,69 @@ struct LivePlaybackSidebarLayout<Sidebar: View, MainContent: View>: View {
     @ViewBuilder let sidebar: () -> Sidebar
     @ViewBuilder let mainContent: () -> MainContent
 
+    @AppStorage(LivePlaybackSidebarMetrics.appStorageKey)
+    private var storedSidebarWidth = LivePlaybackSidebarMetrics.defaultSidebarWidthStorageValue
+
+    @State private var sidebarWidth = LivePlaybackSidebarMetrics.defaultSidebarWidth
+
     var body: some View {
-        HStack(spacing: 0) {
-            if isVisible {
-                sidebar()
-                    .frame(width: LivePlaybackSidebarMetrics.sidebarWidth)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .leading).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)
-                    ))
+        GeometryReader { geometry in
+            let clampedWidth = LivePlaybackSidebarMetrics.clampedSidebarWidth(
+                sidebarWidth,
+                totalWidth: geometry.size.width
+            )
 
-                Rectangle()
-                    .fill(AppColors.separator)
-                    .frame(width: 0.5)
+            HStack(spacing: 0) {
+                if isVisible {
+                    sidebar()
+                        .frame(width: clampedWidth)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .leading).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        ))
+
+                    Rectangle()
+                        .fill(AppColors.separator)
+                        .frame(width: 0.5)
+                }
+
+                mainContent()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-
-            mainContent()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .topLeading) {
+                if isVisible {
+                    LivePlaybackSidebarResizeHandle(
+                        width: $sidebarWidth,
+                        totalWidth: geometry.size.width,
+                        onResizeEnded: {
+                            persistSidebarWidth(totalWidth: geometry.size.width)
+                        }
+                    )
+                    .offset(
+                        x: clampedWidth + 0.25 - (LivePlaybackSidebarMetrics.resizeHitAreaWidth / 2)
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .onChange(of: geometry.size.width) { _, newWidth in
+                let clamped = LivePlaybackSidebarMetrics.clampedSidebarWidth(sidebarWidth, totalWidth: newWidth)
+                guard clamped != sidebarWidth else { return }
+                sidebarWidth = clamped
+                persistSidebarWidth(totalWidth: newWidth)
+            }
         }
         .animation(AppAnimation.springSmooth, value: isVisible)
+        .animation(.none, value: sidebarWidth)
+        .onAppear {
+            sidebarWidth = LivePlaybackSidebarMetrics.sidebarWidth(fromStorage: storedSidebarWidth)
+        }
+    }
+
+    private func persistSidebarWidth(totalWidth: CGFloat) {
+        storedSidebarWidth = LivePlaybackSidebarMetrics.storageValue(
+            forWidth: sidebarWidth,
+            totalWidth: totalWidth
+        )
     }
 }
 

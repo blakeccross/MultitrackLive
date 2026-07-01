@@ -569,62 +569,75 @@ struct LivePlaybackView: View {
     }
 
     private var setlistSection: some View {
-        setlistList
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Group {
+            if workingSetlist.sortedEntries.isEmpty {
+                AppEmptyState(
+                    title: "No Songs in Setlist",
+                    systemImage: "music.note.list",
+                    description: "Tap Add Song to build your setlist."
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(AppSpacing.md)
+            } else {
+                setlistList
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var setlistList: some View {
         List {
             Section {
-                if workingSetlist.sortedEntries.isEmpty {
-                    AppEmptyState(
-                        title: "No Songs in Setlist",
-                        systemImage: "music.note.list",
-                        description: "Tap Add Song to build your setlist."
-                    )
-                } else {
-                    ForEach(Array(workingSetlist.sortedEntries.enumerated()), id: \.element.id) { index, entry in
-                        if let song = entry.song {
-                            setlistEntryRow(song: song, entry: entry, index: index)
-                        }
+                ForEach(Array(workingSetlist.sortedEntries.enumerated()), id: \.element.id) { index, entry in
+                    if let song = entry.song {
+                        setlistEntryRow(song: song, entry: entry, index: index)
                     }
-                    .onMove { source, destination in
-                        viewModel.moveEntries(in: workingSetlist, from: source, to: destination, context: modelContext)
-                        coordinator.syncSetlist(workingSetlist)
+                }
+                .onMove { source, destination in
+                    viewModel.moveEntries(in: workingSetlist, from: source, to: destination, context: modelContext)
+                    coordinator.syncSetlist(workingSetlist)
+                }
+                .onDelete { indexSet in
+                    let entries = workingSetlist.sortedEntries
+                    for index in indexSet {
+                        viewModel.removeEntry(entries[index], from: workingSetlist, context: modelContext)
                     }
-                    .onDelete { indexSet in
-                        let entries = workingSetlist.sortedEntries
-                        for index in indexSet {
-                            viewModel.removeEntry(entries[index], from: workingSetlist, context: modelContext)
-                        }
-                        coordinator.syncSetlist(workingSetlist)
-                    }
+                    coordinator.syncSetlist(workingSetlist)
                 }
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .padding(AppSpacing.md)
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm)
     }
 
     private func setlistEntryRow(song: Song, entry: SetlistEntry, index: Int) -> some View {
         let transition = index < workingSetlist.sortedEntries.count - 1 ? entry.transition : nil
 
-        return HStack(spacing: 12) {
+        return SetlistPlaybackRow(
+            song: song,
+            index: index,
+            currentIndex: coordinator.currentIndex,
+            isPlaying: audioEngine.isPlaying,
+            transition: transition
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            coordinator.goToSong(at: index, autoPlay: audioEngine.isPlaying)
+        }
+        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .contextMenu {
             Button {
                 coordinator.goToSong(at: index, autoPlay: audioEngine.isPlaying)
             } label: {
-                SetlistPlaybackRow(
-                    song: song,
-                    index: index,
-                    currentIndex: coordinator.currentIndex,
-                    isPlaying: audioEngine.isPlaying
-                )
+                Label("Play", systemImage: "play.fill")
             }
-            .buttonStyle(.plain)
 
-            if let transition {
-                Menu {
+            if transition != nil {
+                Menu("Transition to Next") {
                     ForEach(SetlistTransition.allCases) { option in
                         Button {
                             viewModel.setTransition(option, for: entry, context: modelContext)
@@ -633,17 +646,7 @@ struct LivePlaybackView: View {
                             Label(option.label, systemImage: option.systemImage)
                         }
                     }
-                } label: {
-                    SetlistTransitionBadge(transition: transition, size: 24)
                 }
-                .menuStyle(.borderlessButton)
-            }
-        }
-        .contextMenu {
-            Button {
-                coordinator.goToSong(at: index, autoPlay: audioEngine.isPlaying)
-            } label: {
-                Label("Play", systemImage: "play.fill")
             }
 
             Button {
@@ -658,10 +661,6 @@ struct LivePlaybackView: View {
                 removeFromSetlist(entry)
             }
         }
-        .listRowBackground(
-            index == coordinator.currentIndex ? AppColors.surfaceElevated : Color.clear
-        )
-        .listRowSeparatorTint(AppColors.separator)
     }
 
     private func removeFromSetlist(_ entry: SetlistEntry) {
@@ -772,6 +771,7 @@ private struct SetlistPlaybackRow: View {
     let index: Int
     let currentIndex: Int
     let isPlaying: Bool
+    var transition: SetlistTransition? = nil
 
     private var isFinished: Bool {
         index < currentIndex
@@ -781,18 +781,43 @@ private struct SetlistPlaybackRow: View {
         index == currentIndex
     }
 
+    private var subtitle: String? {
+        if song.isClickOnly {
+            return song.clickTrackSummary
+        }
+        if let bpm = song.bpm {
+            return String(format: "%.0f BPM", bpm.rounded())
+        }
+        return nil
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: AppSpacing.sm) {
+        HStack(spacing: AppSpacing.sm) {
             Text("\(index + 1).")
-                .font(.caption.monospacedDigit())
+                .font(isCurrent ? .subheadline.monospacedDigit() : .caption.monospacedDigit())
                 .foregroundStyle(AppColors.textTertiary)
                 .frame(width: 24, alignment: .trailing)
 
-            Text(song.name)
-                .font(isCurrent ? .body.weight(.semibold) : .body)
-                .foregroundStyle(isFinished ? AppColors.textTertiary : AppColors.textPrimary)
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if isCurrent {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(AppColors.accent)
+                    .frame(width: 3, height: isCurrent ? 34 : 28)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(song.name)
+                    .font(isCurrent ? .title2.weight(.semibold) : .body)
+                    .foregroundStyle(isFinished ? AppColors.textTertiary : AppColors.textPrimary)
+                    .lineLimit(2)
+
+                if let subtitle {
+                    Text(subtitle)
+                        .font(isCurrent ? .subheadline : .caption)
+                        .foregroundStyle(AppColors.textTertiary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if isCurrent {
                 PlayingBadge(isPlaying: isPlaying)
@@ -801,8 +826,18 @@ private struct SetlistPlaybackRow: View {
                     .foregroundStyle(AppColors.textTertiary)
                     .font(.caption)
             }
+
+            if let transition {
+                SetlistTransitionBadge(transition: transition, size: 24)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.vertical, AppSpacing.xs)
+        .frame(maxWidth: .infinity, minHeight: isCurrent ? 60 : AppSpacing.rowMinHeight, alignment: .leading)
+        .background(
+            isCurrent ? AppColors.surfaceElevated : Color.clear,
+            in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+        )
         .opacity(isFinished ? 0.55 : 1)
     }
 }
