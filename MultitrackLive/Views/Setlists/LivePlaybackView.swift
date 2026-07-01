@@ -235,10 +235,13 @@ struct LivePlaybackView: View {
             setlistSwitcher: { setlistSwitcherMenu(for: setlist) },
             coordinator: coordinator,
             audioEngine: audioEngine,
+            sectionLoop: sectionLoop,
             isLoaded: coordinator.isLoaded && !coordinator.isLoadingSong,
+            canLoop: !loopSections.isEmpty,
             onStop: stopPlayback,
             onPlay: coordinator.play,
             onPause: coordinator.pause,
+            onToggleLoop: toggleSectionLoop,
             showingSongLibrary: $showingSongLibrary,
             showingManageOutputs: $showingManageOutputs,
             mixerDetent: $mixerDetent,
@@ -279,6 +282,17 @@ struct LivePlaybackView: View {
 
     private func snapToLoopSectionStart(_ section: ArrangementDisplaySection) {
         coordinator.snapToScheduledSection(section.timelineStartSeconds)
+    }
+
+    private func toggleSectionLoop() {
+        if sectionLoop.isLooping {
+            sectionLoop.endLoop()
+            return
+        }
+
+        guard let section = loopSections.section(atTimeline: audioEngine.currentTime) else { return }
+        clearMarkerCue()
+        sectionLoop.beginManualLoop(sectionID: section.id)
     }
 
     @ViewBuilder
@@ -421,12 +435,6 @@ struct LivePlaybackView: View {
             } else {
                 LiveSetlistWaveformResizablePanel {
                     waveformContent
-                }
-            }
-
-            if sectionLoop.isLooping {
-                AppSecondaryButton(title: "End Loop", systemImage: "repeat.circle") {
-                    sectionLoop.endLoop()
                 }
             }
         }
@@ -615,17 +623,24 @@ struct LivePlaybackView: View {
     private func setlistEntryRow(song: Song, entry: SetlistEntry, index: Int) -> some View {
         let transition = index < workingSetlist.sortedEntries.count - 1 ? entry.transition : nil
 
-        return SetlistPlaybackRow(
-            song: song,
-            index: index,
-            currentIndex: coordinator.currentIndex,
-            isPlaying: audioEngine.isPlaying,
-            transition: transition
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
+        return Button {
             coordinator.goToSong(at: index, autoPlay: audioEngine.isPlaying)
+        } label: {
+            SetlistPlaybackRow(
+                song: song,
+                index: index,
+                currentIndex: coordinator.currentIndex,
+                isPlaying: audioEngine.isPlaying,
+                transition: transition
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        #if os(macOS)
+        .focusEffectDisabled()
+        #endif
+        .appLinkPointer()
         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
@@ -858,10 +873,13 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @ViewBuilder let setlistSwitcher: Switcher
     let coordinator: PlaybackCoordinator
     @Bindable var audioEngine: AudioEngineManager
+    @Bindable var sectionLoop: SectionLoopController
     let isLoaded: Bool
+    let canLoop: Bool
     let onStop: () -> Void
     let onPlay: () -> Void
     let onPause: () -> Void
+    let onToggleLoop: () -> Void
     @Binding var showingSongLibrary: Bool
     @Binding var showingManageOutputs: Bool
     @Binding var mixerDetent: LiveGroupMixerDetent
@@ -947,11 +965,14 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         LiveSetlistNowPlayingInfoView(
             coordinator: coordinator,
             audioEngine: audioEngine,
+            sectionLoop: sectionLoop,
             isLoaded: isLoaded,
+            canLoop: canLoop,
             infoPanelHeight: $infoPanelHeight,
             onStop: onStop,
             onPlay: onPlay,
-            onPause: onPause
+            onPause: onPause,
+            onToggleLoop: onToggleLoop
         )
     }
 

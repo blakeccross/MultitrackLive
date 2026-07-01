@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 enum AppBackgroundLevel {
     case primary
@@ -35,6 +38,10 @@ extension View {
             .background(AppColors.surfaceElevated, in: Capsule())
             .foregroundStyle(isDisabled ? AppColors.textTertiary : AppColors.textSecondary)
     }
+
+    func appLinkPointer() -> some View {
+        modifier(AppLinkPointerModifier())
+    }
 }
 
 private func backgroundColor(for level: AppBackgroundLevel) -> Color {
@@ -43,6 +50,26 @@ private func backgroundColor(for level: AppBackgroundLevel) -> Color {
     case .secondary: AppColors.backgroundSecondary
     case .surface: AppColors.surface
     case .elevated: AppColors.surfaceElevated
+    }
+}
+
+private struct AppLinkPointerModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        if #available(macOS 15.0, *) {
+            content.pointerStyle(.link)
+        } else {
+            content.onHover { hovering in
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+        }
+        #else
+        content
+        #endif
     }
 }
 

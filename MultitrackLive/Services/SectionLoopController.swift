@@ -5,19 +5,33 @@ import Observation
 @Observable
 final class SectionLoopController {
     private(set) var activeSectionID: UUID?
+    /// Section the user is looping on demand, independent of the song's marked loop sections.
+    private(set) var manualSectionID: UUID?
     private var suppressedSectionIDs: Set<UUID> = []
 
-    var isLooping: Bool { activeSectionID != nil }
+    var isLooping: Bool { activeSectionID != nil || manualSectionID != nil }
 
     func reset() {
         activeSectionID = nil
+        manualSectionID = nil
         suppressedSectionIDs.removeAll()
+    }
+
+    /// Starts looping the given section regardless of whether it is a marked loop section.
+    func beginManualLoop(sectionID: UUID) {
+        manualSectionID = sectionID
+        activeSectionID = nil
+        suppressedSectionIDs.remove(sectionID)
     }
 
     func activeSection(
         in sections: [ArrangementDisplaySection],
         loopSlotIDs: Set<UUID>
     ) -> ArrangementDisplaySection? {
+        if let manualSectionID,
+           let section = sections.first(where: { $0.id == manualSectionID }) {
+            return section
+        }
         guard let activeSectionID,
               loopSlotIDs.contains(activeSectionID),
               let section = sections.first(where: { $0.id == activeSectionID }) else {
@@ -62,7 +76,11 @@ final class SectionLoopController {
         if let activeSectionID {
             suppressedSectionIDs.insert(activeSectionID)
         }
+        if let manualSectionID {
+            suppressedSectionIDs.insert(manualSectionID)
+        }
         activeSectionID = nil
+        manualSectionID = nil
     }
 
     func endLoopIfActive() {
@@ -93,7 +111,7 @@ final class SectionLoopController {
         loopSlotIDs: Set<UUID>,
         onActivate: () -> Void
     ) {
-        guard activeSectionID == nil, !loopSlotIDs.isEmpty else { return }
+        guard manualSectionID == nil, activeSectionID == nil, !loopSlotIDs.isEmpty else { return }
 
         guard let section = sections.loopSectionCandidate(
             at: time,

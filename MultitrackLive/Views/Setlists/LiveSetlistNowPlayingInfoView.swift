@@ -3,11 +3,14 @@ import SwiftUI
 struct LiveSetlistNowPlayingInfoView: View {
     let coordinator: PlaybackCoordinator
     @Bindable var audioEngine: AudioEngineManager
+    @Bindable var sectionLoop: SectionLoopController
     let isLoaded: Bool
+    let canLoop: Bool
     @Binding var infoPanelHeight: CGFloat
     let onStop: () -> Void
     let onPlay: () -> Void
     let onPause: () -> Void
+    let onToggleLoop: () -> Void
 
     var body: some View {
         Group {
@@ -50,6 +53,18 @@ struct LiveSetlistNowPlayingInfoView: View {
                     } else {
                         onPlay()
                     }
+                }
+
+                AppIconButton(
+                    systemImage: "repeat",
+                    size: transportButtonSize,
+                    isActive: sectionLoop.isLooping,
+                    isEnabled: isLoaded && canLoop,
+                    cornerRadius: transportButtonSize * 0.25,
+                    activeBackgroundColor: AppColors.accent,
+                    accessibilityLabel: sectionLoop.isLooping ? "End Loop" : "Loop Section"
+                ) {
+                    onToggleLoop()
                 }
             }
 
