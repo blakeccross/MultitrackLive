@@ -580,10 +580,79 @@ struct LiveSongWaveformView: View {
     }
 }
 
+struct SetlistWaveformHeaderMarker: View {
+    let title: String
+
+    @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
+
+    private var laneHeight: CGFloat {
+        LiveSetlistWaveformMetrics.laneHeight(for: waveformHeight)
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+            .fill(AppColors.backgroundSecondary)
+            .overlay {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppColors.textSecondary)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.center)
+                    .rotationEffect(.degrees(-90))
+                    .fixedSize()
+                    .frame(width: laneHeight - AppSpacing.md)
+            }
+            .frame(width: 40, height: laneHeight)
+    }
+}
+
+struct LiveSetlistClickTrackLane: View {
+    let song: Song
+
+    @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
+
+    private var laneHeight: CGFloat {
+        LiveSetlistWaveformMetrics.laneHeight(for: waveformHeight)
+    }
+
+    private var projectState: SongProjectBridge.ProjectState {
+        SongProjectBridge.projectStateOrDefaults(for: song)
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+            .fill(AppColors.surface)
+            .overlay {
+                VStack(spacing: AppSpacing.xs) {
+                    Image(systemName: "cursorarrow.click")
+                        .font(.title3)
+                        .foregroundStyle(AppColors.textTertiary)
+                    Text(song.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppColors.textPrimary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                    Text(
+                        String(
+                            format: "%.0f BPM • %d/%d",
+                            projectState.tempoChanges.referenceBPM,
+                            projectState.timeSignatureChanges.referenceNumerator,
+                            projectState.timeSignatureChanges.referenceDenominator
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(AppColors.textSecondary)
+                }
+                .padding(.horizontal, AppSpacing.sm)
+            }
+            .frame(width: 180, height: laneHeight)
+    }
+}
+
 struct LiveSetlistWaveformScrollView: View {
-    let currentSnapshot: LiveSongWaveformSnapshot
-    let nextSnapshot: LiveSongWaveformSnapshot?
-    let transitionToNext: SetlistTransition?
+    let timelineItems: [LiveSetlistTimelineItem]
+    let currentPlaybackIndex: Int
+    let songForID: (UUID) -> Song?
     let playheadTimeProvider: () -> TimeInterval
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
@@ -606,31 +675,16 @@ struct LiveSetlistWaveformScrollView: View {
         LiveSetlistWaveformMetrics.laneHeight(for: waveformHeight)
     }
 
+    private var currentSongScrollID: String {
+        "song-\(currentPlaybackIndex)"
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: true) {
                 HStack(alignment: .top, spacing: laneSpacing) {
-                    waveformLane(
-                        snapshot: currentSnapshot,
-                        isCurrent: true,
-                        scrollID: "current"
-                    )
-
-                    if let nextSnapshot {
-                        if let transitionToNext {
-                            VStack {
-                                Spacer()
-                                SetlistTransitionBadge(transition: transitionToNext)
-                                Spacer()
-                            }
-                            .frame(height: laneHeight)
-                        }
-
-                        waveformLane(
-                            snapshot: nextSnapshot,
-                            isCurrent: false,
-                            scrollID: "next"
-                        )
+                    ForEach(timelineItems) { item in
+                        timelineItemView(item)
                     }
                 }
                 .fixedSize(horizontal: true, vertical: false)
@@ -642,10 +696,7 @@ struct LiveSetlistWaveformScrollView: View {
             .onAppear {
                 scrollToCurrent(proxy)
             }
-            .onChange(of: currentSnapshot.songID) { _, _ in
-                scrollToCurrent(proxy)
-            }
-            .onChange(of: nextSnapshot?.songID) { _, _ in
+            .onChange(of: currentPlaybackIndex) { _, _ in
                 scrollToCurrent(proxy)
             }
         }
@@ -675,6 +726,36 @@ struct LiveSetlistWaveformScrollView: View {
                 break
             }
         }
+    }
+
+    @ViewBuilder
+    private func timelineItemView(_ item: LiveSetlistTimelineItem) -> some View {
+        switch item {
+        case .header(_, let title):
+            SetlistWaveformHeaderMarker(title: title)
+                .id(item.id)
+
+        case .song(let songID, let playbackIndex, let transitionAfter):
+            if let song = songForID(songID) {
+                HStack(alignment: .top, spacing: laneSpacing) {
+                    songLane(for: song, playbackIndex: playbackIndex)
+                        .id(item.id)
+
+                    if let transitionAfter {
+                        transitionBadge(transitionAfter)
+                    }
+                }
+            }
+        }
+    }
+
+    private func transitionBadge(_ transition: SetlistTransition) -> some View {
+        VStack {
+            Spacer()
+            SetlistTransitionBadge(transition: transition)
+            Spacer()
+        }
+        .frame(height: laneHeight)
     }
 
     private var horizontalPinchGesture: some Gesture {
@@ -716,15 +797,26 @@ struct LiveSetlistWaveformScrollView: View {
     private func scrollToCurrent(_ proxy: ScrollViewProxy) {
         Task { @MainActor in
             await Task.yield()
-            proxy.scrollTo("current", anchor: .leading)
+            proxy.scrollTo(currentSongScrollID, anchor: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func songLane(for song: Song, playbackIndex: Int) -> some View {
+        let isCurrent = playbackIndex == currentPlaybackIndex
+
+        if let snapshot = PlaybackCoordinator.makeWaveformSnapshot(for: song) {
+            waveformLane(snapshot: snapshot, isCurrent: isCurrent)
+        } else {
+            LiveSetlistClickTrackLane(song: song)
+                .opacity(isCurrent ? 1 : 0.72)
         }
     }
 
     @ViewBuilder
     private func waveformLane(
         snapshot: LiveSongWaveformSnapshot,
-        isCurrent: Bool,
-        scrollID: String
+        isCurrent: Bool
     ) -> some View {
         let laneContentWidth = laneContentWidth(for: snapshot)
 
@@ -743,7 +835,6 @@ struct LiveSetlistWaveformScrollView: View {
             onSeek: onSeek,
             onCueSection: onCueSection
         )
-        .id(scrollID)
         .opacity(isCurrent ? 1 : 0.72)
     }
 }

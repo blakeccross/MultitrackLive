@@ -511,11 +511,11 @@ struct LivePlaybackView: View {
 
     @ViewBuilder
     private var waveformContent: some View {
-        if let snapshot = coordinator.currentWaveformSnapshot {
+        if setlistHasSongs {
             LiveSetlistWaveformScrollView(
-                currentSnapshot: snapshot,
-                nextSnapshot: coordinator.nextWaveformSnapshot,
-                transitionToNext: coordinator.transitionAfterCurrentSong,
+                timelineItems: coordinator.timelineItems,
+                currentPlaybackIndex: coordinator.currentIndex,
+                songForID: { coordinator.song(for: $0) },
                 playheadTimeProvider: { coordinator.playbackDisplayTime },
                 cuedSectionID: cuedSectionID,
                 cueFlashPhase: cueFlashPhase,
@@ -527,13 +527,6 @@ struct LivePlaybackView: View {
                     loadingOverlay
                 }
             }
-        } else if coordinator.currentSong?.isClickOnly == true, coordinator.isLoaded {
-            LiveClickTrackNowPlayingView(song: coordinator.currentSong)
-                .overlay {
-                    if coordinator.isLoadingSong {
-                        loadingOverlay
-                    }
-                }
         } else if coordinator.isLoadingSong {
             LiveSetlistWaveformLoadingPlaceholder(
                 message: loadingMessage(for: coordinator.currentSong)
@@ -556,65 +549,6 @@ struct LivePlaybackView: View {
             ProgressView(loadingMessage(for: coordinator.currentSong))
                 .padding(12)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        }
-    }
-
-    private struct LiveClickTrackNowPlayingView: View {
-        let song: Song?
-
-        @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
-
-        private var panelHeight: CGFloat {
-            LiveSetlistWaveformMetrics.laneHeight(for: waveformHeight)
-        }
-
-        private var projectState: SongProjectBridge.ProjectState {
-            guard let song else {
-                return SongProjectBridge.ProjectState(
-                    markers: [],
-                    arrangement: SongArrangementStore.defaultArrangement(for: []),
-                    tempoChanges: [],
-                    timeSignatureChanges: [],
-                    midiEvents: []
-                )
-            }
-            return SongProjectBridge.projectStateOrDefaults(for: song)
-        }
-
-        private var tempoChanges: [TempoChange] {
-            projectState.tempoChanges
-        }
-
-        private var timeSignatureChanges: [TimeSignatureChange] {
-            projectState.timeSignatureChanges
-        }
-
-        var body: some View {
-            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
-                .fill(AppColors.surface)
-                .overlay {
-                    VStack(spacing: AppSpacing.xs) {
-                        Image(systemName: "cursorarrow.click")
-                            .font(.title2)
-                            .foregroundStyle(AppColors.textTertiary)
-                        Text(song?.name ?? "Click Track")
-                            .font(AppTypography.title())
-                            .foregroundStyle(AppColors.textPrimary)
-                        Text(
-                            String(
-                                format: "%.0f BPM • %d/%d",
-                                tempoChanges.referenceBPM,
-                                timeSignatureChanges.referenceNumerator,
-                                timeSignatureChanges.referenceDenominator
-                            )
-                        )
-                        .font(.subheadline)
-                        .foregroundStyle(AppColors.textSecondary)
-                    }
-                    .padding()
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: panelHeight)
         }
     }
 

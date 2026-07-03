@@ -20,6 +20,20 @@ struct LiveSongWaveformSnapshot: Identifiable {
     }
 }
 
+enum LiveSetlistTimelineItem: Identifiable {
+    case header(scrollID: String, title: String)
+    case song(songID: UUID, playbackIndex: Int, transitionAfter: SetlistTransition?)
+
+    var id: String {
+        switch self {
+        case .header(let scrollID, _):
+            scrollID
+        case .song(_, let playbackIndex, _):
+            "song-\(playbackIndex)"
+        }
+    }
+}
+
 @Observable
 final class PlaybackCoordinator {
     private static let overlapLog = Logger(subsystem: "com.blakecross.MultitrackLive", category: "SongOverlap")
@@ -33,7 +47,7 @@ final class PlaybackCoordinator {
     private(set) var isLoadingSong = false
     private(set) var loadError: String?
     private(set) var currentWaveformSnapshot: LiveSongWaveformSnapshot?
-    private(set) var nextWaveformSnapshot: LiveSongWaveformSnapshot?
+    private(set) var timelineItems: [LiveSetlistTimelineItem] = []
 
     private var loadedSongID: UUID?
     private var loadTask: Task<Void, Never>?
@@ -69,6 +83,10 @@ final class PlaybackCoordinator {
     var transitionAfterCurrentSong: SetlistTransition? {
         guard transitions.indices.contains(currentIndex) else { return nil }
         return transitions[currentIndex]
+    }
+
+    func song(for id: UUID) -> Song? {
+        songs.first { $0.id == id }
     }
 
     var isInOverlapTransition: Bool {
@@ -146,13 +164,35 @@ final class PlaybackCoordinator {
     private func applySetlistEntries(_ entries: [SetlistEntry]) {
         var syncedSongs: [Song] = []
         var syncedTransitions: [SetlistTransition] = []
-        for entry in entries {
-            guard let song = entry.song else { continue }
-            syncedSongs.append(song)
-            syncedTransitions.append(entry.transition)
+        var syncedTimeline: [LiveSetlistTimelineItem] = []
+
+        var songIndex = 0
+        for (index, entry) in entries.enumerated() {
+            if entry.isHeader {
+                syncedTimeline.append(
+                    .header(
+                        scrollID: "header-\(entry.persistentModelID)",
+                        title: entry.headerTitle ?? ""
+                    )
+                )
+            } else if let song = entry.song {
+                let hasNextSong = entries[(index + 1)...].contains { $0.song != nil }
+                syncedTimeline.append(
+                    .song(
+                        songID: song.id,
+                        playbackIndex: songIndex,
+                        transitionAfter: hasNextSong ? entry.transition : nil
+                    )
+                )
+                syncedSongs.append(song)
+                syncedTransitions.append(entry.transition)
+                songIndex += 1
+            }
         }
+
         songs = syncedSongs
         transitions = syncedTransitions
+        timelineItems = syncedTimeline
     }
 
     private func handlePlaybackFinished() {
@@ -406,7 +446,6 @@ final class PlaybackCoordinator {
             isLoaded = false
             loadedSongID = nil
             currentWaveformSnapshot = nil
-            nextWaveformSnapshot = nil
             loadError = nil
             return
         }
@@ -441,7 +480,6 @@ final class PlaybackCoordinator {
                 applySongEngineState(for: song)
                 applyGroupMixFromProvider()
                 currentWaveformSnapshot = nil
-                nextWaveformSnapshot = nextSong?.isClickOnly == true ? nil : nextSong.flatMap { Self.makeWaveformSnapshot(for: $0) }
                 loadedSongID = song.id
                 isLoaded = true
                 loadError = nil
@@ -455,7 +493,6 @@ final class PlaybackCoordinator {
             } catch {
                 loadedSongID = nil
                 currentWaveformSnapshot = nil
-                nextWaveformSnapshot = nil
                 isLoaded = false
                 loadError = error.localizedDescription
             }
@@ -501,7 +538,6 @@ final class PlaybackCoordinator {
                 configureMIDIPlayback(for: song)
                 applyGroupMixFromProvider()
                 currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
-                nextWaveformSnapshot = nextSong.flatMap { Self.makeWaveformSnapshot(for: $0) }
                 loadedSongID = song.id
                 isLoaded = true
                 loadError = nil
@@ -515,7 +551,6 @@ final class PlaybackCoordinator {
             } catch {
                 loadedSongID = nil
                 currentWaveformSnapshot = nil
-                nextWaveformSnapshot = nil
                 isLoaded = false
                 loadError = error.localizedDescription
             }
@@ -526,7 +561,6 @@ final class PlaybackCoordinator {
             } else {
                 loadedSongID = nil
                 currentWaveformSnapshot = nil
-                nextWaveformSnapshot = nil
                 isLoaded = false
                 loadError = error.localizedDescription
             }
@@ -536,11 +570,9 @@ final class PlaybackCoordinator {
     private func refreshWaveformSnapshots() {
         guard let song = currentSong else {
             currentWaveformSnapshot = nil
-            nextWaveformSnapshot = nil
             return
         }
         currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
-        nextWaveformSnapshot = nextSong.flatMap { Self.makeWaveformSnapshot(for: $0) }
     }
 
     private struct SongEngineLayout {
