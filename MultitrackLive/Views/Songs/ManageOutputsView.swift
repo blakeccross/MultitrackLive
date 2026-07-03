@@ -51,9 +51,10 @@ struct ManageOutputsView: View {
                 }
                 .onAppear(perform: loadState)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         #if os(macOS)
-        .frame(minWidth: 500, idealWidth: 520, minHeight: 520)
+        .frame(minWidth: 500, idealWidth: 520, minHeight: 300, idealHeight: 400, maxHeight: 460)
         #endif
     }
 

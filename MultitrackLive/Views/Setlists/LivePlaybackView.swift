@@ -111,38 +111,16 @@ struct LivePlaybackView: View {
     }
 
     private func playbackBody(for setlist: Setlist) -> some View {
-        LivePlaybackSidebarLayout(isVisible: $showingSongLibrary) {
-            SongLibraryPanel(
-                onEdit: { song in
-                    guard !song.isClickOnly else { return }
-                    showingSongLibrary = false
-                    songToEditID = song.id
-                },
-                onDismiss: {
-                    showingSongLibrary = false
-                },
-                onRequestFolderImport: {
-                    showingSongLibrary = false
-                    showingSongFolderImporter = true
-                },
-                onRequestTrackImport: { song in
-                    showingSongLibrary = false
-                    songPendingTrackImport = song
-                },
-                onAddToSetlist: { song in
-                    addSong(song, at: workingSetlist.sortedEntries.count)
-                }
-            )
-        } mainContent: {
-            LivePlaybackMixerSplitLayout(
-                mixerDetent: $mixerDetent,
-                onMixChange: {
-                    coordinator.updateGroupMix(context: modelContext)
-                },
-                mainContent: {
-                    playbackMainSection
-                }
-            )
+        Group {
+            #if os(macOS)
+            LivePlaybackSidebarLayout(isVisible: $showingSongLibrary) {
+                songLibraryPanel()
+            } mainContent: {
+                playbackMainLayout
+            }
+            #else
+            playbackMainLayout
+            #endif
         }
         #if os(macOS)
         .navigationTitle("")
@@ -163,6 +141,19 @@ struct LivePlaybackView: View {
                 coordinator.applyOutputRouting()
             }
         }
+        #if os(iOS)
+        .sheet(isPresented: $showingSongLibrary) {
+            AppSheetContainer {
+                NavigationStack {
+                    songLibraryPanel()
+                        .navigationDestination(isPresented: songEditorDestination) {
+                            songEditorDestinationContent(for: setlist)
+                        }
+                }
+            }
+            .presentationDetents([.large])
+        }
+        #endif
         .fileImporter(
             isPresented: $showingSongFolderImporter,
             allowedContentTypes: [.folder],
@@ -218,7 +209,15 @@ struct LivePlaybackView: View {
         }
         .onChange(of: activeSetlistID) { _, _ in
             showingSongLibrary = false
+            songToEditID = nil
         }
+        #if os(iOS)
+        .onChange(of: showingSongLibrary) { _, isShowing in
+            if !isShowing {
+                songToEditID = nil
+            }
+        }
+        #endif
         .onDisappear {
             stopPlayback()
         }
@@ -231,9 +230,59 @@ struct LivePlaybackView: View {
             }
             handleSongEditorDismissed(newValue)
         }
+        #if os(macOS)
         .navigationDestination(isPresented: songEditorDestination) {
             songEditorDestinationContent(for: setlist)
         }
+        #endif
+    }
+
+    private var playbackMainLayout: some View {
+        LivePlaybackMixerSplitLayout(
+            mixerDetent: $mixerDetent,
+            onMixChange: {
+                coordinator.updateGroupMix(context: modelContext)
+            },
+            mainContent: {
+                playbackMainSection
+            }
+        )
+    }
+
+    private func songLibraryPanel() -> some View {
+        SongLibraryPanel(
+            onEdit: { song in
+                guard !song.isClickOnly else { return }
+                #if os(macOS)
+                showingSongLibrary = false
+                #endif
+                songToEditID = song.id
+            },
+            onDismiss: {
+                showingSongLibrary = false
+            },
+            onRequestFolderImport: {
+                showingSongLibrary = false
+                showingSongFolderImporter = true
+            },
+            onRequestTrackImport: { song in
+                showingSongLibrary = false
+                songPendingTrackImport = song
+            },
+            onAddToSetlist: { song in
+                addSong(song, at: workingSetlist.sortedEntries.count)
+            }
+        )
+    }
+
+    private func presentSongEditor(for song: Song) {
+        guard !song.isClickOnly else { return }
+        #if os(iOS)
+        showingSongLibrary = true
+        #else
+        showingSongLibrary = false
+        #endif
+        songToEditID = song.id
     }
 
     private var songEditorDestination: Binding<Bool> {
@@ -425,15 +474,21 @@ struct LivePlaybackView: View {
         switchToSetlist(newSetlist)
     }
 
+    private var setlistHasSongs: Bool {
+        workingSetlist.sortedEntries.contains { $0.song != nil }
+    }
+
     private var playbackMainSection: some View {
         VStack(spacing: 0) {
-            currentSongSection
-                .padding(AppSpacing.md)
-                .background(AppColors.backgroundSecondary)
+            if setlistHasSongs {
+                currentSongSection
+                    .padding(AppSpacing.md)
+                    .background(AppColors.backgroundSecondary)
 
-            Rectangle()
-                .fill(AppColors.separator)
-                .frame(height: 0.5)
+                Rectangle()
+                    .fill(AppColors.separator)
+                    .frame(height: 0.5)
+            }
 
             setlistSection
                 .background(AppColors.backgroundPrimary)
@@ -667,7 +722,7 @@ struct LivePlaybackView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
+            .listRowBackground(AppColors.backgroundSecondary)
             .contextMenu {
                 Button {
                     headerPendingEdit = entry
@@ -728,8 +783,7 @@ struct LivePlaybackView: View {
             }
 
             Button {
-                guard !song.isClickOnly else { return }
-                songToEditID = song.id
+                presentSongEditor(for: song)
             } label: {
                 Label("Edit", systemImage: "pencil")
             }

@@ -407,7 +407,7 @@ final class PlaybackCoordinator {
             loadedSongID = nil
             currentWaveformSnapshot = nil
             nextWaveformSnapshot = nil
-            loadError = songs.isEmpty ? "Setlist has no songs." : nil
+            loadError = nil
             return
         }
 
