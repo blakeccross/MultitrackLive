@@ -34,4 +34,19 @@ final class Setlist {
     var sortedEntries: [SetlistEntry] {
         entries.sorted { $0.sortOrder < $1.sortOrder }
     }
+
+    func playbackIndex(for entry: SetlistEntry) -> Int? {
+        guard entry.song != nil else { return nil }
+        var songIndex = 0
+        for e in sortedEntries {
+            if e === entry { return songIndex }
+            if e.song != nil { songIndex += 1 }
+        }
+        return nil
+    }
+
+    func hasNextSong(after entry: SetlistEntry) -> Bool {
+        guard let idx = sortedEntries.firstIndex(where: { $0 === entry }) else { return false }
+        return sortedEntries[(idx + 1)...].contains { $0.song != nil }
+    }
 }

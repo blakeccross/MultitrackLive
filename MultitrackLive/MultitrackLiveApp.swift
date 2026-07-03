@@ -1,6 +1,15 @@
 import SwiftData
 import SwiftUI
 
+#if os(macOS)
+private enum AppWindowMetrics {
+    static let minimumWidth: CGFloat = 960
+    static let minimumHeight: CGFloat = 600
+    static let defaultWidth: CGFloat = 1280
+    static let defaultHeight: CGFloat = 800
+}
+#endif
+
 @main
 struct MultitrackLiveApp: App {
     private let modelContainer: ModelContainer
@@ -16,10 +25,21 @@ struct MultitrackLiveApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                #if os(macOS)
+                .frame(
+                    minWidth: AppWindowMetrics.minimumWidth,
+                    minHeight: AppWindowMetrics.minimumHeight
+                )
+                #endif
                 .preferredColorScheme(.dark)
         }
         .modelContainer(modelContainer)
         #if os(macOS)
+        .defaultSize(
+            width: AppWindowMetrics.defaultWidth,
+            height: AppWindowMetrics.defaultHeight
+        )
+        .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unified)
         .commands {
             FileMenuCommands()

@@ -51,6 +51,8 @@ struct LivePlaybackView: View {
     @State private var songImportFeedback: SongImportFeedback?
     @State private var infoPanelHeight: CGFloat = 0
     @State private var mixerDetent: LiveGroupMixerDetent = .hidden
+    @State private var headerPendingEdit: SetlistEntry?
+    @State private var editHeaderTitle = ""
 
     private var activeSetlist: Setlist? {
         if let activeSetlistID,
@@ -93,6 +95,18 @@ struct LivePlaybackView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Enter a name for this setlist.")
+        }
+        .alert("Edit Header", isPresented: Binding(
+            get: { headerPendingEdit != nil },
+            set: { if !$0 { headerPendingEdit = nil } }
+        )) {
+            TextField("Header title", text: $editHeaderTitle)
+            Button("Save") {
+                saveHeaderEdit()
+            }
+            Button("Cancel", role: .cancel) {
+                headerPendingEdit = nil
+            }
         }
     }
 
@@ -586,6 +600,10 @@ struct LivePlaybackView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(AppSpacing.md)
+                .contentShape(Rectangle())
+                .contextMenu {
+                    addHeaderContextMenu
+                }
             } else {
                 setlistList
             }
@@ -593,42 +611,87 @@ struct LivePlaybackView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    @ViewBuilder
+    private var addHeaderContextMenu: some View {
+        Button {
+            addHeader()
+        } label: {
+            Label("Add Header", systemImage: "text.line.first.and.arrowtriangle.forward")
+        }
+    }
+
     private var setlistList: some View {
-        List {
-            Section {
-                ForEach(Array(workingSetlist.sortedEntries.enumerated()), id: \.element.id) { index, entry in
-                    if let song = entry.song {
-                        setlistEntryRow(song: song, entry: entry, index: index)
+        GeometryReader { geometry in
+            List {
+                Section {
+                    ForEach(Array(workingSetlist.sortedEntries.enumerated()), id: \.element.id) { _, entry in
+                        if entry.isHeader {
+                            setlistHeaderRow(entry: entry)
+                        } else if let song = entry.song {
+                            setlistEntryRow(song: song, entry: entry)
+                        }
                     }
-                }
-                .onMove { source, destination in
-                    viewModel.moveEntries(in: workingSetlist, from: source, to: destination, context: modelContext)
-                    coordinator.syncSetlist(workingSetlist)
-                }
-                .onDelete { indexSet in
-                    let entries = workingSetlist.sortedEntries
-                    for index in indexSet {
-                        viewModel.removeEntry(entries[index], from: workingSetlist, context: modelContext)
+                    .onMove { source, destination in
+                        viewModel.moveEntries(in: workingSetlist, from: source, to: destination, context: modelContext)
+                        coordinator.syncSetlist(workingSetlist)
                     }
-                    coordinator.syncSetlist(workingSetlist)
+                    .onDelete { indexSet in
+                        let entries = workingSetlist.sortedEntries
+                        for index in indexSet {
+                            viewModel.removeEntry(entries[index], from: workingSetlist, context: modelContext)
+                        }
+                        coordinator.syncSetlist(workingSetlist)
+                    }
+
+                    Color.clear
+                        .frame(minHeight: geometry.size.height)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .contentShape(Rectangle())
+                        .contextMenu {
+                            addHeaderContextMenu
+                        }
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, AppSpacing.md)
         .padding(.vertical, AppSpacing.sm)
     }
 
-    private func setlistEntryRow(song: Song, entry: SetlistEntry, index: Int) -> some View {
-        let transition = index < workingSetlist.sortedEntries.count - 1 ? entry.transition : nil
+    private func setlistHeaderRow(entry: SetlistEntry) -> some View {
+        SetlistHeaderRow(title: entry.headerTitle ?? "")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .contextMenu {
+                Button {
+                    headerPendingEdit = entry
+                    editHeaderTitle = entry.headerTitle ?? ""
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+
+                Button("Remove from Setlist", role: .destructive) {
+                    removeFromSetlist(entry)
+                }
+            }
+    }
+
+    private func setlistEntryRow(song: Song, entry: SetlistEntry) -> some View {
+        let playbackIndex = workingSetlist.playbackIndex(for: entry) ?? 0
+        let transition = workingSetlist.hasNextSong(after: entry) ? entry.transition : nil
 
         return Button {
-            coordinator.goToSong(at: index, autoPlay: audioEngine.isPlaying)
+            coordinator.goToSong(at: playbackIndex, autoPlay: audioEngine.isPlaying)
         } label: {
             SetlistPlaybackRow(
                 song: song,
-                index: index,
+                index: playbackIndex,
                 currentIndex: coordinator.currentIndex,
                 isPlaying: audioEngine.isPlaying,
                 transition: transition
@@ -646,7 +709,7 @@ struct LivePlaybackView: View {
         .listRowBackground(Color.clear)
         .contextMenu {
             Button {
-                coordinator.goToSong(at: index, autoPlay: audioEngine.isPlaying)
+                coordinator.goToSong(at: playbackIndex, autoPlay: audioEngine.isPlaying)
             } label: {
                 Label("Play", systemImage: "play.fill")
             }
@@ -691,6 +754,21 @@ struct LivePlaybackView: View {
     private func addSong(_ song: Song, at index: Int) {
         viewModel.insertSong(song, at: index, to: workingSetlist, context: modelContext)
         coordinator.syncSetlist(workingSetlist)
+    }
+
+    private func addHeader() {
+        let index = workingSetlist.sortedEntries.count
+        viewModel.insertHeader(title: "New Header", at: index, to: workingSetlist, context: modelContext)
+        if let entry = workingSetlist.sortedEntries.last(where: { $0.isHeader }) {
+            headerPendingEdit = entry
+            editHeaderTitle = entry.headerTitle ?? "New Header"
+        }
+    }
+
+    private func saveHeaderEdit() {
+        guard let entry = headerPendingEdit else { return }
+        viewModel.renameHeader(entry, title: editHeaderTitle, context: modelContext)
+        headerPendingEdit = nil
     }
 
     private var loopSlotIDs: Set<UUID> {
@@ -778,6 +856,20 @@ private struct LivePlaybackMonitorSupport: View {
             onLoop: onLoop,
             onLoopActivated: onLoopActivated
         )
+    }
+}
+
+private struct SetlistHeaderRow: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(AppColors.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, AppSpacing.sm)
+            .padding(.vertical, AppSpacing.xs)
+            .frame(minHeight: AppSpacing.rowMinHeight, alignment: .leading)
     }
 }
 
@@ -889,6 +981,11 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     var body: some ToolbarContent {
         #if os(macOS)
         if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .navigation) {
+                setlistSwitcher
+            }
+            .sharedBackgroundVisibility(.hidden)
+
             ToolbarItem(placement: .principal) {
                 transportInfoBar
             }
@@ -896,11 +993,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
 
             ToolbarItem(placement: .primaryAction) {
                 songsButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .automatic) {
-                setlistSwitcher
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -914,16 +1006,16 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             }
             .sharedBackgroundVisibility(.hidden)
         } else {
+            ToolbarItem(placement: .navigation) {
+                setlistSwitcher
+            }
+
             ToolbarItem(placement: .principal) {
                 transportInfoBar
             }
 
             ToolbarItem(placement: .primaryAction) {
                 songsButton
-            }
-
-            ToolbarItem(placement: .automatic) {
-                setlistSwitcher
             }
 
             ToolbarItem(placement: .automatic) {
@@ -935,16 +1027,16 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             }
         }
         #else
+        ToolbarItem(placement: .navigation) {
+            setlistSwitcher
+        }
+
         ToolbarItem(placement: .principal) {
             transportInfoBar
         }
 
         ToolbarItem(placement: .primaryAction) {
             songsButton
-        }
-
-        ToolbarItem(placement: .automatic) {
-            setlistSwitcher
         }
 
         ToolbarItem(placement: .automatic) {
