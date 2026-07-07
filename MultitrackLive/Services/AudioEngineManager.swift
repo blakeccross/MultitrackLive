@@ -1025,8 +1025,16 @@ final class AudioEngineManager {
             return Self.openEndedTimelineDuration
         }
 
-        if usesArrangement {
-            return masterArrangementSections.last?.timelineEndSeconds ?? 0
+        let trackEnd = arrangementSectionsByTrack.values
+            .flatMap { $0 }
+            .map(\.timelineEndSeconds)
+            .max() ?? 0
+
+        if usesArrangement || trackEnd > 0 {
+            return SongArrangementStore.effectiveTimelineDuration(
+                rulerSections: usesArrangement ? masterArrangementSections : [],
+                trackSections: arrangementSectionsByTrack
+            )
         }
 
         return tracks.values.map { track in

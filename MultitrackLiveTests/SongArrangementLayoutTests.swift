@@ -367,4 +367,82 @@ final class SongArrangementLayoutTests: XCTestCase {
         )
         XCTAssertEqual(peakSections.first?.timelineStartSeconds ?? -1, 0, accuracy: 0.001)
     }
+
+    func testEffectiveTimelineDurationShortensAfterRippleDelete() {
+        var markers = [
+            ArrangementMarker(name: "Intro", startSeconds: 0, sortOrder: 0),
+            ArrangementMarker(name: "Verse", startSeconds: 40, sortOrder: 1),
+        ]
+        var slots = SongArrangementStore.defaultSlots(from: markers)
+        let trackID = UUID()
+        var clipRegions: [ClipRegion] = []
+        var loopSlotIDs: Set<UUID> = []
+        var tempoChanges = [TempoChange(startMeasure: 1, bpm: 120)]
+        var timeSignatureChanges = [
+            TimeSignatureChange(numerator: 4, denominator: 4, startMeasure: 1, sortOrder: 0),
+        ]
+        var midiEvents: [MIDIEvent] = []
+        var clipGaps: [ArrangementClipGap] = []
+
+        _ = TimelineRippleStore.rippleDeleteMeasures(
+            startMeasure: 1,
+            endMeasure: 3,
+            markers: &markers,
+            slots: &slots,
+            clipTrims: [],
+            removedClips: [],
+            clipGaps: &clipGaps,
+            clipRegions: &clipRegions,
+            loopSlotIDs: &loopSlotIDs,
+            tempoChanges: &tempoChanges,
+            timeSignatureChanges: &timeSignatureChanges,
+            midiEvents: &midiEvents,
+            tracks: [
+                TimelineRippleStore.Track(id: trackID, trimStart: 0, trimEnd: 60, sourceDuration: 60),
+            ],
+            defaultBPM: 120,
+            defaultNumerator: 4,
+            defaultDenominator: 4
+        )
+
+        let inputs = SongArrangementStore.makeLayoutInputs(
+            markers: markers,
+            trackIDs: [trackID],
+            sourceDurationForTrack: { _ in 60 }
+        )
+        let playbackLayout = SongArrangementStore.playbackLayoutSnapshot(
+            slots: slots,
+            clipTrims: [],
+            removedClips: [],
+            clipGaps: clipGaps,
+            clipRegions: clipRegions,
+            tracks: [(trackID, 0, 60)],
+            inputs: inputs
+        )
+
+        let duration = SongArrangementStore.effectiveTimelineDuration(
+            rulerSections: playbackLayout.rulerSections,
+            trackSections: playbackLayout.trackSections
+        )
+        XCTAssertEqual(duration, 56, accuracy: 0.001)
+        XCTAssertEqual(playbackLayout.rulerSections.last?.timelineEndSeconds ?? 0, 56, accuracy: 0.001)
+
+        let playbackSections = SongArrangementStore.playbackTrackSections(
+            for: trackID,
+            trimStart: 0,
+            trimEnd: 60,
+            slots: slots,
+            clipTrims: [],
+            removedClips: [],
+            clipRegions: clipRegions,
+            inputs: inputs
+        )
+        let mapper = ArrangementTimelineMapper(
+            sections: playbackSections,
+            trimStart: 0,
+            trimEnd: 60,
+            usesArrangement: true
+        )
+        XCTAssertEqual(mapper.sourceSeconds(atMasterTimeline: 55) ?? -1, 59, accuracy: 0.001)
+    }
 }

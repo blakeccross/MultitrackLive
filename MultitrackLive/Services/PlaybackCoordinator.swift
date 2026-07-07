@@ -754,12 +754,10 @@ final class PlaybackCoordinator {
             playbackLayout: playbackLayout,
             rulerSections: playbackLayout.rulerSections
         )
-        let playbackEnd = playbackLayout.trackSections.values
-            .flatMap { $0 }
-            .map(\.timelineEndSeconds)
-            .max() ?? 0
-        let rulerEnd = playbackLayout.rulerSections.last?.timelineEndSeconds ?? 0
-        let timelineDuration = max(playbackEnd, rulerEnd, 0.001)
+        let timelineDuration = SongArrangementStore.effectiveTimelineDuration(
+            rulerSections: playbackLayout.rulerSections,
+            trackSections: playbackLayout.trackSections
+        )
 
         return LiveSongWaveformSnapshot(
             songID: song.id,

@@ -214,10 +214,6 @@ enum SongTrackLoader {
         for song: Song,
         sourceDurationForTrack: @escaping (UUID) -> TimeInterval
     ) -> TimeInterval {
-        let fileDuration = song.sortedTracks
-            .map { sourceDurationForTrack($0.id) }
-            .max() ?? 0
-
         let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
         let markers = projectState.markers
         let arrangement = projectState.arrangement
@@ -235,7 +231,10 @@ enum SongTrackLoader {
             inputs: inputs
         )
 
-        return max(layout.rulerSections.last?.timelineEndSeconds ?? fileDuration, fileDuration, 1)
+        return SongArrangementStore.effectiveTimelineDuration(
+            rulerSections: layout.rulerSections,
+            trackSections: layout.trackSections
+        )
     }
 
     static func clickTrackPayload(

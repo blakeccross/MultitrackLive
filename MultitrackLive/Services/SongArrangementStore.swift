@@ -57,7 +57,10 @@ enum SongArrangementStore {
                 )
             }
         )
-        return ArrangementLayoutSnapshot(rulerSections: rulerSections, trackSections: trackSections)
+        return alignedLayoutSnapshot(
+            rulerSections: rulerSections,
+            trackSections: trackSections
+        )
     }
 
     /// Sections that drive audio playback, honoring per-slot clip regions.
@@ -139,7 +142,7 @@ enum SongArrangementStore {
                 )
             }
         )
-        return ArrangementLayoutSnapshot(
+        return alignedLayoutSnapshot(
             rulerSections: rulerSections,
             trackSections: sectionsByTrack
         )
@@ -1007,6 +1010,78 @@ enum SongArrangementStore {
             trackIDs: trackIDs,
             sourceDurationForTrack: sourceDurationForTrack
         ).last?.timelineEndSeconds ?? 0
+    }
+
+    /// Timeline extent for playback and editor sizing. When explicit clip regions end before the
+    /// marker ruler (for example after ripple delete), honour the shorter audible timeline.
+    static func effectiveTimelineDuration(
+        rulerSections: [ArrangementDisplaySection],
+        trackSections: [UUID: [ArrangementDisplaySection]]
+    ) -> TimeInterval {
+        let rulerEnd = rulerSections.last?.timelineEndSeconds ?? 0
+        let trackEnd = trackSections.values
+            .flatMap { $0 }
+            .map(\.timelineEndSeconds)
+            .max() ?? 0
+
+        if trackEnd > 0, trackEnd < rulerEnd - 0.001 {
+            return max(trackEnd, minimumClipDuration)
+        }
+        return max(rulerEnd, trackEnd, minimumClipDuration)
+    }
+
+    /// Clamps marker-ruler sections to the audible timeline so section markers stay aligned
+    /// with clip regions after edits such as ripple delete.
+    private static func rulerSectionsAlignedToTimelineDuration(
+        _ sections: [ArrangementDisplaySection],
+        duration: TimeInterval
+    ) -> [ArrangementDisplaySection] {
+        sections.compactMap { section in
+            alignedRulerSection(section, to: duration)
+        }
+    }
+
+    private static func alignedLayoutSnapshot(
+        rulerSections: [ArrangementDisplaySection],
+        trackSections: [UUID: [ArrangementDisplaySection]]
+    ) -> ArrangementLayoutSnapshot {
+        let duration = effectiveTimelineDuration(
+            rulerSections: rulerSections,
+            trackSections: trackSections
+        )
+        let alignedRuler = rulerSectionsAlignedToTimelineDuration(rulerSections, duration: duration)
+        return ArrangementLayoutSnapshot(
+            rulerSections: alignedRuler,
+            trackSections: trackSections
+        )
+    }
+
+    private static func alignedRulerSection(
+        _ section: ArrangementDisplaySection,
+        to duration: TimeInterval
+    ) -> ArrangementDisplaySection? {
+        guard section.timelineStartSeconds < duration - minimumClipDuration else { return nil }
+
+        let timelineEnd = min(section.timelineEndSeconds, duration)
+        guard timelineEnd - section.timelineStartSeconds >= minimumClipDuration else { return nil }
+
+        if abs(timelineEnd - section.timelineEndSeconds) <= 0.001,
+           section.columnEndSeconds <= duration + 0.001 {
+            return section
+        }
+
+        return ArrangementDisplaySection(
+            id: section.id,
+            slotID: section.slotID,
+            markerID: section.markerID,
+            name: section.name,
+            sourceStartSeconds: section.sourceStartSeconds,
+            sourceEndSeconds: section.sourceEndSeconds,
+            timelineStartSeconds: section.timelineStartSeconds,
+            timelineEndSeconds: timelineEnd,
+            columnStartSeconds: section.columnStartSeconds,
+            columnEndSeconds: min(section.columnEndSeconds, duration)
+        )
     }
 
     static func setTrims(

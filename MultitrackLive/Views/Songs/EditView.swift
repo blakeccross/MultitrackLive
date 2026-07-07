@@ -319,9 +319,12 @@ struct EditView: View {
         if song.isClickOnly {
             return max(max(audioEngine.currentTime + 120, 240), 1)
         }
-        if !displaySections.isEmpty {
-            let arrangedEnd = displaySections.last?.timelineEndSeconds ?? 1
-            return max(arrangedEnd, 1)
+        let hasTrackSections = cachedTrackSections.values.contains { !$0.isEmpty }
+        if !displaySections.isEmpty || hasTrackSections {
+            return SongArrangementStore.effectiveTimelineDuration(
+                rulerSections: rulerSections,
+                trackSections: cachedTrackSections
+            )
         }
         return max(sourceDuration, finiteEngineDuration, 1)
     }
@@ -2760,7 +2763,7 @@ private struct TimelineSectionMarkerRowView: View {
     }
 
     private func timelineTime(at x: CGFloat) -> TimeInterval {
-        let clampedX = min(max(0, x), displayWidth)
+        let clampedX = min(max(0, x), contentWidth)
         return safeDuration * TimeInterval(clampedX / contentWidth)
     }
 
