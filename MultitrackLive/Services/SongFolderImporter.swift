@@ -92,7 +92,6 @@ enum SongFolderImporter {
 
         let projectURL = ProjectFileStore.projectURL(named: songName, adjacentTo: folderURL)
         song.projectFilePath = projectURL.path
-        song.projectFileBookmarkData = MediaReferenceResolver.makeBookmark(for: projectURL)
 
         do {
             let result = try applyScanResult(

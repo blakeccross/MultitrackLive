@@ -16,7 +16,6 @@ final class Song {
     var clickTrackSubdivision: String
     var isClickOnly: Bool
     var projectFilePath: String?
-    var projectFileBookmarkData: Data?
 
     @Relationship(deleteRule: .cascade, inverse: \AudioTrack.song)
     var tracks: [AudioTrack]
@@ -38,7 +37,6 @@ final class Song {
         clickTrackSubdivision = ClickTrackSubdivision.quarter.rawValue
         isClickOnly = false
         projectFilePath = nil
-        projectFileBookmarkData = nil
         tracks = []
         midiTracks = []
     }

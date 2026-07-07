@@ -11,7 +11,6 @@ final class Setlist {
     var isDraft: Bool
     var lastOpenedAt: Date
     var showFilePath: String?
-    var showFileBookmarkData: Data?
 
     @Relationship(deleteRule: .cascade, inverse: \SetlistEntry.setlist)
     var entries: [SetlistEntry]
@@ -23,7 +22,6 @@ final class Setlist {
         createdAt = Date()
         lastOpenedAt = Date()
         showFilePath = nil
-        showFileBookmarkData = nil
         entries = []
     }
 
