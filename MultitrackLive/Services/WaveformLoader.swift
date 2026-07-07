@@ -136,11 +136,19 @@ enum WaveformLoader {
 enum WaveformPeakResampler {
     /// Upper bound on bars drawn per lane regardless of zoom level.
     static let maxDisplayBars = 1200
+    /// One bar per pixel — used in the song editor timeline.
+    static let editorBarSlotWidth: CGFloat = 1
+    /// Minimum horizontal spacing between bar centers when zoomed out (Voice Memos style).
+    static let voiceMemosBarSlotWidth: CGFloat = 3
 
-    static func displayPeaks(from source: [Float], contentWidth: CGFloat) -> [Float] {
+    static func displayPeaks(
+        from source: [Float],
+        contentWidth: CGFloat,
+        minimumBarSlotWidth: CGFloat = editorBarSlotWidth
+    ) -> [Float] {
         guard !source.isEmpty else { return [] }
 
-        let requestedBars = max(1, Int(contentWidth.rounded()))
+        let requestedBars = requestedBarCount(for: contentWidth, minimumBarSlotWidth: minimumBarSlotWidth)
         let barCount = min(requestedBars, maxDisplayBars, source.count)
         guard barCount > 0 else { return [] }
 
@@ -165,16 +173,21 @@ enum WaveformPeakResampler {
         fileDuration: TimeInterval,
         sections: [ArrangementDisplaySection],
         timelineDuration: TimeInterval,
-        contentWidth: CGFloat
+        contentWidth: CGFloat,
+        minimumBarSlotWidth: CGFloat = editorBarSlotWidth
     ) -> [Float] {
         guard !source.isEmpty, fileDuration > 0, !sections.isEmpty else {
-            return displayPeaks(from: source, contentWidth: contentWidth)
+            return displayPeaks(
+                from: source,
+                contentWidth: contentWidth,
+                minimumBarSlotWidth: minimumBarSlotWidth
+            )
         }
 
         let safeTimelineDuration = max(timelineDuration, 0.001)
         let sortedSections = sections.sorted { $0.timelineStartSeconds < $1.timelineStartSeconds }
 
-        let requestedBars = max(1, Int(contentWidth.rounded()))
+        let requestedBars = requestedBarCount(for: contentWidth, minimumBarSlotWidth: minimumBarSlotWidth)
         let barCount = min(requestedBars, maxDisplayBars)
         guard barCount > 0 else { return [] }
 
@@ -216,6 +229,11 @@ enum WaveformPeakResampler {
         )
         guard startIndex < endIndex else { return [] }
         return Array(bars[startIndex..<endIndex])
+    }
+
+    private static func requestedBarCount(for contentWidth: CGFloat, minimumBarSlotWidth: CGFloat) -> Int {
+        let slotWidth = max(1, minimumBarSlotWidth)
+        return max(1, Int((contentWidth / slotWidth).rounded()))
     }
 
     private static func section(

@@ -566,7 +566,8 @@ struct LiveSongWaveformView: View {
         if showsFullSourceWaveform {
             cachedDisplayPeaks = WaveformPeakResampler.displayPeaks(
                 from: sourcePeaks,
-                contentWidth: contentWidth
+                contentWidth: contentWidth,
+                minimumBarSlotWidth: WaveformPeakResampler.voiceMemosBarSlotWidth
             )
         } else {
             cachedDisplayPeaks = WaveformPeakResampler.arrangedDisplayPeaks(
@@ -574,7 +575,8 @@ struct LiveSongWaveformView: View {
                 fileDuration: fileDuration,
                 sections: sections,
                 timelineDuration: safeTimelineDuration,
-                contentWidth: contentWidth
+                contentWidth: contentWidth,
+                minimumBarSlotWidth: WaveformPeakResampler.voiceMemosBarSlotWidth
             )
         }
     }
