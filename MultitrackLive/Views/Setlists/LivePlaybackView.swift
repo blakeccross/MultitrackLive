@@ -255,20 +255,21 @@ struct LivePlaybackView: View {
         SongLibraryPanel(
             onEdit: { song in
                 guard !song.isClickOnly else { return }
-                #if os(macOS)
-                showingSongLibrary = false
-                #endif
                 songToEditID = song.id
             },
             onDismiss: {
                 showingSongLibrary = false
             },
             onRequestFolderImport: {
+                #if os(iOS)
                 showingSongLibrary = false
+                #endif
                 showingSongFolderImporter = true
             },
             onRequestTrackImport: { song in
+                #if os(iOS)
                 showingSongLibrary = false
+                #endif
                 songPendingTrackImport = song
             },
             onAddToSetlist: { song in
@@ -281,8 +282,6 @@ struct LivePlaybackView: View {
         guard !song.isClickOnly else { return }
         #if os(iOS)
         showingSongLibrary = true
-        #else
-        showingSongLibrary = false
         #endif
         songToEditID = song.id
     }
