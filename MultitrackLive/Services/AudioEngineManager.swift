@@ -1,13 +1,10 @@
 import AVFoundation
 import Foundation
 import Observation
-import os
 
 @Observable
 final class AudioEngineManager {
     static let shared = AudioEngineManager()
-
-    private static let overlapLog = Logger(subsystem: "com.blakecross.MultitrackLive", category: "SongOverlap")
 
     struct TrackSettings: Equatable {
         var volume: Float
@@ -73,26 +70,6 @@ final class AudioEngineManager {
 
     private var clickOnlyState: ClickOnlyState?
 
-    /// Active overlap between an outgoing and incoming song layer.
-    /// Both layers share one transport tempo map during overlap; incoming timing may
-    /// be slightly off when songs use different tempo maps until handoff completes.
-    private struct OverlapSession {
-        let outgoingTrackIDs: Set<UUID>
-        let incomingTrackIDs: Set<UUID>
-        let outgoingEndTime: TimeInterval
-        let incomingStartTime: TimeInterval
-        let incomingMasterSections: [ArrangementDisplaySection]
-        let incomingSectionsByTrack: [UUID: [ArrangementDisplaySection]]
-        let incomingRemovedClips: [ArrangementRemovedClip]
-        let incomingDuration: TimeInterval
-        let incomingTempoChanges: [TempoChange]
-        let incomingReferenceBPM: Double
-        let incomingTimeSignatureChanges: [TimeSignatureChange]
-        let incomingMIDIEvents: [MIDIScheduler.ScheduledEvent]
-    }
-
-    private var overlapSession: OverlapSession?
-
     private(set) var groupMeterLevels: [UUID: Float] = [:]
     private(set) var trackMeterLevels: [UUID: Float] = [:]
 
@@ -112,15 +89,6 @@ final class AudioEngineManager {
     private(set) var duration: TimeInterval = 0
 
     var onPlaybackFinished: (() -> Void)?
-    var onPlaybackTimeUpdate: ((TimeInterval, TimeInterval) -> Void)?
-
-    var isInOverlap: Bool {
-        overlapSession != nil
-    }
-
-    var overlapIncomingStartTime: TimeInterval? {
-        overlapSession?.incomingStartTime
-    }
 
     private init() {
         midiScheduler = MIDIScheduler(transport: transport)
@@ -160,7 +128,6 @@ final class AudioEngineManager {
         _ payloads: [PreparedTrackPayload],
         routing: OutputRoutingSnapshot? = nil
     ) throws {
-        cancelOverlapState()
         teardownClickOnlyPlayer()
         hasFiniteDuration = true
         stop()
@@ -491,7 +458,6 @@ final class AudioEngineManager {
         currentTime = 0
         stopTimer()
         midiScheduler.stop()
-        cancelOverlapState()
     }
 
     func seek(to time: TimeInterval) {
@@ -512,205 +478,6 @@ final class AudioEngineManager {
     /// Events are sent in sync with the shared transport during playback.
     func configureMIDI(events: [MIDIScheduler.ScheduledEvent]) {
         midiScheduler.configure(events: events)
-    }
-
-    struct SongOverlapConfiguration {
-        let payloads: [PreparedTrackPayload]
-        let sectionsByTrack: [UUID: [ArrangementDisplaySection]]
-        let masterSections: [ArrangementDisplaySection]
-        let removedClips: [ArrangementRemovedClip]
-        let tempoChanges: [TempoChange]
-        let referenceBPM: Double
-        let timeSignatureChanges: [TimeSignatureChange]
-        let midiEvents: [MIDIScheduler.ScheduledEvent]
-        let incomingStartTime: TimeInterval
-        let outgoingEndTime: TimeInterval
-    }
-
-    func beginSongOverlap(_ configuration: SongOverlapConfiguration) throws {
-        guard overlapSession == nil, !configuration.payloads.isEmpty else { return }
-
-        if isPlaying {
-            refreshCurrentTimeFromEngine()
-        }
-
-        let outgoingTrackIDs = Set(tracks.keys)
-        let outgoingEndTime = quantizeTimelineTime(configuration.outgoingEndTime)
-        let incomingStartTime = quantizeTimelineTime(configuration.incomingStartTime)
-
-        Self.overlapLog.info(
-            "begin overlap outgoingEnd=\(outgoingEndTime, format: .fixed(precision: 2)) incomingStart=\(incomingStartTime, format: .fixed(precision: 2)) transport=\(self.currentTime, format: .fixed(precision: 2))"
-        )
-
-        for id in outgoingTrackIDs {
-            tracks[id]?.memoryPlayer.setPlaybackWindow(offset: 0, endTimeline: outgoingEndTime)
-        }
-
-        for (trackID, sections) in configuration.sectionsByTrack {
-            arrangementSectionsByTrack[trackID] = sections
-        }
-
-        var incomingTrackIDs = Set<UUID>()
-
-        do {
-            for payload in configuration.payloads {
-                let trackState = try buildTrackState(for: payload)
-                tracks[payload.id] = trackState
-                incomingTrackIDs.insert(payload.id)
-                trackState.memoryPlayer.setPlaybackWindow(
-                    offset: incomingStartTime,
-                    endTimeline: nil
-                )
-            }
-
-            prewarmTracks(atTimelineSeconds: incomingStartTime, trackIDs: incomingTrackIDs)
-
-            if usesOutputRouting, let routing = routingSnapshot {
-                let channelCount = effectiveOutputChannelCount(routing: routing)
-                for id in incomingTrackIDs {
-                    guard let track = tracks[id] else { continue }
-                    if channelCount > 2 {
-                        connectTrackToRoutedOutput(
-                            track,
-                            routing: routing,
-                            effectiveChannelCount: channelCount
-                        )
-                    } else {
-                        connectTrackToMasterMixer(track)
-                    }
-                }
-            } else {
-                for id in incomingTrackIDs {
-                    guard let track = tracks[id] else { continue }
-                    connectTrackToMasterMixer(track)
-                }
-            }
-
-            try startEngineIfNeeded()
-
-            applyAllMixSettings()
-
-            let incomingDuration = Self.duration(
-                for: configuration.masterSections,
-                tracks: configuration.payloads.map { payload in
-                    let end = payload.settings.trimEnd ?? Double(payload.buffer.frameCount) / payload.buffer.sampleRate
-                    return (trimStart: payload.settings.trimStart, trimEnd: end)
-                }
-            )
-
-            overlapSession = OverlapSession(
-                outgoingTrackIDs: outgoingTrackIDs,
-                incomingTrackIDs: incomingTrackIDs,
-                outgoingEndTime: outgoingEndTime,
-                incomingStartTime: incomingStartTime,
-                incomingMasterSections: configuration.masterSections,
-                incomingSectionsByTrack: configuration.sectionsByTrack,
-                incomingRemovedClips: configuration.removedClips,
-                incomingDuration: incomingDuration,
-                incomingTempoChanges: configuration.tempoChanges.sortedByMeasure,
-                incomingReferenceBPM: configuration.referenceBPM,
-                incomingTimeSignatureChanges: configuration.timeSignatureChanges.sortedByMeasure,
-                incomingMIDIEvents: configuration.midiEvents
-            )
-
-            duration = outgoingEndTime
-            transport.setDuration(duration)
-
-            let offsetMIDI = configuration.midiEvents.map { event in
-                MIDIScheduler.ScheduledEvent(
-                    timeline: event.timeline + incomingStartTime,
-                    note: event.note,
-                    channel: event.channel,
-                    destinationUniqueID: event.destinationUniqueID
-                )
-            }
-            midiScheduler.appendEvents(offsetMIDI)
-
-            Self.overlapLog.info(
-                "overlap started incomingTracks=\(incomingTrackIDs.count) transport=\(self.currentTime, format: .fixed(precision: 2))"
-            )
-        } catch {
-            for id in incomingTrackIDs {
-                teardownTracks(withIDs: [id])
-                arrangementSectionsByTrack.removeValue(forKey: id)
-            }
-            for id in outgoingTrackIDs {
-                tracks[id]?.memoryPlayer.setPlaybackWindow(offset: 0, endTimeline: nil)
-            }
-            throw error
-        }
-    }
-
-    func cancelOverlapState() {
-        overlapSession = nil
-    }
-
-    private func completeSongOverlap() {
-        guard let session = overlapSession else { return }
-
-        let transportAtHandoff = quantizeTimelineTime(currentTime)
-        let incomingPosition = max(0, transportAtHandoff - session.incomingStartTime)
-        let wasPlaying = isPlaying
-
-        Self.overlapLog.info(
-            "complete overlap transport=\(transportAtHandoff, format: .fixed(precision: 2)) incomingPosition=\(incomingPosition, format: .fixed(precision: 2)) outgoingEnd=\(session.outgoingEndTime, format: .fixed(precision: 2))"
-        )
-
-        teardownTracks(withIDs: session.outgoingTrackIDs, stopEngine: false)
-
-        for id in session.outgoingTrackIDs {
-            arrangementSectionsByTrack.removeValue(forKey: id)
-        }
-
-        masterArrangementSections = session.incomingMasterSections
-        for (trackID, sections) in session.incomingSectionsByTrack {
-            arrangementSectionsByTrack[trackID] = sections
-        }
-        arrangementRemovedClips = session.incomingRemovedClips
-
-        tempoChanges = session.incomingTempoChanges
-        referenceBPM = session.incomingReferenceBPM
-        timeSignatureChanges = session.incomingTimeSignatureChanges
-
-        for id in session.incomingTrackIDs {
-            tracks[id]?.memoryPlayer.setPlaybackWindow(offset: 0, endTimeline: nil)
-            refreshTrackMapper(for: id)
-        }
-
-        duration = calculateEffectiveDuration()
-        transport.cancelScheduledTransition()
-        transport.setDuration(duration)
-        syncTransportTempoMap()
-
-        currentTime = quantizeTimelineTime(min(incomingPosition, duration))
-        transport.setPausedTimeline(currentTime)
-
-        midiScheduler.configure(events: session.incomingMIDIEvents)
-
-        overlapSession = nil
-
-        reanchorPlaybackClock(at: currentTime, whenPlaying: wasPlaying)
-        if wasPlaying {
-            midiScheduler.reset(toTimeline: currentTime)
-        }
-        applyTrackPitch(at: currentTime)
-
-        Self.overlapLog.info(
-            "overlap handoff done currentTime=\(self.currentTime, format: .fixed(precision: 2)) duration=\(self.duration, format: .fixed(precision: 2))"
-        )
-    }
-
-    /// Re-anchors transport after overlap handoff without stopping the audio engine.
-    private func reanchorPlaybackClock(at timeline: TimeInterval, whenPlaying wasPlaying: Bool) {
-        let clamped = quantizeTimelineTime(clampedTimelineTime(timeline))
-        currentTime = clamped
-        transport.setPausedTimeline(clamped)
-
-        guard wasPlaying else { return }
-
-        let hostTime = currentHostTime() ?? mach_absolute_time()
-        transport.resetAnchor(to: clamped, hostTime: hostTime)
-        refreshCurrentTimeFromEngine()
     }
 
     /// Restarts the engine after graph edits that require a full stop and re-anchors transport.
@@ -1073,7 +840,6 @@ final class AudioEngineManager {
         outputRoutingManager.teardown(in: engine)
         usesOutputRouting = false
         routingSnapshot = nil
-        cancelOverlapState()
     }
 
     private func stopEngineForGraphChanges() {
@@ -1200,19 +966,8 @@ final class AudioEngineManager {
             guard let self, self.isPlaying else { return }
             self.refreshCurrentTimeFromEngine()
             self.applyTrackPitch(at: self.currentTime)
-            self.onPlaybackTimeUpdate?(self.currentTime, self.duration)
-
-            if let session = self.overlapSession {
-                if self.currentTime >= session.outgoingEndTime {
-                    self.completeSongOverlap()
-                }
-                return
-            }
 
             if self.hasFiniteDuration, self.currentTime >= self.duration - (1.0 / self.referenceSampleRate) {
-                Self.overlapLog.info(
-                    "playback finished currentTime=\(self.currentTime, format: .fixed(precision: 2)) duration=\(self.duration, format: .fixed(precision: 2))"
-                )
                 self.stop()
                 self.onPlaybackFinished?()
             }

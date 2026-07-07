@@ -126,8 +126,6 @@ struct SongDetailView: View {
         let audioEngine = AudioEngineManager.shared
         audioEngine.pause()
         audioEngine.onPlaybackFinished = nil
-        audioEngine.onPlaybackTimeUpdate = nil
-        audioEngine.cancelOverlapState()
 
         if viewModel == nil {
             let model = SongEditorViewModel(song: song)

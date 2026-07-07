@@ -29,8 +29,6 @@ final class SongEditorViewModel {
     /// Detaches live setlist playback from the shared engine so editing owns it.
     private func claimEngineForSongEditing() {
         audioEngine.onPlaybackFinished = nil
-        audioEngine.onPlaybackTimeUpdate = nil
-        audioEngine.cancelOverlapState()
         audioEngine.applyGroupMix(.default)
         audioEngine.pause()
     }

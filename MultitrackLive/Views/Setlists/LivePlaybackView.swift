@@ -519,7 +519,7 @@ struct LivePlaybackView: View {
                 songForID: { coordinator.song(for: $0) },
                 waveformSnapshotForSong: { coordinator.waveformSnapshot(for: $0) },
                 ensureWaveformSnapshot: { coordinator.ensureWaveformSnapshot(for: $0) },
-                playheadTimeProvider: { coordinator.playbackDisplayTime },
+                playheadTimeProvider: { audioEngine.currentTime },
                 cuedSectionID: cuedSectionID,
                 cueFlashPhase: cueFlashPhase,
                 onSeek: coordinator.seek,
