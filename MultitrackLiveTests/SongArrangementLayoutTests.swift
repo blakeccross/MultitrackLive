@@ -2,7 +2,7 @@ import XCTest
 @testable import MultitrackLive
 
 final class SongArrangementLayoutTests: XCTestCase {
-    func testRulerSectionsPreserveMarkerSourceOffsetWhenSlotsMatchMarkerOrder() {
+    func testPackedRulerSectionsStartAtTimelineZero() {
         let markers = [
             ArrangementMarker(name: "Intro", startSeconds: 30, sortOrder: 0),
             ArrangementMarker(name: "Verse", startSeconds: 90, sortOrder: 1),
@@ -19,9 +19,10 @@ final class SongArrangementLayoutTests: XCTestCase {
         )
 
         XCTAssertEqual(sections.count, 2)
-        XCTAssertEqual(sections[0].timelineStartSeconds, 30, accuracy: 0.001)
+        XCTAssertEqual(sections[0].timelineStartSeconds, 0, accuracy: 0.001)
         XCTAssertEqual(sections[0].sourceStartSeconds, 30, accuracy: 0.001)
-        XCTAssertEqual(sections[1].timelineStartSeconds, 90, accuracy: 0.001)
+        XCTAssertEqual(sections[0].timelineEndSeconds, 60, accuracy: 0.001)
+        XCTAssertEqual(sections[1].timelineStartSeconds, 60, accuracy: 0.001)
         XCTAssertEqual(sections[1].sourceStartSeconds, 90, accuracy: 0.001)
     }
 
@@ -38,41 +39,46 @@ final class SongArrangementLayoutTests: XCTestCase {
         )
 
         let markers = AbletonProjectImporter.makeMarkers(from: result)
-        XCTAssertEqual(markers[0].startSeconds, 16, accuracy: 0.001)
-        XCTAssertEqual(markers[1].startSeconds, 48, accuracy: 0.001)
+        XCTAssertEqual(markers.count, 3)
+        XCTAssertEqual(markers[0].name, "Start")
+        XCTAssertEqual(markers[0].startSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(markers[1].startSeconds, 16, accuracy: 0.001)
+        XCTAssertEqual(markers[2].startSeconds, 48, accuracy: 0.001)
     }
 
-    func testSourceLinearTimelineMapperPlaysAudioBeforeFirstMarker() {
-        let sections = [
-            ArrangementDisplaySection(
-                id: UUID(),
-                slotID: UUID(),
-                markerID: UUID(),
-                name: "Intro",
-                sourceStartSeconds: 8,
-                sourceEndSeconds: 15,
-                timelineStartSeconds: 8,
-                timelineEndSeconds: 15,
-                columnStartSeconds: 8,
-                columnEndSeconds: 15
-            ),
-        ]
-        XCTAssertTrue(sections.usesSourceLinearTimeline)
+    func testAbletonImportPrependsStartSectionForPackedTimeline() {
+        let result = AbletonProjectImporter.ImportResult(
+            bpm: 120,
+            sections: [
+                (name: "Verse", startSeconds: 4),
+            ],
+            timeSignatures: [
+                TimeSignatureChange(numerator: 4, denominator: 4, startMeasure: 1, sortOrder: 0),
+            ]
+        )
+        let markers = AbletonProjectImporter.makeMarkers(from: result)
+        let slots = SongArrangementStore.defaultSlots(from: markers)
+        let trackID = UUID()
 
-        let mapper = ArrangementTimelineMapper(
-            sections: sections,
-            trimStart: 0,
-            trimEnd: 60,
-            usesArrangement: true
+        let sections = SongArrangementStore.rulerDisplaySections(
+            slots: slots,
+            markers: markers,
+            clipTrims: [],
+            trackIDs: [trackID],
+            sourceDurationForTrack: { _ in 60 }
         )
 
-        XCTAssertEqual(mapper.sourceSeconds(atMasterTimeline: 0) ?? -1, 0, accuracy: 0.001)
-        XCTAssertEqual(mapper.sourceSeconds(atMasterTimeline: 4) ?? -1, 4, accuracy: 0.001)
-        XCTAssertEqual(mapper.sourceSeconds(atMasterTimeline: 10) ?? -1, 10, accuracy: 0.001)
-        XCTAssertFalse(mapper.hasArrangementMapping)
+        XCTAssertEqual(sections.count, 2)
+        XCTAssertEqual(sections[0].name, "Start")
+        XCTAssertEqual(sections[0].timelineStartSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(sections[0].sourceStartSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(sections[0].timelineEndSeconds, 4, accuracy: 0.001)
+        XCTAssertEqual(sections[1].name, "Verse")
+        XCTAssertEqual(sections[1].timelineStartSeconds, 4, accuracy: 0.001)
+        XCTAssertEqual(sections[1].sourceStartSeconds, 4, accuracy: 0.001)
     }
 
-    func testSourceLinearRulerSectionsDoNotRequireTrackSegments() {
+    func testPackedRulerSectionsShowPerMarkerTrackLanes() {
         let markers = [
             ArrangementMarker(name: "INTRO", startSeconds: 8, sortOrder: 0),
             ArrangementMarker(name: "V1", startSeconds: 16, sortOrder: 1),
@@ -87,7 +93,6 @@ final class SongArrangementLayoutTests: XCTestCase {
             trackIDs: [trackID],
             sourceDurationForTrack: { _ in 120 }
         )
-        XCTAssertTrue(rulerSections.usesSourceLinearTimeline)
 
         let trackSections = SongArrangementStore.trackDisplaySections(
             for: trackID,
@@ -99,13 +104,9 @@ final class SongArrangementLayoutTests: XCTestCase {
             sourceDurationForTrack: { _ in 120 }
         )
         XCTAssertFalse(trackSections.isEmpty)
-
-        // Editor omits per-marker track segments when the ruler uses source-linear layout.
-        let laneSections = rulerSections.usesSourceLinearTimeline ? [] : trackSections
-        XCTAssertTrue(laneSections.isEmpty)
     }
 
-    func testPlaybackSectionsSilenceDeletedGapOnSourceLinearSong() {
+    func testPlaybackSectionsSilenceDeletedGapOnPackedLayout() {
         let markers = [
             ArrangementMarker(name: "INTRO", startSeconds: 0, sortOrder: 0),
         ]
@@ -122,14 +123,14 @@ final class SongArrangementLayoutTests: XCTestCase {
             removedClips: [],
             inputs: inputs
         )
-        XCTAssertTrue(layout.rulerSections.usesSourceLinearTimeline)
+        XCTAssertEqual(layout.rulerSections[0].timelineStartSeconds, 0, accuracy: 0.001)
 
         var regions = [
             ClipRegion(
                 id: trackID,
-                slotID: trackID,
+                slotID: slots[0].id,
                 trackID: trackID,
-                markerID: trackID,
+                markerID: markers[0].id,
                 sourceStartSeconds: 0,
                 sourceEndSeconds: 30,
                 timelineStartSeconds: 0,
@@ -137,7 +138,7 @@ final class SongArrangementLayoutTests: XCTestCase {
             ),
         ]
         _ = ClipRegionStore.deleteTimelineRange(
-            slotID: trackID,
+            slotID: slots[0].id,
             trackID: trackID,
             rangeStart: 10,
             rangeEnd: 20,
@@ -156,12 +157,10 @@ final class SongArrangementLayoutTests: XCTestCase {
             clipTrims: [],
             removedClips: [],
             clipRegions: regions,
-            inputs: inputs,
-            rulerSections: layout.rulerSections
+            inputs: inputs
         )
 
         XCTAssertEqual(playbackSections.count, 2)
-        XCTAssertFalse(playbackSections.usesSourceLinearTimeline)
 
         let mapper = ArrangementTimelineMapper(
             sections: playbackSections,
@@ -180,7 +179,7 @@ final class SongArrangementLayoutTests: XCTestCase {
         )
     }
 
-    func testPlaybackAfterRippleDeleteFromMeasureOneOnAbletonLayout() {
+    func testPlaybackAfterRippleDeleteFromMeasureOne() {
         var markers = [
             ArrangementMarker(name: "Intro", startSeconds: 0, sortOrder: 0),
             ArrangementMarker(name: "Verse", startSeconds: 40, sortOrder: 1),
@@ -232,7 +231,7 @@ final class SongArrangementLayoutTests: XCTestCase {
             trackIDs: [trackID],
             sourceDurationForTrack: { _ in 60 }
         )
-        XCTAssertTrue(rulerSections.usesSourceLinearTimeline)
+        XCTAssertEqual(rulerSections[0].timelineStartSeconds, 0, accuracy: 0.001)
 
         let playbackSections = SongArrangementStore.playbackTrackSections(
             for: trackID,
@@ -242,12 +241,10 @@ final class SongArrangementLayoutTests: XCTestCase {
             clipTrims: [],
             removedClips: [],
             clipRegions: clipRegions,
-            inputs: inputs,
-            rulerSections: rulerSections
+            inputs: inputs
         )
 
         XCTAssertFalse(playbackSections.isEmpty)
-        XCTAssertFalse(playbackSections.usesSourceLinearTimeline)
 
         let mapper = ArrangementTimelineMapper(
             sections: playbackSections,
@@ -260,7 +257,7 @@ final class SongArrangementLayoutTests: XCTestCase {
         XCTAssertTrue(mapper.hasArrangementMapping)
     }
 
-    func testWaveformPeakSectionsUsePlaybackRegionsAfterRipple() {
+    func testWaveformPeakSectionsUsePlaybackLayoutAfterRipple() {
         var markers = [
             ArrangementMarker(name: "Intro", startSeconds: 0, sortOrder: 0),
             ArrangementMarker(name: "Verse", startSeconds: 40, sortOrder: 1),
@@ -324,11 +321,13 @@ final class SongArrangementLayoutTests: XCTestCase {
             rulerSections: rulerSections
         )
 
-        XCTAssertTrue(rulerSections.usesSourceLinearTimeline)
-        XCTAssertFalse(peakSections.usesSourceLinearTimeline)
+        XCTAssertEqual(
+            peakSections.map(\.timelineStartSeconds),
+            playbackLayout.trackSections[trackID]?.map(\.timelineStartSeconds) ?? []
+        )
     }
 
-    func testWaveformPeakSectionsUseRulerForUneditedAbletonLayout() {
+    func testWaveformPeakSectionsUsePlaybackLayoutForDefaultImport() {
         let markers = [
             ArrangementMarker(name: "Intro", startSeconds: 0, sortOrder: 0),
             ArrangementMarker(name: "Verse", startSeconds: 40, sortOrder: 1),
@@ -362,7 +361,10 @@ final class SongArrangementLayoutTests: XCTestCase {
             rulerSections: rulerSections
         )
 
-        XCTAssertTrue(peakSections.usesSourceLinearTimeline)
-        XCTAssertEqual(peakSections.map(\.id), rulerSections.map(\.id))
+        XCTAssertEqual(
+            peakSections.map(\.timelineStartSeconds),
+            playbackLayout.trackSections[trackID]?.map(\.timelineStartSeconds) ?? []
+        )
+        XCTAssertEqual(peakSections.first?.timelineStartSeconds ?? -1, 0, accuracy: 0.001)
     }
 }

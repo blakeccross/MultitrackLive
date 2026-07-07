@@ -60,7 +60,7 @@ enum SongArrangementStore {
         return ArrangementLayoutSnapshot(rulerSections: rulerSections, trackSections: trackSections)
     }
 
-    /// Sections that drive audio playback, honoring source-track clip regions on source-linear layouts.
+    /// Sections that drive audio playback, honoring per-slot clip regions.
     static func playbackTrackSections(
         for trackID: UUID,
         trimStart: TimeInterval,
@@ -70,19 +70,8 @@ enum SongArrangementStore {
         removedClips: [ArrangementRemovedClip],
         clipGaps: [ArrangementClipGap] = [],
         clipRegions: [ClipRegion] = [],
-        inputs: ArrangementLayoutInputs,
-        rulerSections: [ArrangementDisplaySection]
+        inputs: ArrangementLayoutInputs
     ) -> [ArrangementDisplaySection] {
-        if rulerSections.usesSourceLinearTimeline {
-            return sourceTrackDisplaySections(
-                trackID: trackID,
-                trimStart: trimStart,
-                trimEnd: trimEnd,
-                clipGaps: clipGaps,
-                clipRegions: clipRegions
-            )
-        }
-
         let sections = trackDisplaySections(
             for: trackID,
             slots: slots,
@@ -114,35 +103,44 @@ enum SongArrangementStore {
         tracks: [(id: UUID, trimStart: TimeInterval, trimEnd: TimeInterval)],
         inputs: ArrangementLayoutInputs
     ) -> ArrangementLayoutSnapshot {
-        let layout = buildLayoutSnapshot(
-            slots: slots,
-            clipTrims: clipTrims,
-            removedClips: removedClips,
-            clipGaps: clipGaps,
-            clipRegions: clipRegions,
-            inputs: inputs
-        )
-        let sectionsByTrack = Dictionary(
-            uniqueKeysWithValues: tracks.map { track in
+        let columns = arrangementColumns(slots: slots, inputs: inputs)
+        let rulerSections = rulerDisplaySections(columns: columns, inputs: inputs)
+        let displaySectionsByTrack = Dictionary(
+            uniqueKeysWithValues: inputs.trackIDs.map { trackID in
                 (
-                    track.id,
-                    playbackTrackSections(
-                        for: track.id,
-                        trimStart: track.trimStart,
-                        trimEnd: track.trimEnd,
-                        slots: slots,
+                    trackID,
+                    trackDisplaySections(
+                        for: trackID,
                         clipTrims: clipTrims,
                         removedClips: removedClips,
                         clipGaps: clipGaps,
                         clipRegions: clipRegions,
-                        inputs: inputs,
-                        rulerSections: layout.rulerSections
+                        columns: columns,
+                        inputs: inputs
+                    )
+                )
+            }
+        )
+        let sectionsByTrack = Dictionary(
+            uniqueKeysWithValues: tracks.map { track in
+                let sections = displaySectionsByTrack[track.id] ?? []
+                if !sections.isEmpty {
+                    return (track.id, sections)
+                }
+                return (
+                    track.id,
+                    sourceTrackDisplaySections(
+                        trackID: track.id,
+                        trimStart: track.trimStart,
+                        trimEnd: track.trimEnd,
+                        clipGaps: clipGaps,
+                        clipRegions: clipRegions
                     )
                 )
             }
         )
         return ArrangementLayoutSnapshot(
-            rulerSections: layout.rulerSections,
+            rulerSections: rulerSections,
             trackSections: sectionsByTrack
         )
     }
@@ -1044,7 +1042,6 @@ enum SongArrangementStore {
         slots: [ArrangementSlot],
         inputs: ArrangementLayoutInputs
     ) -> [ArrangementColumn] {
-        let usesSourceTimeline = usesSourceTimelineLayout(slots: slots, inputs: inputs)
         var masterTimeline: TimeInterval = 0
         var columns: [ArrangementColumn] = []
 
@@ -1057,39 +1054,18 @@ enum SongArrangementStore {
                 trackIDs: inputs.trackIDs,
                 sourceDurationForTrack: inputs.sourceDurationForTrack
             )
-            let columnStart = usesSourceTimeline ? marker.startSeconds : masterTimeline
             columns.append(
                 ArrangementColumn(
                     slot: slot,
                     marker: marker,
-                    columnStart: columnStart,
+                    columnStart: masterTimeline,
                     columnWidth: columnWidth
                 )
             )
-            if !usesSourceTimeline {
-                masterTimeline += columnWidth
-            }
+            masterTimeline += columnWidth
         }
 
         return columns
-    }
-
-    /// Fresh Ableton imports use one slot per marker in source-time order. Lay those out at
-    /// absolute source positions. Reordered or duplicated slots use packed performance layout.
-    private static func usesSourceTimelineLayout(
-        slots: [ArrangementSlot],
-        inputs: ArrangementLayoutInputs
-    ) -> Bool {
-        let sortedMarkers = inputs.sortedMarkers
-        guard !slots.isEmpty, slots.count == sortedMarkers.count else { return false }
-
-        var seenMarkerIDs = Set<UUID>()
-        for (slot, marker) in zip(slots, sortedMarkers) {
-            guard slot.markerID == marker.id, seenMarkerIDs.insert(slot.markerID).inserted else {
-                return false
-            }
-        }
-        return true
     }
 
     private static func slotColumnWidth(

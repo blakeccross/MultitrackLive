@@ -168,13 +168,34 @@ enum AbletonProjectImporter {
     }
 
     static func makeMarkers(from result: ImportResult) -> [ArrangementMarker] {
-        result.sections.enumerated().map { index, section in
+        let imported = result.sections.enumerated().map { index, section in
             ArrangementMarker(
                 name: section.name,
                 startSeconds: section.startSeconds,
                 sortOrder: index
             )
         }
+
+        guard let first = imported.sortedByTime.first, first.startSeconds > 0.001 else {
+            return imported
+        }
+
+        // Packed layout starts the timeline at 0. When the first Ableton locator is later in the
+        // source file, add a leading section so pre-locator audio is not dropped.
+        let preLocator = ArrangementMarker(
+            name: "Start",
+            startSeconds: 0,
+            sortOrder: 0
+        )
+        let shifted = imported.sortedByTime.enumerated().map { index, marker in
+            ArrangementMarker(
+                id: marker.id,
+                name: marker.name,
+                startSeconds: marker.startSeconds,
+                sortOrder: index + 1
+            )
+        }
+        return [preLocator] + shifted
     }
 
     private static func gunzip(_ data: Data) throws -> Data {

@@ -251,19 +251,6 @@ struct EditView: View {
         cachedTrackSections = layout.trackSections
     }
 
-    private func refreshTrackTimelineLayout(for trackID: UUID) {
-        let inputs = layoutInputs()
-        cachedTrackSections[trackID] = SongArrangementStore.trackDisplaySections(
-            for: trackID,
-            slots: arrangementSlots,
-            clipTrims: clipTrims,
-            removedClips: removedClips,
-            clipGaps: clipGaps,
-            clipRegions: clipRegions,
-            inputs: inputs
-        )
-    }
-
     private func persistArrangement() {
         persistProjectState()
     }
@@ -293,7 +280,7 @@ struct EditView: View {
     }
 
     private func commitTrackArrangementChange(for trackID: UUID) {
-        refreshTrackTimelineLayout(for: trackID)
+        refreshTimelineLayout()
         syncTrackPlayback(for: trackID)
     }
 
@@ -301,14 +288,8 @@ struct EditView: View {
         rulerSections
     }
 
-    /// Fresh Ableton imports align markers to source time; tracks stay continuous.
-    private var usesSourceLinearRulerLayout: Bool {
-        rulerSections.usesSourceLinearTimeline
-    }
-
     private func trackLaneSections(for track: AudioTrack) -> [ArrangementDisplaySection] {
-        guard !usesSourceLinearRulerLayout else { return [] }
-        return trackSections(for: track)
+        trackSections(for: track)
     }
 
     private func clipDisplaySections(for track: AudioTrack) -> [ArrangementDisplaySection] {
@@ -340,7 +321,7 @@ struct EditView: View {
         }
         if !displaySections.isEmpty {
             let arrangedEnd = displaySections.last?.timelineEndSeconds ?? 1
-            return max(max(arrangedEnd, 1), sourceDuration)
+            return max(arrangedEnd, 1)
         }
         return max(sourceDuration, finiteEngineDuration, 1)
     }
@@ -616,10 +597,6 @@ struct EditView: View {
     /// all later content, tempo/time-signature changes, section markers, and MIDI events earlier.
     private func rippleDeleteSelectedMeasures() {
         guard let selection = rulerMeasureSelection else { return }
-        guard usesSourceLinearRulerLayout else {
-            rulerMeasureSelection = nil
-            return
-        }
 
         let tracks = song.sortedTracks.map { track in
             TimelineRippleStore.Track(
@@ -1074,13 +1051,9 @@ struct EditView: View {
         arrangementMarkers.insert(newMarker, at: markerInsertIndex)
 
         let newSlot = ArrangementSlot(markerID: newMarker.id)
-        if arrangementSlots.isEmpty || usesSourceLinearRulerLayout {
-            arrangementSlots.insert(newSlot, at: markerInsertIndex)
-        } else {
-            let slotInsertIndex = displaySections.firstIndex(where: { timelineTime < $0.timelineStartSeconds - 0.001 })
-                ?? arrangementSlots.count
-            arrangementSlots.insert(newSlot, at: slotInsertIndex)
-        }
+        let slotInsertIndex = displaySections.firstIndex(where: { timelineTime < $0.timelineStartSeconds - 0.001 })
+            ?? arrangementSlots.count
+        arrangementSlots.insert(newSlot, at: slotInsertIndex)
 
         refreshTimelineLayout()
         persistArrangement()
@@ -1390,7 +1363,7 @@ struct EditView: View {
             tempoRulerHeight: TimelineLayout.tempoRulerHeight,
             rulerHeight: TimelineLayout.rulerHeight,
             isPlaying: audioEngine.isPlaying,
-            measureSelectionEnabled: usesSourceLinearRulerLayout,
+            measureSelectionEnabled: !displaySections.isEmpty,
             onSeek: { time in
                 rulerMeasureSelection = nil
                 clearMarkerCue()
@@ -1484,12 +1457,13 @@ struct EditView: View {
             )
 
             trackLanesContent
+                .frame(width: timelineContentWidth, alignment: .leading)
         }
         .frame(width: timelineDisplayWidth, height: trackAreaHeight, alignment: .leading)
     }
 
     private var trackLanesContent: some View {
-        VStack(spacing: TimelineLayout.laneSpacing) {
+        LazyVStack(spacing: TimelineLayout.laneSpacing) {
             ForEach(Array(song.sortedTracks.enumerated()), id: \.element.id) { index, track in
                 if let fileURL = FileStore.trackURL(for: song, track: track) {
                 WaveformLaneView(
@@ -1523,6 +1497,7 @@ struct EditView: View {
                         AudioEngineManager.shared.seek(to: time)
                     }
                 )
+                .frame(width: timelineContentWidth, alignment: .leading)
                 }
             }
 
@@ -1539,8 +1514,11 @@ struct EditView: View {
                     timeSignatureChanges: normalizedTimeSignatureChanges,
                     onCommit: commitMIDIEvents
                 )
+                .frame(width: timelineContentWidth, alignment: .leading)
             }
         }
+        .frame(width: timelineContentWidth, alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var trackHeaderList: some View {

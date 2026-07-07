@@ -367,13 +367,6 @@ final class SongEditorViewModel {
         guard isLoaded else { return }
 
         let inputs = arrangementLayoutInputs(markers: markers)
-        let rulerSections = SongArrangementStore.rulerDisplaySections(
-            slots: slots,
-            markers: markers,
-            clipTrims: clipTrims,
-            trackIDs: inputs.trackIDs,
-            sourceDurationForTrack: inputs.sourceDurationForTrack
-        )
         let resolvedTrack = track ?? song.sortedTracks.first(where: { $0.id == trackID })
         let trimEnd = resolvedTrack.map { $0.trimEndSeconds ?? fileDuration(for: $0) }
             ?? inputs.sourceDurationForTrack(trackID)
@@ -388,8 +381,7 @@ final class SongEditorViewModel {
             removedClips: removedClips,
             clipGaps: clipGaps,
             clipRegions: clipRegions,
-            inputs: inputs,
-            rulerSections: rulerSections
+            inputs: inputs
         )
         audioEngine.updateTrackArrangement(
             trackID: trackID,

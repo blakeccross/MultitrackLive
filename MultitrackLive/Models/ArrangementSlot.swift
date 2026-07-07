@@ -228,23 +228,4 @@ extension Array where Element == ArrangementDisplaySection {
                 && $0.containsTimelineTime(time)
         }
     }
-
-    /// True when timeline positions match source positions with no gaps (e.g. fresh Ableton import).
-    var usesSourceLinearTimeline: Bool {
-        guard !isEmpty else { return false }
-
-        let sorted = sorted { $0.timelineStartSeconds < $1.timelineStartSeconds }
-        guard sorted.allSatisfy({
-            abs($0.columnStartSeconds - $0.sourceStartSeconds) < 0.001
-        }) else {
-            return false
-        }
-
-        for index in 0..<(sorted.count - 1) {
-            if sorted[index + 1].timelineStartSeconds - sorted[index].timelineEndSeconds > 0.001 {
-                return false
-            }
-        }
-        return true
-    }
 }

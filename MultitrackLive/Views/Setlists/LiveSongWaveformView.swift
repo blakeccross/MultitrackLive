@@ -200,7 +200,7 @@ struct LiveSongWaveformView: View {
     }
 
     private var usesArrangedPeakMapping: Bool {
-        !peakSections.isEmpty && !peakSections.usesSourceLinearTimeline
+        !peakSections.isEmpty
     }
 
     private var showsFullSourceWaveform: Bool {
@@ -659,6 +659,8 @@ struct LiveSetlistWaveformScrollView: View {
     let timelineItems: [LiveSetlistTimelineItem]
     let currentPlaybackIndex: Int
     let songForID: (UUID) -> Song?
+    let waveformSnapshotForSong: (Song) -> LiveSongWaveformSnapshot?
+    let ensureWaveformSnapshot: (Song) -> Void
     let playheadTimeProvider: () -> TimeInterval
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
@@ -811,11 +813,16 @@ struct LiveSetlistWaveformScrollView: View {
     private func songLane(for song: Song, playbackIndex: Int) -> some View {
         let isCurrent = playbackIndex == currentPlaybackIndex
 
-        if let snapshot = PlaybackCoordinator.makeWaveformSnapshot(for: song) {
+        if let snapshot = waveformSnapshotForSong(song) {
             waveformLane(snapshot: snapshot, isCurrent: isCurrent)
-        } else {
+        } else if song.isClickOnly {
             LiveSetlistClickTrackLane(song: song)
                 .opacity(isCurrent ? 1 : 0.72)
+        } else {
+            LiveSetlistWaveformLanePlaceholder(isCurrent: isCurrent)
+                .task(id: song.id) {
+                    ensureWaveformSnapshot(song)
+                }
         }
     }
 
@@ -843,6 +850,27 @@ struct LiveSetlistWaveformScrollView: View {
             onCueSection: onCueSection
         )
         .opacity(isCurrent ? 1 : 0.72)
+    }
+}
+
+private struct LiveSetlistWaveformLanePlaceholder: View {
+    let isCurrent: Bool
+
+    @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
+
+    private var laneHeight: CGFloat {
+        LiveSetlistWaveformMetrics.laneHeight(for: waveformHeight)
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+            .fill(AppColors.backgroundSecondary)
+            .frame(width: 180, height: laneHeight)
+            .opacity(isCurrent ? 1 : 0.72)
+            .overlay {
+                ProgressView()
+                    .controlSize(.small)
+            }
     }
 }
 

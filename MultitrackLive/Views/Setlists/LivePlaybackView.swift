@@ -221,12 +221,14 @@ struct LivePlaybackView: View {
         .onDisappear {
             stopPlayback()
         }
-        .onChange(of: songToEditID) { _, newValue in
+        .onChange(of: songToEditID) { oldValue, newValue in
             if newValue != nil {
                 clearMarkerCue()
                 sectionLoop.reset()
                 coordinator.unbindPlaybackHandlers()
                 coordinator.pause()
+            } else if let editedSongID = oldValue {
+                coordinator.invalidateWaveformSnapshot(for: editedSongID)
             }
             handleSongEditorDismissed(newValue)
         }
@@ -516,6 +518,8 @@ struct LivePlaybackView: View {
                 timelineItems: coordinator.timelineItems,
                 currentPlaybackIndex: coordinator.currentIndex,
                 songForID: { coordinator.song(for: $0) },
+                waveformSnapshotForSong: { coordinator.waveformSnapshot(for: $0) },
+                ensureWaveformSnapshot: { coordinator.ensureWaveformSnapshot(for: $0) },
                 playheadTimeProvider: { coordinator.playbackDisplayTime },
                 cuedSectionID: cuedSectionID,
                 cueFlashPhase: cueFlashPhase,

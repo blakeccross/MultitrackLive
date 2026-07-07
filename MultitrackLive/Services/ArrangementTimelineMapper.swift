@@ -6,9 +6,8 @@ struct ArrangementTimelineMapper: Sendable {
     private let trimStart: TimeInterval
     private let trimEnd: TimeInterval
     private let usesArrangement: Bool
-    private let usesSourceLinearTimeline: Bool
 
-    var hasArrangementMapping: Bool { usesArrangement && !usesSourceLinearTimeline }
+    var hasArrangementMapping: Bool { usesArrangement && !sections.isEmpty }
 
     init(
         sections: [ArrangementDisplaySection],
@@ -20,7 +19,6 @@ struct ArrangementTimelineMapper: Sendable {
         self.trimStart = trimStart
         self.trimEnd = trimEnd
         self.usesArrangement = usesArrangement
-        self.usesSourceLinearTimeline = usesArrangement && sections.usesSourceLinearTimeline
     }
 
     /// Fast-path bounds for tempo resampling when the master timeline maps 1:1 to source trim.
@@ -28,7 +26,7 @@ struct ArrangementTimelineMapper: Sendable {
         atMasterTimeline master: TimeInterval,
         sampleRate: Double
     ) -> (startSourceFrame: Double, endSourceFrame: Double)? {
-        guard (!usesArrangement || usesSourceLinearTimeline), sampleRate > 0 else { return nil }
+        guard !usesArrangement, sampleRate > 0 else { return nil }
         guard let sourceStart = sourceSeconds(atMasterTimeline: master) else { return nil }
         return (sourceStart * sampleRate, trimEnd * sampleRate)
     }
@@ -36,9 +34,7 @@ struct ArrangementTimelineMapper: Sendable {
     /// Returns source-file seconds for the given master-timeline position, or nil when silent.
     func sourceSeconds(atMasterTimeline master: TimeInterval) -> TimeInterval? {
         let rawSource: TimeInterval?
-        if usesSourceLinearTimeline {
-            rawSource = master
-        } else if usesArrangement {
+        if usesArrangement {
             guard let section = section(containing: master) else {
                 return nil
             }
@@ -58,11 +54,6 @@ struct ArrangementTimelineMapper: Sendable {
     func regionRemainingSeconds(fromMasterTimeline master: TimeInterval, bufferLimit: TimeInterval) -> TimeInterval {
         let limit = max(0, bufferLimit)
         guard limit > 0 else { return 0 }
-
-        if usesSourceLinearTimeline {
-            let trimRemaining = trimEnd - master
-            return max(0, min(limit, trimRemaining))
-        }
 
         if usesArrangement {
             guard let section = section(containing: master) else {

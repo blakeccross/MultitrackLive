@@ -732,12 +732,7 @@ final class AudioEngineManager {
         tracks: [(trimStart: TimeInterval, trimEnd: TimeInterval)]
     ) -> TimeInterval {
         if !masterSections.isEmpty {
-            let arrangedEnd = masterSections.last?.timelineEndSeconds ?? 0
-            if masterSections.usesSourceLinearTimeline {
-                let sourceEnd = tracks.map(\.trimEnd).max() ?? 0
-                return max(arrangedEnd, sourceEnd)
-            }
-            return arrangedEnd
+            return masterSections.last?.timelineEndSeconds ?? 0
         }
 
         return tracks.map { max(0, $0.trimEnd - $0.trimStart) }.max() ?? 0
@@ -1031,14 +1026,7 @@ final class AudioEngineManager {
         }
 
         if usesArrangement {
-            let arrangedEnd = masterArrangementSections.last?.timelineEndSeconds ?? 0
-            if masterArrangementSections.usesSourceLinearTimeline {
-                let sourceEnd = tracks.values.map { track in
-                    track.settings.trimEnd ?? track.fileDuration
-                }.max() ?? 0
-                return max(arrangedEnd, sourceEnd)
-            }
-            return arrangedEnd
+            return masterArrangementSections.last?.timelineEndSeconds ?? 0
         }
 
         return tracks.values.map { track in

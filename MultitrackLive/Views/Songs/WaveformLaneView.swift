@@ -204,12 +204,8 @@ struct WaveformLaneView: View {
         !arrangementSections.isEmpty
     }
 
-    private var usesSourceLinearTimeline: Bool {
-        arrangementSections.usesSourceLinearTimeline
-    }
-
     private var showsFullSourceWaveform: Bool {
-        !usesArrangementLayout || usesSourceLinearTimeline
+        !usesArrangementLayout
     }
 
     private var displayPeaksCacheKey: String {
@@ -228,7 +224,7 @@ struct WaveformLaneView: View {
             "\($0.slotID.uuidString)|\($0.leading)|\($0.trailing)"
         } ?? ""
         let trackTrimKey = "\(track.trimStartSeconds)|\(track.trimEndSeconds ?? -1)"
-        return "\(timelineContentWidth)|\(timelineDuration)|\(fileDuration)|\(sourcePeaks.count)|\(sectionKey)|\(gapKey)|\(regionKey)|\(usesArrangementLayout)|\(usesSourceLinearTimeline)|\(previewTrimKey)|\(trackTrimKey)"
+        return "\(timelineContentWidth)|\(timelineDuration)|\(fileDuration)|\(sourcePeaks.count)|\(sectionKey)|\(gapKey)|\(regionKey)|\(usesArrangementLayout)|\(previewTrimKey)|\(trackTrimKey)"
     }
 
     private func refreshCachedDisplayPeaks() {

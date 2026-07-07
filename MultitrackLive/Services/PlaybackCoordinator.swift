@@ -56,6 +56,9 @@ final class PlaybackCoordinator {
     private var loadTask: Task<Void, Never>?
     private var loadGeneration = 0
     private var prefetchTask: Task<Void, Never>?
+    private var waveformSnapshotPrefetchTask: Task<Void, Never>?
+    private var pendingWaveformSnapshotSongIDs: Set<UUID> = []
+    private var waveformSnapshotsBySongID: [UUID: LiveSongWaveformSnapshot] = [:]
     private var prefetchedNextSong: (songID: UUID, payloads: [AudioEngineManager.PreparedTrackPayload])?
     private var isInOverlap = false
     private var overlapIncomingStartTime: TimeInterval?
@@ -133,6 +136,7 @@ final class PlaybackCoordinator {
         bindPlaybackFinishedHandler()
         applySetlistEntries(setlist.sortedEntries)
         currentIndex = 0
+        prefetchWaveformSnapshots()
         loadCurrentSong()
     }
 
@@ -150,6 +154,7 @@ final class PlaybackCoordinator {
 
         if let song = currentSong, song.id == loadedSongID, isLoaded {
             refreshWaveformSnapshots()
+            prefetchWaveformSnapshots()
             return
         }
 
@@ -196,6 +201,55 @@ final class PlaybackCoordinator {
         songs = syncedSongs
         transitions = syncedTransitions
         timelineItems = syncedTimeline
+        pruneWaveformSnapshotCache()
+    }
+
+    func waveformSnapshot(for song: Song) -> LiveSongWaveformSnapshot? {
+        waveformSnapshotsBySongID[song.id]
+    }
+
+    func ensureWaveformSnapshot(for song: Song) {
+        guard waveformSnapshotsBySongID[song.id] == nil else { return }
+        guard !pendingWaveformSnapshotSongIDs.contains(song.id) else { return }
+
+        pendingWaveformSnapshotSongIDs.insert(song.id)
+        Task { @MainActor in
+            defer { pendingWaveformSnapshotSongIDs.remove(song.id) }
+            guard waveformSnapshotsBySongID[song.id] == nil else { return }
+            guard let snapshot = Self.makeWaveformSnapshot(for: song) else { return }
+            waveformSnapshotsBySongID[song.id] = snapshot
+            if song.id == currentSong?.id {
+                currentWaveformSnapshot = snapshot
+            }
+        }
+    }
+
+    func invalidateWaveformSnapshot(for songID: UUID) {
+        waveformSnapshotsBySongID.removeValue(forKey: songID)
+        if currentSong?.id == songID {
+            currentWaveformSnapshot = nil
+        }
+    }
+
+    private func pruneWaveformSnapshotCache() {
+        let activeSongIDs = Set(songs.map(\.id))
+        waveformSnapshotsBySongID = waveformSnapshotsBySongID.filter { activeSongIDs.contains($0.key) }
+    }
+
+    private func prefetchWaveformSnapshots() {
+        waveformSnapshotPrefetchTask?.cancel()
+        waveformSnapshotPrefetchTask = Task { @MainActor in
+            for song in songs {
+                if Task.isCancelled { return }
+                if waveformSnapshotsBySongID[song.id] != nil { continue }
+                guard let snapshot = Self.makeWaveformSnapshot(for: song) else { continue }
+                waveformSnapshotsBySongID[song.id] = snapshot
+                if song.id == currentSong?.id {
+                    currentWaveformSnapshot = snapshot
+                }
+                await Task.yield()
+            }
+        }
     }
 
     private func handlePlaybackFinished() {
@@ -325,6 +379,9 @@ final class PlaybackCoordinator {
     }
 
     func loadCurrentSong(autoPlay: Bool = false, preservedTime: TimeInterval? = nil) {
+        if let song = currentSong {
+            invalidateWaveformSnapshot(for: song.id)
+        }
         loadTask?.cancel()
         loadTask = Task { @MainActor in
             await performLoadCurrentSong(autoPlay: autoPlay, preservedTime: preservedTime)
@@ -536,6 +593,9 @@ final class PlaybackCoordinator {
                 applySongEngineState(for: song)
                 applyGroupMixFromProvider()
                 currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
+                if let currentWaveformSnapshot {
+                    waveformSnapshotsBySongID[song.id] = currentWaveformSnapshot
+                }
                 loadedSongID = song.id
                 isLoaded = true
                 loadError = nil
@@ -570,7 +630,14 @@ final class PlaybackCoordinator {
             currentWaveformSnapshot = nil
             return
         }
+        if let cached = waveformSnapshotsBySongID[song.id] {
+            currentWaveformSnapshot = cached
+            return
+        }
         currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
+        if let currentWaveformSnapshot {
+            waveformSnapshotsBySongID[song.id] = currentWaveformSnapshot
+        }
     }
 
     private struct SongEngineLayout {
@@ -674,14 +741,6 @@ final class PlaybackCoordinator {
         let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
         let arrangement = projectState.arrangement
         let inputs = arrangementLayoutInputs(for: song, markers: projectState.markers)
-        let layout = SongArrangementStore.buildLayoutSnapshot(
-            slots: arrangement.slots,
-            clipTrims: arrangement.clipTrims,
-            removedClips: arrangement.removedClips,
-            clipGaps: arrangement.clipGaps,
-            clipRegions: arrangement.clipRegions,
-            inputs: inputs
-        )
         let playbackLayout = SongArrangementStore.playbackLayoutSnapshot(
             slots: arrangement.slots,
             clipTrims: arrangement.clipTrims,
@@ -693,13 +752,13 @@ final class PlaybackCoordinator {
         )
         let peakSections = waveformPeakSections(
             playbackLayout: playbackLayout,
-            rulerSections: layout.rulerSections
+            rulerSections: playbackLayout.rulerSections
         )
         let playbackEnd = playbackLayout.trackSections.values
             .flatMap { $0 }
             .map(\.timelineEndSeconds)
             .max() ?? 0
-        let rulerEnd = layout.rulerSections.last?.timelineEndSeconds ?? 0
+        let rulerEnd = playbackLayout.rulerSections.last?.timelineEndSeconds ?? 0
         let timelineDuration = max(playbackEnd, rulerEnd, 0.001)
 
         return LiveSongWaveformSnapshot(
@@ -708,25 +767,20 @@ final class PlaybackCoordinator {
             trackSources: trackSources,
             fileDuration: fileDuration,
             timelineDuration: timelineDuration,
-            sections: layout.rulerSections,
+            sections: playbackLayout.rulerSections,
             peakSections: peakSections,
             loopSlotIDs: arrangement.loopSlotIDs
         )
     }
 
-    /// Uses playback clip regions for peak mapping when edits have broken the 1:1 source timeline.
+    /// Uses playback clip regions for peak mapping.
     static func waveformPeakSections(
         playbackLayout: ArrangementLayoutSnapshot,
         rulerSections: [ArrangementDisplaySection]
     ) -> [ArrangementDisplaySection] {
-        guard let trackSections = playbackLayout.trackSections.values
-            .first(where: { !$0.isEmpty }) else {
-            return rulerSections
-        }
-        if trackSections.usesSourceLinearTimeline {
-            return rulerSections
-        }
-        return trackSections
+        playbackLayout.trackSections.values
+            .first(where: { !$0.isEmpty })
+            ?? rulerSections
     }
 
     private static func clickOnlySettings(for song: Song) -> AudioEngineManager.TrackSettings {

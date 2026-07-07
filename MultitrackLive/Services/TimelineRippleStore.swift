@@ -1,9 +1,7 @@
 import Foundation
 
-/// DAW-style ripple delete: removes a measure-aligned time span from the whole song and
-/// shifts everything after it earlier to close the gap. Designed for the source-linear edit
-/// timeline where timeline time equals source time, so clip regions, section markers, and the
-/// measure grid all share a single axis.
+/// Ripple delete: removes a measure-aligned time span from the whole song and shifts
+/// everything after it earlier to close the gap.
 enum TimelineRippleStore {
     struct Track {
         let id: UUID
