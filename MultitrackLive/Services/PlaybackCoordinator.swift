@@ -523,11 +523,7 @@ final class PlaybackCoordinator {
                 try SongTrackLoader.appendClickTrackIfNeeded(
                     to: &prepared,
                     song: song,
-                    sourceDurationForTrack: { trackID in
-                        guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
-                              let url = FileStore.trackURL(for: song, track: track) else { return 1 }
-                        return FileStore.fileDuration(at: url) ?? 1
-                    },
+                    sourceDurationForTrack: { Self.trackSourceDuration(for: $0, in: song) },
                     tempoChanges: tempoChanges,
                     timeSignatureChanges: timeSignatureChanges
                 )
@@ -535,7 +531,6 @@ final class PlaybackCoordinator {
                 let routing = routingProvider?()
                 try audioEngine.loadPreparedTracks(prepared, routing: routing)
                 applySongEngineState(for: song)
-                configureMIDIPlayback(for: song)
                 applyGroupMixFromProvider()
                 currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
                 loadedSongID = song.id
@@ -586,39 +581,22 @@ final class PlaybackCoordinator {
 
     private func songEngineLayout(for song: Song) -> SongEngineLayout {
         let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
-        let markers = projectState.markers
         let arrangement = projectState.arrangement
-        let trackIDs = song.sortedTracks.map(\.id)
-
-        func sourceDuration(for trackID: UUID) -> TimeInterval {
-            guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
-                  let url = FileStore.trackURL(for: song, track: track) else { return 1 }
-            return FileStore.fileDuration(at: url) ?? 1
-        }
-
-        let inputs = SongArrangementStore.makeLayoutInputs(
-            markers: markers,
-            trackIDs: trackIDs,
-            sourceDurationForTrack: sourceDuration
-        )
+        let inputs = Self.arrangementLayoutInputs(for: song, markers: projectState.markers)
         let layout = SongArrangementStore.playbackLayoutSnapshot(
             slots: arrangement.slots,
             clipTrims: arrangement.clipTrims,
             removedClips: arrangement.removedClips,
             clipGaps: arrangement.clipGaps,
             clipRegions: arrangement.clipRegions,
-            tracks: song.sortedTracks.map { track in
-                (
-                    id: track.id,
-                    trimStart: track.trimStartSeconds,
-                    trimEnd: track.trimEndSeconds ?? sourceDuration(for: track.id)
-                )
-            },
+            tracks: Self.playbackTracks(for: song),
             inputs: inputs
         )
 
-        let events = SongProjectBridge.projectStateOrDefaults(for: song).midiEvents
-        let resolvedMIDI = MIDIScheduler.scheduledEvents(events: events, tracks: song.sortedMIDITracks)
+        let resolvedMIDI = MIDIScheduler.scheduledEvents(
+            events: projectState.midiEvents,
+            tracks: song.sortedMIDITracks
+        )
 
         return SongEngineLayout(
             sectionsByTrack: layout.trackSections,
@@ -652,11 +630,7 @@ final class PlaybackCoordinator {
             try SongTrackLoader.appendClickTrackIfNeeded(
                 to: &prepared,
                 song: song,
-                sourceDurationForTrack: { trackID in
-                    guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
-                          let url = FileStore.trackURL(for: song, track: track) else { return 1 }
-                    return FileStore.fileDuration(at: url) ?? 1
-                },
+                sourceDurationForTrack: { Self.trackSourceDuration(for: $0, in: song) },
                 tempoChanges: projectState.tempoChanges,
                 timeSignatureChanges: projectState.timeSignatureChanges
             )
@@ -666,58 +640,21 @@ final class PlaybackCoordinator {
         }
     }
 
-    private func configureMIDIPlayback(for song: Song) {
-        let events = SongProjectBridge.projectStateOrDefaults(for: song).midiEvents
-        let resolved = MIDIScheduler.scheduledEvents(events: events, tracks: song.sortedMIDITracks)
-        audioEngine.configureMIDI(events: resolved)
-    }
-
     private func applySongEngineState(for song: Song) {
-        let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
-        let markers = projectState.markers
-        let arrangement = projectState.arrangement
-        let trackIDs = song.sortedTracks.map(\.id)
-
-        func sourceDuration(for trackID: UUID) -> TimeInterval {
-            guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
-                  let url = FileStore.trackURL(for: song, track: track) else { return 1 }
-            return FileStore.fileDuration(at: url) ?? 1
-        }
-
-        let inputs = SongArrangementStore.makeLayoutInputs(
-            markers: markers,
-            trackIDs: trackIDs,
-            sourceDurationForTrack: sourceDuration
-        )
-        let layout = SongArrangementStore.playbackLayoutSnapshot(
-            slots: arrangement.slots,
-            clipTrims: arrangement.clipTrims,
-            removedClips: arrangement.removedClips,
-            clipGaps: arrangement.clipGaps,
-            clipRegions: arrangement.clipRegions,
-            tracks: song.sortedTracks.map { track in
-                (
-                    id: track.id,
-                    trimStart: track.trimStartSeconds,
-                    trimEnd: track.trimEndSeconds ?? sourceDuration(for: track.id)
-                )
-            },
-            inputs: inputs
-        )
+        let layout = songEngineLayout(for: song)
 
         audioEngine.setArrangement(
-            sectionsByTrack: layout.trackSections,
-            masterSections: layout.rulerSections,
-            removedClips: arrangement.removedClips
+            sectionsByTrack: layout.sectionsByTrack,
+            masterSections: layout.masterSections,
+            removedClips: layout.removedClips
         )
 
-        let tempoChanges = projectState.tempoChanges
-        let timeSignatureChanges = projectState.timeSignatureChanges
         audioEngine.setTempoMap(
-            tempoChanges,
-            referenceBPM: tempoChanges.referenceBPM,
-            timeSignatureChanges: timeSignatureChanges
+            layout.tempoChanges,
+            referenceBPM: layout.tempoChanges.referenceBPM,
+            timeSignatureChanges: layout.timeSignatureChanges
         )
+        audioEngine.configureMIDI(events: layout.midiEvents)
     }
 
     static func makeWaveformSnapshot(for song: Song) -> LiveSongWaveformSnapshot? {
@@ -732,21 +669,8 @@ final class PlaybackCoordinator {
 
         let fileDuration = trackSources.map(\.duration).max() ?? 0
         let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
-        let markers = projectState.markers
         let arrangement = projectState.arrangement
-        let trackIDs = song.sortedTracks.map(\.id)
-
-        func sourceDuration(for trackID: UUID) -> TimeInterval {
-            guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
-                  let url = FileStore.trackURL(for: song, track: track) else { return 1 }
-            return FileStore.fileDuration(at: url) ?? 1
-        }
-
-        let inputs = SongArrangementStore.makeLayoutInputs(
-            markers: markers,
-            trackIDs: trackIDs,
-            sourceDurationForTrack: sourceDuration
-        )
+        let inputs = arrangementLayoutInputs(for: song, markers: projectState.markers)
         let layout = SongArrangementStore.buildLayoutSnapshot(
             slots: arrangement.slots,
             clipTrims: arrangement.clipTrims,
@@ -784,6 +708,35 @@ final class PlaybackCoordinator {
             ignoresSolo: true,
             bypassesArrangementMapping: true
         )
+    }
+
+    private static func trackSourceDuration(for trackID: UUID, in song: Song) -> TimeInterval {
+        guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
+              let url = FileStore.trackURL(for: song, track: track) else { return 1 }
+        return FileStore.fileDuration(at: url) ?? 1
+    }
+
+    private static func arrangementLayoutInputs(
+        for song: Song,
+        markers: [ArrangementMarker]
+    ) -> ArrangementLayoutInputs {
+        SongArrangementStore.makeLayoutInputs(
+            markers: markers,
+            trackIDs: song.sortedTracks.map(\.id),
+            sourceDurationForTrack: { trackSourceDuration(for: $0, in: song) }
+        )
+    }
+
+    private static func playbackTracks(
+        for song: Song
+    ) -> [(id: UUID, trimStart: TimeInterval, trimEnd: TimeInterval)] {
+        song.sortedTracks.map { track in
+            (
+                id: track.id,
+                trimStart: track.trimStartSeconds,
+                trimEnd: track.trimEndSeconds ?? trackSourceDuration(for: track.id, in: song)
+            )
+        }
     }
 }
 

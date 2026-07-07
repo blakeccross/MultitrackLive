@@ -26,21 +26,3 @@ struct MIDIEvent: Codable, Hashable, Identifiable {
         self.label = label
     }
 }
-
-/// MIDI events stored in a song's `.mtlive` project file.
-struct SongMIDIEvents: Codable {
-    var events: [MIDIEvent]
-
-    init(events: [MIDIEvent] = []) {
-        self.events = events
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case events
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        events = try container.decodeIfPresent([MIDIEvent].self, forKey: .events) ?? []
-    }
-}

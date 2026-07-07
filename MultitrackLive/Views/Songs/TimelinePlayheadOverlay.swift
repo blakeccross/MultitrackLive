@@ -231,34 +231,3 @@ struct SectionCueMonitor: View {
             }
     }
 }
-
-/// Transport elapsed time that reads the host clock while playing.
-struct TransportElapsedTimeLabel: View {
-    @Bindable var audioEngine: AudioEngineManager
-    let duration: TimeInterval
-
-    var body: some View {
-        Group {
-            if audioEngine.isPlaying {
-                TimelineView(.animation(minimumInterval: 1.0 / 15.0)) { _ in
-                    timeLabel(audioEngine.livePlayheadTime())
-                }
-            } else {
-                timeLabel(audioEngine.currentTime)
-            }
-        }
-    }
-
-    private func timeLabel(_ currentTime: TimeInterval) -> some View {
-        Text("\(formatTime(currentTime)) / \(formatTime(duration))")
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(AppColors.textSecondary)
-    }
-
-    private func formatTime(_ value: TimeInterval) -> String {
-        let totalSeconds = max(0, Int(value))
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-}

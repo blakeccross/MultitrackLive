@@ -134,11 +134,6 @@ struct SongArrangement: Codable {
     }
 }
 
-struct SelectedArrangementClip: Equatable, Hashable {
-    let slotID: UUID
-    let trackID: UUID
-}
-
 enum TimelineClipSelection: Equatable, Hashable {
     /// `clipID` identifies the visible clip segment; `slotID` is the parent arrangement slot.
     /// `editTime` is the grid-snapped split cursor when the user clicks inside the clip body.
