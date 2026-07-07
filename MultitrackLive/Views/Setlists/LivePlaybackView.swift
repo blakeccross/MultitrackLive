@@ -631,20 +631,15 @@ struct LivePlaybackView: View {
                         }
                         coordinator.syncSetlist(workingSetlist)
                     }
-
-                    Color.clear
-                        .frame(minHeight: geometry.size.height)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .contentShape(Rectangle())
-                        .contextMenu {
-                            addHeaderContextMenu
-                        }
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .frame(minHeight: geometry.size.height)
+            .contentShape(Rectangle())
+            .contextMenu {
+                addHeaderContextMenu
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, AppSpacing.md)
