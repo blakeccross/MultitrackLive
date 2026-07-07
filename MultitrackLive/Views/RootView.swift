@@ -12,6 +12,7 @@ struct RootView: View {
         .onAppear {
             TrackGroupStore.ensureDefaults(in: modelContext)
             OutputRoutingStore.ensureConfig(in: modelContext)
+            SongProjectBridge.restoreShowsFromDisk(in: modelContext)
         }
     }
 }

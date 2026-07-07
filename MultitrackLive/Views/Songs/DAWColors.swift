@@ -1,10 +1,6 @@
 import SwiftUI
 
 extension Color {
-    static var dawLaneBackground: Color {
-        AppColors.backgroundSecondary.opacity(0.85)
-    }
-
     static var dawTimelineBackground: Color {
         AppColors.backgroundPrimary
     }
@@ -36,18 +32,6 @@ extension Color {
 
     static var dawMuteActive: Color {
         AppColors.muteActive
-    }
-
-    static var dawClipBackground: Color {
-        AppColors.surface.opacity(0.9)
-    }
-
-    static var dawClipBackgroundSelected: Color {
-        AppColors.accent.opacity(0.22)
-    }
-
-    static var dawClipBorder: Color {
-        AppColors.accent.opacity(0.85)
     }
 
     static var dawMeasureGridLine: Color {

@@ -262,38 +262,3 @@ struct TransportElapsedTimeLabel: View {
         return String(format: "%d:%02d", minutes, seconds)
     }
 }
-
-struct TransportControls: View {
-    @Bindable var audioEngine: AudioEngineManager
-    let isLoaded: Bool
-    let duration: TimeInterval
-    let onPlay: () -> Void
-    let onPause: () -> Void
-    let onStop: () -> Void
-
-    var body: some View {
-        VStack(spacing: AppSpacing.xs) {
-            HStack(spacing: AppSpacing.lg) {
-                AppIconButton(systemImage: "stop", size: 48, isEnabled: isLoaded, accessibilityLabel: "Stop") {
-                    onStop()
-                }
-
-                AppIconButton(
-                    systemImage: audioEngine.isPlaying ? "pause" : "play",
-                    size: 56,
-                    isActive: audioEngine.isPlaying,
-                    isEnabled: isLoaded,
-                    accessibilityLabel: audioEngine.isPlaying ? "Pause" : "Play"
-                ) {
-                    if audioEngine.isPlaying {
-                        onPause()
-                    } else {
-                        onPlay()
-                    }
-                }
-            }
-
-            TransportElapsedTimeLabel(audioEngine: audioEngine, duration: duration)
-        }
-    }
-}

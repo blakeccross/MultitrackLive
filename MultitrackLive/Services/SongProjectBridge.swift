@@ -29,14 +29,13 @@ enum SongProjectBridge {
     @discardableResult
     static func ensureProjectFile(
         for song: Song,
-        preferredURL: URL? = nil,
         context: ModelContext
     ) throws -> URL {
         if let existing = projectURL(for: song) {
             return existing
         }
 
-        let url = preferredURL ?? ProjectFileStore.defaultProjectURL(for: song.name)
+        let url = ProjectFileStore.defaultProjectURL(for: song.name)
         song.projectFilePath = url.path
         song.projectFileBookmarkData = MediaReferenceResolver.makeBookmark(for: url)
         try context.save()
@@ -47,8 +46,7 @@ enum SongProjectBridge {
             arrangement: SongArrangementStore.defaultArrangement(for: []),
             tempoChanges: defaultTempoChanges(for: song),
             timeSignatureChanges: defaultTimeSignatureChanges(for: song),
-            midiEvents: [],
-            projectFileURL: url
+            midiEvents: []
         )
         try ProjectFileStore.save(document, to: url)
         return url
@@ -60,8 +58,7 @@ enum SongProjectBridge {
         arrangement: SongArrangement,
         tempoChanges: [TempoChange],
         timeSignatureChanges: [TimeSignatureChange],
-        midiEvents: [MIDIEvent],
-        projectFileURL: URL?
+        midiEvents: [MIDIEvent]
     ) -> SongProjectDocument {
         let tracks = song.sortedTracks.compactMap { track -> ProjectTrack? in
             guard let path = track.mediaPath, let style = track.mediaPathStyle else { return nil }
@@ -132,8 +129,7 @@ enum SongProjectBridge {
             arrangement: resolvedArrangement,
             tempoChanges: resolvedTempo,
             timeSignatureChanges: resolvedTimeSignatures,
-            midiEvents: resolvedMIDIEvents,
-            projectFileURL: projectURL
+            midiEvents: resolvedMIDIEvents
         )
         try ProjectFileStore.save(document, to: projectURL)
         song.projectFileBookmarkData = MediaReferenceResolver.makeBookmark(for: projectURL)
@@ -173,8 +169,7 @@ enum SongProjectBridge {
             arrangement: arrangement,
             tempoChanges: tempoChanges,
             timeSignatureChanges: timeSignatureChanges,
-            midiEvents: midiEvents,
-            projectFileURL: projectURL
+            midiEvents: midiEvents
         )
         try ProjectFileStore.save(document, to: projectURL)
         song.projectFileBookmarkData = MediaReferenceResolver.makeBookmark(for: projectURL)
@@ -352,6 +347,63 @@ enum SongProjectBridge {
         )
     }
 
+    @discardableResult
+    static func importShow(
+        from url: URL,
+        into context: ModelContext
+    ) throws -> Setlist {
+        let document = try ShowFileStore.load(from: url)
+
+        if let existing = try findSetlist(id: document.id, in: context) {
+            return existing
+        }
+
+        let isDraft = document.name.trimmingCharacters(in: .whitespacesAndNewlines) == Setlist.untitledName
+        let setlist = Setlist(name: document.name, isDraft: isDraft)
+        setlist.id = document.id
+        setlist.createdAt = document.createdAt
+        setlist.lastOpenedAt = document.lastOpenedAt
+        setlist.showFilePath = url.path
+        setlist.showFileBookmarkData = MediaReferenceResolver.makeBookmark(for: url)
+        context.insert(setlist)
+
+        for showEntry in document.entries.sorted(by: { $0.sortOrder < $1.sortOrder }) {
+            guard let projectURL = MediaReferenceResolver.resolve(
+                showEntry.songProject,
+                showFileURL: url
+            ) else {
+                continue
+            }
+
+            let song = try importProject(from: projectURL, into: context)
+            let entry = SetlistEntry(
+                sortOrder: showEntry.sortOrder,
+                song: song,
+                transition: showEntry.transitionValue
+            )
+            entry.setlist = setlist
+            context.insert(entry)
+            setlist.entries.append(entry)
+        }
+
+        try context.save()
+        return setlist
+    }
+
+    static func restoreShowsFromDisk(in context: ModelContext) {
+        let showsDirectory = ShowFileStore.showsDirectory
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: showsDirectory,
+            includingPropertiesForKeys: nil
+        ) else {
+            return
+        }
+
+        for url in urls where url.pathExtension == ProjectUTType.showProjectExtension {
+            try? importShow(from: url, into: context)
+        }
+    }
+
     static func persistShow(
         for setlist: Setlist,
         context: ModelContext
@@ -389,6 +441,14 @@ enum SongProjectBridge {
 
     private static func findSong(id: UUID, in context: ModelContext) throws -> Song? {
         var descriptor = FetchDescriptor<Song>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
+    private static func findSetlist(id: UUID, in context: ModelContext) throws -> Setlist? {
+        var descriptor = FetchDescriptor<Setlist>(
             predicate: #Predicate { $0.id == id }
         )
         descriptor.fetchLimit = 1

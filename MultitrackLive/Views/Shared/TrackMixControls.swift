@@ -244,19 +244,3 @@ struct MixerFaderColumn: View {
         onValueChanged()
     }
 }
-
-struct VerticalMixFader: View {
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    let faderHeight: CGFloat
-    let onValueChanged: () -> Void
-
-    var body: some View {
-        MixerFaderColumn(
-            value: $value,
-            meterLevel: 0,
-            height: faderHeight,
-            onValueChanged: onValueChanged
-        )
-    }
-}

@@ -1,17 +1,6 @@
 import Foundation
 
 enum MediaReferenceResolver {
-    enum ResolutionError: LocalizedError {
-        case unresolved(String)
-
-        var errorDescription: String? {
-            switch self {
-            case .unresolved(let path):
-                return "Could not find media at \(path)."
-            }
-        }
-    }
-
     static func makeBookmark(for url: URL) -> Data? {
         #if os(macOS)
         let options: URL.BookmarkCreationOptions = [.withSecurityScope]
