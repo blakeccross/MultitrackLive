@@ -4,6 +4,12 @@ import SwiftUI
 import AppKit
 #endif
 
+/// A timeline ruler selection spanning whole measures `[startMeasure, endMeasure)`.
+private struct MeasureRangeSelection: Equatable {
+    var startMeasure: Int
+    var endMeasure: Int
+}
+
 struct EditView: View {
     @Environment(\.modelContext) private var modelContext
 
@@ -43,6 +49,7 @@ struct EditView: View {
     @State private var sectionPendingRename: ArrangementDisplaySection?
     @State private var renameSectionName = ""
     @State private var clipSelection: TimelineClipSelection?
+    @State private var rulerMeasureSelection: MeasureRangeSelection?
     @State private var selectedTrackID: UUID?
     @FocusState private var isTimelineFocused: Bool
     @State private var cachedRulerSections: [ArrangementDisplaySection] = []
@@ -497,7 +504,11 @@ struct EditView: View {
         }
 #if os(macOS)
         .onDeleteCommand {
-            removeClipSelection()
+            if rulerMeasureSelection != nil {
+                rippleDeleteSelectedMeasures()
+            } else {
+                removeClipSelection()
+            }
         }
 #endif
         .sheet(isPresented: $showingGroupEditor) {
@@ -599,6 +610,60 @@ struct EditView: View {
         clearMarkerCue(cancellingScheduledTransition: false)
         persistArrangement()
         commitTrackArrangementChange(for: trackID)
+    }
+
+    /// Ripple-deletes the ruler measure selection: removes that span from every track and shifts
+    /// all later content, tempo/time-signature changes, section markers, and MIDI events earlier.
+    private func rippleDeleteSelectedMeasures() {
+        guard let selection = rulerMeasureSelection else { return }
+        guard usesSourceLinearRulerLayout else {
+            rulerMeasureSelection = nil
+            return
+        }
+
+        let tracks = song.sortedTracks.map { track in
+            TimelineRippleStore.Track(
+                id: track.id,
+                trimStart: track.trimStartSeconds,
+                trimEnd: track.trimEndSeconds ?? viewModel.fileDuration(for: track),
+                sourceDuration: viewModel.fileDuration(for: track)
+            )
+        }
+
+        let result = TimelineRippleStore.rippleDeleteMeasures(
+            startMeasure: selection.startMeasure,
+            endMeasure: selection.endMeasure,
+            markers: &arrangementMarkers,
+            slots: &arrangementSlots,
+            clipTrims: clipTrims,
+            removedClips: removedClips,
+            clipGaps: &clipGaps,
+            clipRegions: &clipRegions,
+            loopSlotIDs: &loopSlotIDs,
+            tempoChanges: &tempoChanges,
+            timeSignatureChanges: &timeSignatureChanges,
+            midiEvents: &midiEvents,
+            tracks: tracks,
+            defaultBPM: song.bpm ?? TempoChange.defaultBPM,
+            defaultNumerator: song.timeSignatureNumerator ?? MeasureTiming.defaultNumerator,
+            defaultDenominator: song.timeSignatureDenominator ?? MeasureTiming.defaultDenominator
+        )
+
+        for track in song.sortedTracks where result.emptiedTrackIDs.contains(track.id) {
+            track.trimEndSeconds = track.trimStartSeconds
+            viewModel.updateTrim(for: track, context: modelContext)
+        }
+
+        rulerMeasureSelection = nil
+        clipSelection = nil
+        clearMarkerCue(cancellingScheduledTransition: false)
+
+        refreshTimelineLayout()
+        persistTempoChanges()
+        persistTimeSignatureChanges()
+        persistArrangement()
+        reconfigureMIDI()
+        syncPlayback()
     }
 
     private func deleteWholeClip(clipID: UUID, slotID: UUID, trackID: UUID) {
@@ -1253,8 +1318,48 @@ struct EditView: View {
                 .allowsHitTesting(false)
             }
             .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight, alignment: .leading)
+
+            if let selectionRect = rulerSelectionRect {
+                Rectangle()
+                    .fill(Color.accentColor.opacity(0.25))
+                    .overlay(alignment: .leading) {
+                        Rectangle().fill(Color.accentColor.opacity(0.8)).frame(width: 1)
+                    }
+                    .overlay(alignment: .trailing) {
+                        Rectangle().fill(Color.accentColor.opacity(0.8)).frame(width: 1)
+                    }
+                    .frame(width: selectionRect.width, height: TimelineLayout.rulerTotalHeight)
+                    .offset(x: selectionRect.minX)
+                    .allowsHitTesting(false)
+            }
         }
         .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight, alignment: .leading)
+    }
+
+    /// Pixel bounds of the ruler measure selection highlight, if any.
+    private var rulerSelectionRect: (minX: CGFloat, width: CGFloat)? {
+        guard let selection = rulerMeasureSelection else { return nil }
+        let startTime = MeasureTiming.timeAtStartOfMeasure(
+            selection.startMeasure,
+            tempoChanges: normalizedTempoChanges,
+            timeSignatureChanges: normalizedTimeSignatureChanges
+        )
+        let endTime = MeasureTiming.timeAtStartOfMeasure(
+            selection.endMeasure,
+            tempoChanges: normalizedTempoChanges,
+            timeSignatureChanges: normalizedTimeSignatureChanges
+        )
+        let startX = TimelineLayout.xPosition(
+            for: startTime,
+            duration: timelineDuration,
+            contentWidth: timelineContentWidth
+        )
+        let endX = TimelineLayout.xPosition(
+            for: endTime,
+            duration: timelineDuration,
+            contentWidth: timelineContentWidth
+        )
+        return (startX, max(0, endX - startX))
     }
 
     private func trackHeaderColumn(tracksViewportHeight: CGFloat) -> some View {
@@ -1285,9 +1390,19 @@ struct EditView: View {
             tempoRulerHeight: TimelineLayout.tempoRulerHeight,
             rulerHeight: TimelineLayout.rulerHeight,
             isPlaying: audioEngine.isPlaying,
+            measureSelectionEnabled: usesSourceLinearRulerLayout,
             onSeek: { time in
+                rulerMeasureSelection = nil
                 clearMarkerCue()
                 seekOnTimeline(to: time)
+            },
+            onSelectMeasures: { startMeasure, endMeasure in
+                clipSelection = nil
+                rulerMeasureSelection = MeasureRangeSelection(
+                    startMeasure: startMeasure,
+                    endMeasure: endMeasure
+                )
+                isTimelineFocused = true
             },
             onCueSection: cueSection,
             onToggleLoopSection: toggleLoopSection,
@@ -2410,7 +2525,9 @@ private struct TimelineRulerView: View {
     let tempoRulerHeight: CGFloat
     let rulerHeight: CGFloat
     let isPlaying: Bool
+    let measureSelectionEnabled: Bool
     let onSeek: (TimeInterval) -> Void
+    let onSelectMeasures: (Int, Int) -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
     let onToggleLoopSection: (ArrangementDisplaySection) -> Void
     let onAddSection: (TimeInterval) -> Void
@@ -2503,11 +2620,39 @@ private struct TimelineRulerView: View {
         }
     }
 
+    private static let measureDragThreshold: CGFloat = 4
+
     private var seekGesture: some Gesture {
         DragGesture(minimumDistance: 0)
-            .onEnded { value in
-                onSeek(rulerTime(at: value.location.x))
+            .onChanged { value in
+                guard measureSelectionEnabled else { return }
+                guard abs(value.location.x - value.startLocation.x) >= Self.measureDragThreshold else { return }
+                reportMeasureSelection(from: value.startLocation.x, to: value.location.x)
             }
+            .onEnded { value in
+                let dragDistance = abs(value.location.x - value.startLocation.x)
+                if measureSelectionEnabled, dragDistance >= Self.measureDragThreshold {
+                    reportMeasureSelection(from: value.startLocation.x, to: value.location.x)
+                } else {
+                    onSeek(rulerTime(at: value.location.x))
+                }
+            }
+    }
+
+    private func reportMeasureSelection(from startX: CGFloat, to endX: CGFloat) {
+        let firstMeasure = measureIndex(at: startX)
+        let secondMeasure = measureIndex(at: endX)
+        let lower = min(firstMeasure, secondMeasure)
+        let upper = max(firstMeasure, secondMeasure) + 1
+        onSelectMeasures(lower, upper)
+    }
+
+    private func measureIndex(at x: CGFloat) -> Int {
+        MeasureTiming.measureIndex(
+            at: rulerTime(at: x),
+            tempoChanges: tempoChanges,
+            timeSignatureChanges: timeSignatureChanges
+        )
     }
 
     private func rulerTime(at x: CGFloat) -> TimeInterval {

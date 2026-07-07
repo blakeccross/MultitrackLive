@@ -272,7 +272,7 @@ enum SongArrangementStore {
         clipGaps: [ArrangementClipGap] = [],
         clipRegions: [ClipRegion] = []
     ) -> [ArrangementDisplaySection] {
-        let stored = ClipRegionStore.regions(slotID: trackID, trackID: trackID, in: clipRegions)
+        let stored = ClipRegionStore.regions(forTrack: trackID, in: clipRegions)
         if !stored.isEmpty {
             return stored.map {
                 ClipRegionStore.displaySection(
@@ -415,6 +415,74 @@ enum SongArrangementStore {
                 gaps: clipGaps
             )
         )
+    }
+
+    /// Materializes arrangement slot regions and source-track fallback regions so timeline edits
+    /// can be applied to explicit clip bounds before ripple/shift operations.
+    static func materializeAllClipRegions(
+        markers: [ArrangementMarker],
+        slots: [ArrangementSlot],
+        clipTrims: [ArrangementClipTrim],
+        removedClips: [ArrangementRemovedClip],
+        clipGaps: [ArrangementClipGap],
+        clipRegions: inout [ClipRegion],
+        tracks: [(id: UUID, trimStart: TimeInterval, trimEnd: TimeInterval, sourceDuration: TimeInterval)]
+    ) {
+        let trackIDs = tracks.map(\.id)
+        let inputs = makeLayoutInputs(
+            markers: markers,
+            trackIDs: trackIDs,
+            sourceDurationForTrack: { trackID in
+                tracks.first(where: { $0.id == trackID })?.sourceDuration ?? 0
+            }
+        )
+        let columns = arrangementColumns(slots: slots, inputs: inputs)
+
+        for column in columns {
+            for trackID in trackIDs {
+                if isClipRemoved(slotID: column.slot.id, trackID: trackID, in: removedClips) {
+                    continue
+                }
+
+                let sourceDuration = inputs.sourceDurationForTrack(trackID)
+                guard let sourceRange = trimmedSourceRange(
+                    slot: column.slot,
+                    trackID: trackID,
+                    marker: column.marker,
+                    sortedMarkers: inputs.sortedMarkers,
+                    clipTrims: clipTrims,
+                    sourceDuration: sourceDuration
+                ) else {
+                    continue
+                }
+
+                let bounds = markerSourceRange(
+                    for: column.marker,
+                    sortedMarkers: inputs.sortedMarkers,
+                    sourceDuration: sourceDuration
+                )
+                ensureClipRegions(
+                    slotID: column.slot.id,
+                    trackID: trackID,
+                    markerID: column.marker.id,
+                    sourceRange: sourceRange,
+                    boundsStart: bounds.start,
+                    columnStart: column.columnStart,
+                    clipGaps: clipGaps,
+                    clipRegions: &clipRegions
+                )
+            }
+        }
+
+        for track in tracks where !clipRegions.contains(where: { $0.trackID == track.id }) {
+            ensureSourceTrackRegions(
+                trackID: track.id,
+                trimStart: track.trimStart,
+                trimEnd: track.trimEnd,
+                clipGaps: clipGaps,
+                clipRegions: &clipRegions
+            )
+        }
     }
 
     static func migrateClipGapsToRegions(
@@ -1131,10 +1199,10 @@ enum SongArrangementStore {
         }
 
         let validSlotIDs = Set(validSlots.map(\.id))
-        let validTrims = clipTrims.filter { validSlotIDs.contains($0.slotID) }
-        let validRemoved = removedClips.filter { validSlotIDs.contains($0.slotID) }
-        let validGaps = clipGaps.filter { validSlotIDs.contains($0.slotID) }
-        let validRegions = clipRegions.filter { validSlotIDs.contains($0.slotID) }
+        let validTrims = clipTrims.filter { validSlotIDs.contains($0.slotID) || $0.slotID == $0.trackID }
+        let validRemoved = removedClips.filter { validSlotIDs.contains($0.slotID) || $0.slotID == $0.trackID }
+        let validGaps = clipGaps.filter { validSlotIDs.contains($0.slotID) || $0.slotID == $0.trackID }
+        let validRegions = clipRegions.filter { validSlotIDs.contains($0.slotID) || $0.slotID == $0.trackID }
         loopSlotIDs = loopSlotIDs.intersection(validSlotIDs)
         return SongArrangement(
             slots: validSlots,

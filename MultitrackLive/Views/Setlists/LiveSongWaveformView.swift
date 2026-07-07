@@ -172,6 +172,7 @@ struct LiveSongWaveformView: View {
     let fileDuration: TimeInterval
     let timelineDuration: TimeInterval
     let sections: [ArrangementDisplaySection]
+    let peakSections: [ArrangementDisplaySection]
     let loopSlotIDs: Set<UUID>
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
@@ -198,12 +199,12 @@ struct LiveSongWaveformView: View {
         !sections.isEmpty
     }
 
-    private var usesSourceLinearTimeline: Bool {
-        sections.usesSourceLinearTimeline
+    private var usesArrangedPeakMapping: Bool {
+        !peakSections.isEmpty && !peakSections.usesSourceLinearTimeline
     }
 
     private var showsFullSourceWaveform: Bool {
-        !usesArrangementLayout || usesSourceLinearTimeline
+        !usesArrangementLayout || !usesArrangedPeakMapping
     }
 
     private var trackSourcesKey: String {
@@ -236,7 +237,7 @@ struct LiveSongWaveformView: View {
                 .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
         }
         .modifier(WaveformSeekGestureModifier(
-            isEnabled: isInteractive && (!usesArrangementLayout || usesSourceLinearTimeline),
+            isEnabled: isInteractive,
             contentWidth: contentWidth,
             duration: safeTimelineDuration,
             onSeek: onSeek
@@ -251,6 +252,9 @@ struct LiveSongWaveformView: View {
             refreshDisplayPeaks(contentWidth: contentWidth)
         }
         .onChange(of: sections.map(\.id)) { _, _ in
+            refreshDisplayPeaks(contentWidth: contentWidth)
+        }
+        .onChange(of: peakSections.map(\.id)) { _, _ in
             refreshDisplayPeaks(contentWidth: contentWidth)
         }
         .task(id: trackSourcesKey) {
@@ -573,7 +577,7 @@ struct LiveSongWaveformView: View {
             cachedDisplayPeaks = WaveformPeakResampler.arrangedDisplayPeaks(
                 from: sourcePeaks,
                 fileDuration: fileDuration,
-                sections: sections,
+                sections: peakSections,
                 timelineDuration: safeTimelineDuration,
                 contentWidth: contentWidth,
                 minimumBarSlotWidth: WaveformPeakResampler.voiceMemosBarSlotWidth
@@ -828,6 +832,7 @@ struct LiveSetlistWaveformScrollView: View {
             fileDuration: snapshot.fileDuration,
             timelineDuration: snapshot.timelineDuration,
             sections: snapshot.sections,
+            peakSections: snapshot.peakSections,
             loopSlotIDs: snapshot.loopSlotIDs,
             cuedSectionID: isCurrent ? cuedSectionID : nil,
             cueFlashPhase: isCurrent ? cueFlashPhase : false,

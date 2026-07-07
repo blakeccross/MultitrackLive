@@ -10,7 +10,10 @@ struct LiveSongWaveformSnapshot: Identifiable {
     let trackSources: [(url: URL, duration: TimeInterval)]
     let fileDuration: TimeInterval
     let timelineDuration: TimeInterval
+    /// Marker columns used for section labels, cueing, and loop badges.
     let sections: [ArrangementDisplaySection]
+    /// Playback clip layout used to map timeline time to source audio for the waveform.
+    let peakSections: [ArrangementDisplaySection]
     let loopSlotIDs: Set<UUID>
 
     var id: UUID { songID }
@@ -679,11 +682,25 @@ final class PlaybackCoordinator {
             clipRegions: arrangement.clipRegions,
             inputs: inputs
         )
-
-        let timelineDuration = max(
-            layout.rulerSections.last?.timelineEndSeconds ?? fileDuration,
-            fileDuration
+        let playbackLayout = SongArrangementStore.playbackLayoutSnapshot(
+            slots: arrangement.slots,
+            clipTrims: arrangement.clipTrims,
+            removedClips: arrangement.removedClips,
+            clipGaps: arrangement.clipGaps,
+            clipRegions: arrangement.clipRegions,
+            tracks: playbackTracks(for: song),
+            inputs: inputs
         )
+        let peakSections = waveformPeakSections(
+            playbackLayout: playbackLayout,
+            rulerSections: layout.rulerSections
+        )
+        let playbackEnd = playbackLayout.trackSections.values
+            .flatMap { $0 }
+            .map(\.timelineEndSeconds)
+            .max() ?? 0
+        let rulerEnd = layout.rulerSections.last?.timelineEndSeconds ?? 0
+        let timelineDuration = max(playbackEnd, rulerEnd, 0.001)
 
         return LiveSongWaveformSnapshot(
             songID: song.id,
@@ -692,8 +709,24 @@ final class PlaybackCoordinator {
             fileDuration: fileDuration,
             timelineDuration: timelineDuration,
             sections: layout.rulerSections,
+            peakSections: peakSections,
             loopSlotIDs: arrangement.loopSlotIDs
         )
+    }
+
+    /// Uses playback clip regions for peak mapping when edits have broken the 1:1 source timeline.
+    static func waveformPeakSections(
+        playbackLayout: ArrangementLayoutSnapshot,
+        rulerSections: [ArrangementDisplaySection]
+    ) -> [ArrangementDisplaySection] {
+        guard let trackSections = playbackLayout.trackSections.values
+            .first(where: { !$0.isEmpty }) else {
+            return rulerSections
+        }
+        if trackSections.usesSourceLinearTimeline {
+            return rulerSections
+        }
+        return trackSections
     }
 
     private static func clickOnlySettings(for song: Song) -> AudioEngineManager.TrackSettings {

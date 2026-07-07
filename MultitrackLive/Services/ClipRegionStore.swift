@@ -12,6 +12,16 @@ enum ClipRegionStore {
             .sorted { $0.timelineStartSeconds < $1.timelineStartSeconds }
     }
 
+    /// All stored regions for a track, including arrangement-slot and source-track regions.
+    static func regions(
+        forTrack trackID: UUID,
+        in clipRegions: [ClipRegion]
+    ) -> [ClipRegion] {
+        clipRegions
+            .filter { $0.trackID == trackID }
+            .sorted { $0.timelineStartSeconds < $1.timelineStartSeconds }
+    }
+
     static func hasStoredRegions(
         slotID: UUID,
         trackID: UUID,
