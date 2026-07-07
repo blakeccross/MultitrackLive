@@ -56,26 +56,7 @@ enum SongFolderImporter {
                 folderURL.stopAccessingSecurityScopedResource()
             }
         }
-
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: folderURL.path, isDirectory: &isDirectory),
-              isDirectory.boolValue else {
-            throw ImportError.unreadableFolder
-        }
-
-        let suggestedName = folderURL.lastPathComponent
-        let abletonURL = findAbletonFile(in: folderURL, folderName: suggestedName)
-        let trackURLs = findTrackFiles(in: folderURL)
-
-        guard abletonURL != nil || !trackURLs.isEmpty else {
-            throw ImportError.noImportableContent
-        }
-
-        return ScanResult(
-            suggestedName: suggestedName,
-            abletonURL: abletonURL,
-            trackURLs: trackURLs
-        )
+        return try scanFolderContents(at: folderURL)
     }
 
     static func importFromFolder(
@@ -83,14 +64,21 @@ enum SongFolderImporter {
         name: String? = nil,
         context: ModelContext
     ) throws -> ImportResult {
-        let scan = try scanFolder(at: folderURL)
+        let didAccess = folderURL.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                folderURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let scan = try scanFolderContents(at: folderURL)
         let trimmedName = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let songName = trimmedName.isEmpty ? scan.suggestedName : trimmedName
 
         let song = Song(name: songName)
         context.insert(song)
 
-        let projectURL = ProjectFileStore.projectURL(named: songName, adjacentTo: folderURL)
+        let projectURL = ProjectFileStore.defaultProjectURL(for: songName)
         song.projectFilePath = projectURL.path
 
         do {
@@ -122,7 +110,14 @@ enum SongFolderImporter {
         song: Song,
         context: ModelContext
     ) throws -> (trackCount: Int, sectionCount: Int, bpm: Double?) {
-        let scan = try scanFolder(at: folderURL)
+        let didAccess = folderURL.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                folderURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let scan = try scanFolderContents(at: folderURL)
         let projectURL = try SongProjectBridge.ensureProjectFile(for: song, context: context)
         let result = try applyScanResult(
             scan,
@@ -133,6 +128,28 @@ enum SongFolderImporter {
         try SongProjectBridge.syncProjectFile(for: song, context: context)
         try context.save()
         return (result.trackCount, result.sectionCount, result.bpm)
+    }
+
+    private static func scanFolderContents(at folderURL: URL) throws -> ScanResult {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: folderURL.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            throw ImportError.unreadableFolder
+        }
+
+        let suggestedName = folderURL.lastPathComponent
+        let abletonURL = findAbletonFile(in: folderURL, folderName: suggestedName)
+        let trackURLs = findTrackFiles(in: folderURL)
+
+        guard abletonURL != nil || !trackURLs.isEmpty else {
+            throw ImportError.noImportableContent
+        }
+
+        return ScanResult(
+            suggestedName: suggestedName,
+            abletonURL: abletonURL,
+            trackURLs: trackURLs
+        )
     }
 
     private struct AppliedScanResult {

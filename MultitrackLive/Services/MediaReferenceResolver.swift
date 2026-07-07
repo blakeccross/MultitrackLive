@@ -1,9 +1,17 @@
 import Foundation
 
 enum MediaReferenceResolver {
+    #if os(macOS)
+    static let usesSecurityScopedBookmarks: Bool = {
+        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    }()
+    #else
+    static let usesSecurityScopedBookmarks = false
+    #endif
+
     static func makeBookmark(for url: URL) -> Data? {
         #if os(macOS)
-        let options: URL.BookmarkCreationOptions = [.withSecurityScope]
+        let options: URL.BookmarkCreationOptions = usesSecurityScopedBookmarks ? [.withSecurityScope] : []
         #else
         let options: URL.BookmarkCreationOptions = []
         #endif
@@ -17,20 +25,36 @@ enum MediaReferenceResolver {
     static func resolveBookmark(_ data: Data) -> URL? {
         var isStale = false
         #if os(macOS)
-        let options: URL.BookmarkResolutionOptions = [.withSecurityScope]
+        let resolutionOptions: [URL.BookmarkResolutionOptions] = usesSecurityScopedBookmarks
+            ? [.withSecurityScope]
+            : [[], [.withSecurityScope]]
         #else
-        let options: URL.BookmarkResolutionOptions = []
+        let resolutionOptions: [URL.BookmarkResolutionOptions] = [[]]
         #endif
-        guard let url = try? URL(
-            resolvingBookmarkData: data,
-            options: options,
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        ) else {
-            return nil
+
+        for options in resolutionOptions {
+            guard let url = try? URL(
+                resolvingBookmarkData: data,
+                options: options,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) else { continue }
+
+            if usesSecurityScopedBookmarks {
+                guard url.startAccessingSecurityScopedResource() else { continue }
+            }
+
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                if usesSecurityScopedBookmarks {
+                    url.stopAccessingSecurityScopedResource()
+                }
+                continue
+            }
+
+            return url
         }
-        _ = url.startAccessingSecurityScopedResource()
-        return url
+
+        return nil
     }
 
     static func relativePath(from url: URL, to projectFileURL: URL) -> String? {
@@ -67,11 +91,14 @@ enum MediaReferenceResolver {
             }
         }
 
-        if reference.pathStyle == .absolute || reference.pathStyle == .relativeToProject {
-            let candidate = URL(fileURLWithPath: reference.path).standardizedFileURL
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                return candidate
-            }
+        let candidate = URL(fileURLWithPath: reference.path).standardizedFileURL
+        #if os(macOS)
+        guard !usesSecurityScopedBookmarks || FileStore.isInAppContainer(candidate) else {
+            return nil
+        }
+        #endif
+        if FileManager.default.fileExists(atPath: candidate.path) {
+            return candidate
         }
 
         return nil
@@ -99,6 +126,11 @@ enum MediaReferenceResolver {
         }
 
         let candidate = URL(fileURLWithPath: reference.path).standardizedFileURL
+        #if os(macOS)
+        guard !usesSecurityScopedBookmarks || FileStore.isInAppContainer(candidate) else {
+            return nil
+        }
+        #endif
         if FileManager.default.fileExists(atPath: candidate.path) {
             return candidate
         }

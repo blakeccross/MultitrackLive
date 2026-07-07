@@ -74,7 +74,9 @@ struct TrackImportView: View {
                     handleFolderImport(result)
                 }
                 .onAppear {
+                    #if os(iOS)
                     showingImporter = true
+                    #endif
                 }
             }
         }

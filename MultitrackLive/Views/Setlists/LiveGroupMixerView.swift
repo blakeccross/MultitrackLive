@@ -237,10 +237,10 @@ struct LiveGroupMixerPanel: View {
         .background {
             #if os(iOS)
             drawerShape
-                .fill(AppColors.surfaceElevated)
+                .fill(AppColors.backgroundSecondary)
                 .ignoresSafeArea(.all, edges: .bottom)
             #else
-            AppColors.surfaceElevated
+            AppColors.backgroundSecondary
             #endif
         }
         .overlay(alignment: .top) {
@@ -289,7 +289,7 @@ struct LiveGroupMixerView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let contentHeight = geometry.size.height
+            let stripHeight = geometry.size.height - AppSpacing.xs - AppSpacing.sm
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: AppSpacing.sm) {
@@ -305,7 +305,7 @@ struct LiveGroupMixerView: View {
                                 get: { group.isMuted },
                                 set: { group.isMuted = $0 }
                             ),
-                            stripHeight: contentHeight,
+                            stripHeight: stripHeight,
                             stripWidth: stripWidth,
                             onMixChange: onMixChange
                         )
@@ -323,7 +323,7 @@ struct LiveGroupMixerView: View {
                                 get: { routingConfig.ungroupedIsMuted },
                                 set: { routingConfig.ungroupedIsMuted = $0 }
                             ),
-                            stripHeight: contentHeight,
+                            stripHeight: stripHeight,
                             stripWidth: stripWidth,
                             onMixChange: onMixChange
                         )
@@ -353,16 +353,17 @@ private struct LiveGroupChannelStrip: View {
     let stripWidth: CGFloat
     let onMixChange: () -> Void
 
-    private var controlsHeight: CGFloat { 20 + 6 + 36 }
-
     var body: some View {
         VStack(spacing: AppSpacing.xs) {
-            MixerFaderColumn(
-                value: $volume,
-                meterLevel: meterLevel,
-                height: max(60, stripHeight - controlsHeight - 12),
-                onValueChanged: onMixChange
-            )
+            GeometryReader { geometry in
+                MixerFaderColumn(
+                    value: $volume,
+                    meterLevel: meterLevel,
+                    height: max(60, geometry.size.height),
+                    onValueChanged: onMixChange
+                )
+            }
+            .frame(minHeight: 60)
 
             TrackMixButton(
                 label: "M",
@@ -381,12 +382,7 @@ private struct LiveGroupChannelStrip: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(width: stripWidth, alignment: .center)
                 .frame(minHeight: 28)
-                .padding(.horizontal, AppSpacing.xs)
-                .padding(.vertical, 5)
-                .background(AppColors.surface, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
         }
         .padding(AppSpacing.sm)
-        .background(AppColors.surface, in: RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-        .frame(width: stripWidth + AppSpacing.md * 2, height: stripHeight, alignment: .top)
     }
 }

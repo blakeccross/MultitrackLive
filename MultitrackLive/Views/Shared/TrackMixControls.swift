@@ -1,5 +1,7 @@
 import SwiftUI
 
+private let mixerMeterGreen = Color(red: 0.22, green: 0.82, blue: 0.36)
+
 struct TrackMixButton: View {
     let label: String
     let isActive: Bool
@@ -28,7 +30,6 @@ struct LogicStyleVolumeSlider: View {
 
     private let controlHeight: CGFloat = 26
     private let meterBarHeight: CGFloat = 2.5
-    private let meterGreen = Color(red: 0.22, green: 0.82, blue: 0.36)
 
     var body: some View {
         GeometryReader { geometry in
@@ -77,11 +78,11 @@ struct LogicStyleVolumeSlider: View {
     private func meterBars(width: CGFloat) -> some View {
         VStack(spacing: 3) {
             RoundedRectangle(cornerRadius: 1, style: .continuous)
-                .fill(meterGreen)
+                .fill(mixerMeterGreen)
                 .frame(width: max(0, width - 8), height: meterBarHeight)
 
             RoundedRectangle(cornerRadius: 1, style: .continuous)
-                .fill(meterGreen)
+                .fill(mixerMeterGreen)
                 .frame(width: max(0, width - 8), height: meterBarHeight)
         }
     }
@@ -130,8 +131,8 @@ struct MixerFaderColumn: View {
     @State private var isDragging = false
 
     private let trackWidth: CGFloat = 6
-    private let thumbWidth: CGFloat = 26
-    private let thumbHeight: CGFloat = 24
+    private let thumbWidth: CGFloat = 50
+    private let thumbHeight: CGFloat = 30
     private let scaleWidth: CGFloat = 20
     private let meterWidth: CGFloat = 5
 
@@ -179,16 +180,13 @@ struct MixerFaderColumn: View {
     }
 
     private var faderThumb: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(isDragging ? AppColors.accent.opacity(0.35) : AppColors.surfaceElevated)
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(isDragging ? AppColors.accent : AppColors.separator, lineWidth: 1)
-            }
+        RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .fill(AppColors.backgroundPrimary)
             .overlay {
                 Rectangle()
                     .fill(AppColors.textSecondary.opacity(0.55))
-                    .frame(height: 1)
+                    .frame(height: 2)
+                    .padding(.horizontal, 4)
             }
             .frame(width: thumbWidth, height: thumbHeight)
     }
@@ -225,7 +223,7 @@ struct MixerFaderColumn: View {
                     .fill(AppColors.separator)
 
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(AppColors.accent.opacity(0.85))
+                    .fill(mixerMeterGreen.opacity(0.85))
                     .frame(height: geometry.size.height * MixerFaderScale.meterFillFraction(forPeak: meterLevel))
             }
         }

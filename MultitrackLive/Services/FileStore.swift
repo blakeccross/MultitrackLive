@@ -9,6 +9,11 @@ enum FileStore {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
+    static func isInAppContainer(_ url: URL) -> Bool {
+        let containerRoot = documentsDirectory.standardizedFileURL.path
+        return url.standardizedFileURL.path.hasPrefix(containerRoot)
+    }
+
     static func trackURL(for song: Song, track: AudioTrack) -> URL? {
         guard let mediaPath = track.mediaPath, let pathStyle = track.mediaPathStyle else {
             return nil
