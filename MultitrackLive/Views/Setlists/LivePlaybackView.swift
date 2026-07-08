@@ -53,6 +53,7 @@ struct LivePlaybackView: View {
     @State private var mixerDetent: LiveGroupMixerDetent = .hidden
     @State private var headerPendingEdit: SetlistEntry?
     @State private var editHeaderTitle = ""
+    @State private var overlapEditorContext: SetlistOverlapEditorContext?
 
     private var activeSetlist: Setlist? {
         if let activeSetlistID,
@@ -165,6 +166,15 @@ struct LivePlaybackView: View {
             TrackImportView(song: song) { error in
                 songImportFeedback = .failure(error)
             }
+        }
+        .sheet(item: $overlapEditorContext) { context in
+            SetlistOverlapEditorView(
+                context: context,
+                onCommit: { config in
+                    viewModel.setOverlapTransition(config, for: context.entry, context: modelContext)
+                    coordinator.updateTransitions(from: workingSetlist)
+                }
+            )
         }
         .alert(item: $songImportFeedback) { feedback in
             Alert(
@@ -523,7 +533,10 @@ struct LivePlaybackView: View {
                 cuedSectionID: cuedSectionID,
                 cueFlashPhase: cueFlashPhase,
                 onSeek: coordinator.seek,
-                onCueSection: cueSection
+                onCueSection: cueSection,
+                onOverlapBadgeTapped: { playbackIndex in
+                    presentOverlapEditor(forPlaybackIndex: playbackIndex)
+                }
             )
             .overlay {
                 if coordinator.isLoadingSong {
@@ -681,10 +694,11 @@ struct LivePlaybackView: View {
                 index: playbackIndex,
                 currentIndex: coordinator.currentIndex,
                 isPlaying: audioEngine.isPlaying,
-                transition: transition
+                transition: transition,
+                onOverlapBadgeTap: transition == .overlap
+                    ? { presentOverlapEditor(for: entry) }
+                    : nil
             )
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         #if os(macOS)
@@ -703,10 +717,9 @@ struct LivePlaybackView: View {
 
             if transition != nil {
                 Menu("Transition to Next") {
-                    ForEach(SetlistTransition.allCases) { option in
+                    ForEach(availableTransitions(for: entry)) { option in
                         Button {
-                            viewModel.setTransition(option, for: entry, context: modelContext)
-                            coordinator.updateTransitions(from: workingSetlist)
+                            handleTransitionSelection(option, for: entry)
                         } label: {
                             Label(option.label, systemImage: option.systemImage)
                         }
@@ -730,6 +743,51 @@ struct LivePlaybackView: View {
     private func removeFromSetlist(_ entry: SetlistEntry) {
         viewModel.removeEntry(entry, from: workingSetlist, context: modelContext)
         coordinator.syncSetlist(workingSetlist)
+    }
+
+    private func canUseOverlap(for entry: SetlistEntry) -> Bool {
+        workingSetlist.canConfigureOverlap(after: entry)
+    }
+
+    private func availableTransitions(for entry: SetlistEntry) -> [SetlistTransition] {
+        SetlistTransition.allCases.filter { transition in
+            transition != .overlap || canUseOverlap(for: entry)
+        }
+    }
+
+    private func handleTransitionSelection(_ option: SetlistTransition, for entry: SetlistEntry) {
+        if option == .overlap {
+            presentOverlapEditor(for: entry)
+            return
+        }
+        viewModel.setTransition(option, for: entry, context: modelContext)
+        coordinator.updateTransitions(from: workingSetlist)
+    }
+
+    private func presentOverlapEditor(for entry: SetlistEntry) {
+        guard canUseOverlap(for: entry),
+              let outgoing = entry.song,
+              let incoming = workingSetlist.nextSong(after: entry) else {
+            return
+        }
+        overlapEditorContext = SetlistOverlapEditorContext(
+            entry: entry,
+            outgoingSong: outgoing,
+            incomingSong: incoming,
+            outgoingSnapshot: coordinator.waveformSnapshot(for: outgoing),
+            incomingSnapshot: coordinator.waveformSnapshot(for: incoming)
+        )
+        coordinator.ensureWaveformSnapshot(for: outgoing)
+        coordinator.ensureWaveformSnapshot(for: incoming)
+    }
+
+    private func presentOverlapEditor(forPlaybackIndex playbackIndex: Int) {
+        guard let entry = workingSetlist.sortedEntries.first(where: {
+            workingSetlist.playbackIndex(for: $0) == playbackIndex
+        }) else {
+            return
+        }
+        presentOverlapEditor(for: entry)
     }
 
     private func songForEditing(id: UUID) -> Song? {
@@ -865,6 +923,7 @@ private struct SetlistPlaybackRow: View {
     let currentIndex: Int
     let isPlaying: Bool
     var transition: SetlistTransition? = nil
+    var onOverlapBadgeTap: (() -> Void)? = nil
 
     private var isFinished: Bool {
         index < currentIndex
@@ -921,7 +980,11 @@ private struct SetlistPlaybackRow: View {
             }
 
             if let transition {
-                SetlistTransitionBadge(transition: transition, size: 24)
+                SetlistTransitionBadge(
+                    transition: transition,
+                    size: 24,
+                    onTap: onOverlapBadgeTap
+                )
             }
         }
         .padding(.horizontal, AppSpacing.sm)

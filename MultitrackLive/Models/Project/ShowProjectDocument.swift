@@ -5,17 +5,20 @@ struct ShowProjectEntry: Codable, Hashable, Identifiable {
     var sortOrder: Int
     var transition: String
     var songProject: ProjectDocumentReference
+    var overlap: OverlapTransitionConfig?
 
     init(
         id: UUID = UUID(),
         sortOrder: Int,
         transition: SetlistTransition,
-        songProject: ProjectDocumentReference
+        songProject: ProjectDocumentReference,
+        overlap: OverlapTransitionConfig? = nil
     ) {
         self.id = id
         self.sortOrder = sortOrder
         self.transition = transition.rawValue
         self.songProject = songProject
+        self.overlap = overlap
     }
 
     var transitionValue: SetlistTransition {
@@ -24,7 +27,7 @@ struct ShowProjectEntry: Codable, Hashable, Identifiable {
 }
 
 struct ShowProjectDocument: Codable, Identifiable {
-    static let currentFormatVersion = 1
+    static let currentFormatVersion = 2
 
     var formatVersion: Int
     var id: UUID

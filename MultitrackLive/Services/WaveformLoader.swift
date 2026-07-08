@@ -208,6 +208,50 @@ enum WaveformPeakResampler {
         return result
     }
 
+    static func displayPeaks(
+        from source: [Float],
+        fileDuration: TimeInterval,
+        sections: [ArrangementDisplaySection],
+        timelineDuration: TimeInterval,
+        timeRange: ClosedRange<TimeInterval>,
+        contentWidth: CGFloat,
+        minimumBarSlotWidth: CGFloat = voiceMemosBarSlotWidth
+    ) -> [Float] {
+        guard !source.isEmpty else { return [] }
+
+        let barCount = min(
+            requestedBarCount(for: contentWidth, minimumBarSlotWidth: minimumBarSlotWidth),
+            maxDisplayBars
+        )
+        guard barCount > 0 else { return [] }
+
+        let rangeDuration = max(timeRange.upperBound - timeRange.lowerBound, 0.001)
+        let safeTimelineDuration = max(timelineDuration, 0.001)
+        let sortedSections = sections.sorted { $0.timelineStartSeconds < $1.timelineStartSeconds }
+        let usesArrangement = fileDuration > 0 && !sortedSections.isEmpty
+
+        var result = [Float](repeating: 0, count: barCount)
+
+        for barIndex in 0..<barCount {
+            let timelineTime = timeRange.lowerBound
+                + rangeDuration * (Double(barIndex) + 0.5) / Double(barCount)
+
+            if usesArrangement, let section = section(containing: timelineTime, in: sortedSections) {
+                let sourceTime = section.sourceStartSeconds + (timelineTime - section.timelineStartSeconds)
+                let sourceIndex = Int((sourceTime / fileDuration) * Double(source.count))
+                let clampedIndex = min(max(0, sourceIndex), source.count - 1)
+                result[barIndex] = source[clampedIndex]
+            } else {
+                let fraction = min(max(timelineTime / safeTimelineDuration, 0), 1)
+                let sourceIndex = Int(fraction * Double(source.count))
+                let clampedIndex = min(max(0, sourceIndex), source.count - 1)
+                result[barIndex] = source[clampedIndex]
+            }
+        }
+
+        return result
+    }
+
     /// Extracts the display-peak slice for a timeline range from a full-lane peak array.
     static func peaksSlice(
         from bars: [Float],

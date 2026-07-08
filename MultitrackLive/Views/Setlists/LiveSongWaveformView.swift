@@ -666,6 +666,7 @@ struct LiveSetlistWaveformScrollView: View {
     let cueFlashPhase: Bool
     let onSeek: (TimeInterval) -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
+    var onOverlapBadgeTapped: ((Int) -> Void)?
 
     @AppStorage(LiveSetlistWaveformMetrics.horizontalZoomAppStorageKey)
     private var storedHorizontalZoom = LiveSetlistWaveformMetrics.defaultHorizontalZoomStorageValue
@@ -750,17 +751,22 @@ struct LiveSetlistWaveformScrollView: View {
                         .id(item.id)
 
                     if let transitionAfter {
-                        transitionBadge(transitionAfter)
+                        transitionBadge(transitionAfter, playbackIndex: playbackIndex)
                     }
                 }
             }
         }
     }
 
-    private func transitionBadge(_ transition: SetlistTransition) -> some View {
+    private func transitionBadge(_ transition: SetlistTransition, playbackIndex: Int) -> some View {
         VStack {
             Spacer()
-            SetlistTransitionBadge(transition: transition)
+            SetlistTransitionBadge(
+                transition: transition,
+                onTap: transition == .overlap
+                    ? { onOverlapBadgeTapped?(playbackIndex) }
+                    : nil
+            )
             Spacer()
         }
         .frame(height: laneHeight)

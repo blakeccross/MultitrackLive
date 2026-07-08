@@ -5,6 +5,7 @@ import SwiftData
 final class SetlistEntry {
     var sortOrder: Int
     var transitionRaw: String = SetlistTransition.continue.rawValue
+    var overlapStartOffsetSeconds: TimeInterval?
     var song: Song?
     var setlist: Setlist?
     var headerTitle: String?
@@ -15,7 +16,22 @@ final class SetlistEntry {
 
     var transition: SetlistTransition {
         get { SetlistTransition(rawValue: transitionRaw) ?? .continue }
-        set { transitionRaw = newValue.rawValue }
+        set {
+            transitionRaw = newValue.rawValue
+            if !newValue.requiresOverlapConfig {
+                overlapStartOffsetSeconds = nil
+            }
+        }
+    }
+
+    var overlapConfig: OverlapTransitionConfig? {
+        get {
+            guard let overlapStartOffsetSeconds else { return nil }
+            return OverlapTransitionConfig(startOffsetSeconds: overlapStartOffsetSeconds)
+        }
+        set {
+            overlapStartOffsetSeconds = newValue?.startOffsetSeconds
+        }
     }
 
     init(sortOrder: Int, song: Song, transition: SetlistTransition = .continue) {

@@ -44,7 +44,24 @@ final class Setlist {
     }
 
     func hasNextSong(after entry: SetlistEntry) -> Bool {
-        guard let idx = sortedEntries.firstIndex(where: { $0 === entry }) else { return false }
-        return sortedEntries[(idx + 1)...].contains { $0.song != nil }
+        nextSong(after: entry) != nil
+    }
+
+    func nextSong(after entry: SetlistEntry) -> Song? {
+        guard let idx = sortedEntries.firstIndex(where: { $0 === entry }) else { return nil }
+        for candidate in sortedEntries[(idx + 1)...] {
+            if let song = candidate.song {
+                return song
+            }
+        }
+        return nil
+    }
+
+    func canConfigureOverlap(after entry: SetlistEntry) -> Bool {
+        guard let outgoing = entry.song, !outgoing.isClickOnly,
+              let incoming = nextSong(after: entry), !incoming.isClickOnly else {
+            return false
+        }
+        return true
     }
 }

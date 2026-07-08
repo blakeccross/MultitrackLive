@@ -330,7 +330,8 @@ enum SongProjectBridge {
                 songProject: ProjectDocumentReference.from(
                     projectURL: projectURL,
                     relativeTo: showFileURL
-                )
+                ),
+                overlap: entry.transition == .overlap ? entry.overlapConfig : nil
             )
         }
 
@@ -392,6 +393,9 @@ enum SongProjectBridge {
                 song: song,
                 transition: showEntry.transitionValue
             )
+            if showEntry.transitionValue == .overlap {
+                entry.overlapConfig = showEntry.overlap
+            }
             entry.setlist = setlist
             context.insert(entry)
             setlist.entries.append(entry)

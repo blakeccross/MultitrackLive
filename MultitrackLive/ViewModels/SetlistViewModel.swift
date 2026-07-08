@@ -30,9 +30,13 @@ final class SetlistViewModel {
 
     func moveEntries(in setlist: Setlist, from source: IndexSet, to destination: Int, context: ModelContext) {
         var sorted = setlist.sortedEntries
+        let movedEntries = source.map { sorted[$0] }
         sorted.move(fromOffsets: source, toOffset: destination)
         for (index, entry) in sorted.enumerated() {
             entry.sortOrder = index
+        }
+        for entry in movedEntries where entry.transition == .overlap {
+            entry.transition = .continue
         }
         persistSetlist(setlist, context: context)
     }
@@ -40,6 +44,17 @@ final class SetlistViewModel {
     func setTransition(_ transition: SetlistTransition, for entry: SetlistEntry, context: ModelContext) {
         guard let setlist = entry.setlist else { return }
         entry.transition = transition
+        persistSetlist(setlist, context: context)
+    }
+
+    func setOverlapTransition(
+        _ config: OverlapTransitionConfig,
+        for entry: SetlistEntry,
+        context: ModelContext
+    ) {
+        guard let setlist = entry.setlist else { return }
+        entry.overlapConfig = config
+        entry.transition = .overlap
         persistSetlist(setlist, context: context)
     }
 
