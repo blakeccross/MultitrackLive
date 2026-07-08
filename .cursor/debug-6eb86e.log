@@ -1,0 +1,3 @@
+{"sessionId":"6eb86e","data":{"undoActionName":"","canRedo":"true","redoActionName":"Delete Clip","canUndo":"false"},"runId":"initial","message":"songUndoActions evaluated","hypothesisId":"H6","location":"SongDetailView.swift:215","timestamp":1783541565052}
+{"message":"songUndoActions evaluated","location":"SongDetailView.swift:215","hypothesisId":"H6","runId":"initial","data":{"canRedo":"true","undoActionName":"","canUndo":"false","redoActionName":"Delete Clip"},"sessionId":"6eb86e","timestamp":1783541569135}
+{"location":"SongDetailView.swift:215","hypothesisId":"H6","runId":"initial","data":{"redoActionName":"Delete Clip","canUndo":"false","canRedo":"true","undoActionName":""},"timestamp":1783541570768,"message":"songUndoActions evaluated","sessionId":"6eb86e"}

@@ -5,11 +5,28 @@ import Observation
 final class SongUndoController: NSObject {
     private let undoManager = UndoManager()
     private(set) var isApplyingUndo = false
+    /// Bumped whenever the undo stack changes so SwiftUI observes `canUndo` / `canRedo`.
+    private var stackRevision = 0
 
-    var canUndo: Bool { undoManager.canUndo }
-    var canRedo: Bool { undoManager.canRedo }
-    var undoActionName: String? { undoManager.undoActionName }
-    var redoActionName: String? { undoManager.redoActionName }
+    var canUndo: Bool {
+        _ = stackRevision
+        return undoManager.canUndo
+    }
+
+    var canRedo: Bool {
+        _ = stackRevision
+        return undoManager.canRedo
+    }
+
+    var undoActionName: String? {
+        _ = stackRevision
+        return undoManager.undoActionName
+    }
+
+    var redoActionName: String? {
+        _ = stackRevision
+        return undoManager.redoActionName
+    }
 
     override init() {
         super.init()
@@ -29,14 +46,21 @@ final class SongUndoController: NSObject {
             target.applySnapshot(before, actionName: actionName, paired: after, using: apply)
         }
         undoManager.setActionName(actionName)
+        refreshStackState()
     }
 
     func undo() {
         undoManager.undo()
+        refreshStackState()
     }
 
     func redo() {
         undoManager.redo()
+        refreshStackState()
+    }
+
+    private func refreshStackState() {
+        stackRevision &+= 1
     }
 
     private func applySnapshot(
@@ -53,5 +77,6 @@ final class SongUndoController: NSObject {
             target.applySnapshot(paired, actionName: actionName, paired: snapshot, using: apply)
         }
         undoManager.setActionName(actionName)
+        refreshStackState()
     }
 }

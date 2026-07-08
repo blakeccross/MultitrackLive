@@ -19,6 +19,7 @@ struct SharedTransportStrip: View {
     let onPause: () -> Void
     let onToggleLoop: () -> Void
     var onTapBPM: (() -> Void)? = nil
+    var onTapMeter: (() -> Void)? = nil
     var onReadoutHeightChange: ((CGFloat) -> Void)? = nil
 
     var body: some View {
@@ -67,7 +68,8 @@ struct SharedTransportStrip: View {
                 bpm: snapshot.bpm,
                 meter: snapshot.meter,
                 key: snapshot.key,
-                onTapBPM: onTapBPM
+                onTapBPM: onTapBPM,
+                onTapMeter: onTapMeter
             )
             .background {
                 GeometryReader { geometry in

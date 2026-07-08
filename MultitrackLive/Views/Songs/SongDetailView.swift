@@ -6,6 +6,7 @@ struct SongDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     @Bindable var song: Song
+    @Query(sort: \Song.name) private var songs: [Song]
 
     @State private var viewModel: SongEditorViewModel?
     @State private var showingAbletonImporter = false
@@ -25,13 +26,14 @@ struct SongDetailView: View {
     @State private var timeSignatureChanges: [TimeSignatureChange] = []
     @State private var midiEvents: [MIDIEvent] = []
     @State private var undoController = SongUndoController()
+    @State private var selectedSongID: UUID?
 
     var body: some View {
         songDetailContent
             .appBackground(.primary)
-            .navigationTitle(song.name)
+            .navigationTitle("")
             #if os(iOS)
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             #endif
             .fileImporter(
                 isPresented: $showingAbletonImporter,
@@ -110,7 +112,7 @@ struct SongDetailView: View {
                 Text(bakePromptMessage)
             }
             .sheet(isPresented: $showingBakeSheet) {
-                BakeSongSheet(song: song) {
+                BakeSongSheet(song: activeSong) {
                     if shouldDismissAfterBake {
                         dismiss()
                     }
@@ -127,17 +129,21 @@ struct SongDetailView: View {
     }
 
     private var shouldPromptToBake: Bool {
-        SongBakeStore.needsBake(for: song)
+        SongBakeStore.needsBake(for: activeSong)
     }
 
     private var bakePromptMessage: String {
-        let trackCount = song.sortedTracks.count
+        let trackCount = activeSong.sortedTracks.count
         return "This song has \(trackCount) tracks. Baking creates one stem per group for smoother live playback. You can still edit the original multitracks anytime."
+    }
+
+    private var activeSong: Song {
+        songs.first(where: { $0.id == selectedSongID }) ?? song
     }
 
     private func attemptDismiss() {
         persistSongState()
-        if SongBakeStore.needsBake(for: song) {
+        if SongBakeStore.needsBake(for: activeSong) {
             showingBakePrompt = true
         } else {
             dismiss()
@@ -149,7 +155,7 @@ struct SongDetailView: View {
             if let viewModel {
                 ZStack {
                     EditView(
-                        song: song,
+                        song: activeSong,
                         viewModel: viewModel,
                         undoController: undoController,
                         arrangementMarkers: $arrangementMarkers,
@@ -157,11 +163,12 @@ struct SongDetailView: View {
                         clipTrims: $clipTrims,
                         removedClips: $removedClips,
                         clipGaps: $clipGaps,
-                    clipRegions: $clipRegions,
+                        clipRegions: $clipRegions,
                         loopSlotIDs: $loopSlotIDs,
                         tempoChanges: $tempoChanges,
                         timeSignatureChanges: $timeSignatureChanges,
-                        midiEvents: $midiEvents
+                        midiEvents: $midiEvents,
+                        onSelectSong: switchToSong
                     )
 
                     if viewModel.isReloadingSong {
@@ -170,7 +177,7 @@ struct SongDetailView: View {
                         VStack(spacing: AppSpacing.sm) {
                             ProgressView()
                                 .tint(AppColors.accent)
-                            Text(viewModel.isReloadingSong && song.transposeHighQuality ? "Processing audio…" : "Loading audio…")
+                            Text(viewModel.isReloadingSong && activeSong.transposeHighQuality ? "Processing audio…" : "Loading audio…")
                                 .font(.headline)
                                 .foregroundStyle(AppColors.textPrimary)
                         }
@@ -195,9 +202,9 @@ struct SongDetailView: View {
     #if os(macOS)
     private var songEditorActions: SongEditorActions {
         SongEditorActions(
-            canAutoGroup: !song.sortedTracks.isEmpty,
+            canAutoGroup: !activeSong.sortedTracks.isEmpty,
             autoGroup: {
-                TrackGroupStore.autoAssignGroups(for: song, in: modelContext)
+                TrackGroupStore.autoAssignGroups(for: activeSong, in: modelContext)
             },
             importAbleton: {
                 showingAbletonImporter = true
@@ -206,7 +213,7 @@ struct SongDetailView: View {
     }
 
     private var songUndoActions: SongUndoActions {
-        SongUndoActions(
+        return SongUndoActions(
             canUndo: undoController.canUndo,
             canRedo: undoController.canRedo,
             undoActionName: undoController.undoActionName,
@@ -221,8 +228,12 @@ struct SongDetailView: View {
         let audioEngine = AudioEngineManager.shared
         audioEngine.pause()
         audioEngine.onPlaybackFinished = nil
+        selectedSongID = selectedSongID ?? song.id
+        loadEditor(for: activeSong, forceReloadViewModel: viewModel?.song.id != activeSong.id)
+    }
 
-        if viewModel == nil {
+    private func loadEditor(for song: Song, forceReloadViewModel: Bool) {
+        if viewModel == nil || forceReloadViewModel {
             let model = SongEditorViewModel(song: song)
             model.loadSong()
             viewModel = model
@@ -246,7 +257,7 @@ struct SongDetailView: View {
 
     private func persistSongState() {
         try? SongProjectBridge.persist(
-            song: song,
+            song: activeSong,
             markers: arrangementMarkers,
             arrangementSlots: arrangementSlots,
             clipTrims: clipTrims,
@@ -265,13 +276,13 @@ struct SongDetailView: View {
         guard clipRegions.isEmpty, !clipGaps.isEmpty else { return }
         let inputs = SongArrangementStore.makeLayoutInputs(
             markers: arrangementMarkers,
-            trackIDs: song.sortedTracks.map(\.id),
+            trackIDs: activeSong.sortedTracks.map(\.id),
             sourceDurationForTrack: { trackID in
-                song.sortedTracks.first(where: { $0.id == trackID })
+                activeSong.sortedTracks.first(where: { $0.id == trackID })
                     .map { viewModel?.fileDuration(for: $0) ?? 0 } ?? 0
             }
         )
-        let sourceTracks = song.sortedTracks.map { track in
+        let sourceTracks = activeSong.sortedTracks.map { track in
             (
                 trackID: track.id,
                 trimStart: track.trimStartSeconds,
@@ -307,6 +318,15 @@ struct SongDetailView: View {
         viewModel.syncTempoMap(tempoChanges, timeSignatureChanges: timeSignatureChanges)
     }
 
+    private func switchToSong(_ nextSong: Song) {
+        guard nextSong.id != activeSong.id else { return }
+        persistSongState()
+        AudioEngineManager.shared.stop()
+        selectedSongID = nextSong.id
+        undoController = SongUndoController()
+        loadEditor(for: nextSong, forceReloadViewModel: true)
+    }
+
     private func handleAbletonImport(_ result: Result<[URL], Error>) {
         switch result {
         case .failure(let error):
@@ -320,7 +340,7 @@ struct SongDetailView: View {
                 try AbletonProjectImporter.apply(
                     importResult,
                     markers: markers,
-                    to: song,
+                    to: activeSong,
                     context: modelContext
                 )
                 arrangementSlots = SongArrangementStore.defaultSlots(from: markers)

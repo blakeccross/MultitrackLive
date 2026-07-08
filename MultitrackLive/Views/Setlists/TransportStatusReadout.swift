@@ -6,6 +6,7 @@ struct TransportStatusReadout: View {
     let meter: String
     let key: String
     var onTapBPM: (() -> Void)? = nil
+    var onTapMeter: (() -> Void)? = nil
 
     private static let width: CGFloat = 200
     private static let dividerWidth: CGFloat = 1
@@ -43,20 +44,13 @@ struct TransportStatusReadout: View {
             readoutDivider
 
             readoutCompactColumn {
-                VStack(spacing: AppSpacing.xxs) {
-                    Text(meter)
-                        .font(AppTypography.caption().monospacedDigit().weight(.medium))
-                        .foregroundStyle(AppColors.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .multilineTextAlignment(.center)
-
-                    Text(key)
-                        .font(AppTypography.caption().weight(.medium))
-                        .foregroundStyle(AppColors.textSecondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .multilineTextAlignment(.center)
+                if let onTapMeter {
+                    Button(action: onTapMeter) {
+                        meterKeyContent
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    meterKeyContent
                 }
             }
         }
@@ -94,5 +88,23 @@ struct TransportStatusReadout: View {
             .frame(width: Self.dividerWidth)
             .frame(maxHeight: .infinity)
             .padding(.vertical, AppSpacing.xs)
+    }
+
+    private var meterKeyContent: some View {
+        VStack(spacing: AppSpacing.xxs) {
+            Text(meter)
+                .font(AppTypography.caption().monospacedDigit().weight(.medium))
+                .foregroundStyle(AppColors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .multilineTextAlignment(.center)
+
+            Text(key)
+                .font(AppTypography.caption().weight(.medium))
+                .foregroundStyle(AppColors.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .multilineTextAlignment(.center)
+        }
     }
 }

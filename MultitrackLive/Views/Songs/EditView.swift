@@ -28,6 +28,7 @@ struct EditView: View {
     @Binding var tempoChanges: [TempoChange]
     @Binding var timeSignatureChanges: [TimeSignatureChange]
     @Binding var midiEvents: [MIDIEvent]
+    var onSelectSong: (Song) -> Void = { _ in }
 
     @State private var showingMIDIDevicePicker = false
     @State private var showingMIDIDeviceEditor = false
@@ -65,6 +66,8 @@ struct EditView: View {
 
     @Query(sort: [SortDescriptor(\TrackGroup.sortOrder), SortDescriptor(\TrackGroup.name)])
     private var trackGroups: [TrackGroup]
+    @Query(sort: \Song.name)
+    private var availableSongs: [Song]
 
     private var measureNumerator: Int {
         normalizedTimeSignatureChanges.referenceNumerator
@@ -534,7 +537,7 @@ struct EditView: View {
     var body: some View {
         VStack(spacing: 0) {
 #if os(macOS)
-            EditTransportStatusStrip(songName: song.name, viewModel: viewModel)
+            EditTransportStatusStrip(viewModel: viewModel)
 #else
             transportBar
 #endif
@@ -705,6 +708,7 @@ struct EditView: View {
                 clipGaps: $clipGaps,
                 clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
+                availableSongs: availableSongs,
                 onClearMarkerCue: { clearMarkerCue() },
                 currentSectionAtTime: { time in
                     displaySections.section(atTimeline: time)
@@ -722,6 +726,7 @@ struct EditView: View {
                         persistArrangement()
                     }
                 },
+                onSelectSong: onSelectSong,
                 onUndoableChange: undoableChange,
                 captureSnapshot: captureSnapshot,
                 registerUndo: { actionName, before, after in
@@ -1366,12 +1371,14 @@ struct EditView: View {
             clipGaps: $clipGaps,
             clipRegions: $clipRegions,
             loopSlotIDs: $loopSlotIDs,
+            availableSongs: availableSongs,
             onClearMarkerCue: { clearMarkerCue() },
             onPersistArrangement: {
                 performUndoableChange("Edit Arrangement") {
                     persistArrangement()
                 }
             },
+            onSelectSong: onSelectSong,
             onUndoableChange: undoableChange,
             captureSnapshot: captureSnapshot,
             currentSectionAtTime: { time in
@@ -2012,16 +2019,10 @@ private struct EditViewMacToolbarBackgroundVisibilityModifier: ViewModifier {
 #endif
 
 private struct EditTransportStatusStrip: View {
-    let songName: String
     let viewModel: SongEditorViewModel
 
     var body: some View {
-        VStack(spacing: 4) {
-            Text(songName)
-                .font(.caption)
-                .foregroundStyle(AppColors.textSecondary)
-                .frame(maxWidth: .infinity)
-
+        Group {
             if let loadError = viewModel.loadError {
                 Text(loadError)
                     .font(.caption)
@@ -2055,11 +2056,13 @@ private struct EditSongToolbarContent: ToolbarContent {
     @Binding var clipGaps: [ArrangementClipGap]
     @Binding var clipRegions: [ClipRegion]
     @Binding var loopSlotIDs: Set<UUID>
+    let availableSongs: [Song]
     let onClearMarkerCue: () -> Void
     let currentSectionAtTime: (TimeInterval) -> ArrangementDisplaySection?
     let onStopTransport: () -> Void
     let onToggleLoopAtTime: (TimeInterval) -> Void
     let onPersistArrangement: () -> Void
+    let onSelectSong: (Song) -> Void
     let onUndoableChange: UndoableChangeHandler
     let captureSnapshot: () -> SongEditSnapshot
     let registerUndo: (_ actionName: String, _ before: SongEditSnapshot, _ after: SongEditSnapshot) -> Void
@@ -2071,7 +2074,7 @@ private struct EditSongToolbarContent: ToolbarContent {
     var body: some ToolbarContent {
         if #available(macOS 26.0, *) {
             ToolbarItem(placement: .navigation) {
-                timeSignatureEditorButton
+                songMenuButton
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -2085,18 +2088,10 @@ private struct EditSongToolbarContent: ToolbarContent {
             }
             .sharedBackgroundVisibility(.hidden)
 
-            ToolbarItem {
-                Spacer(minLength: 0)
-            }
-
-            ToolbarItem {
+            ToolbarItem(placement: .principal) {
                 transportStrip(at: audioEngine.currentTime)
             }
             .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem {
-                Spacer(minLength: 0)
-            }
 
             ToolbarItem(placement: .primaryAction) {
                 changeKeyButton
@@ -2111,7 +2106,7 @@ private struct EditSongToolbarContent: ToolbarContent {
             }
         } else {
             ToolbarItem(placement: .navigation) {
-                timeSignatureEditorButton
+                songMenuButton
             }
 
             ToolbarItem(placement: .navigation) {
@@ -2123,16 +2118,8 @@ private struct EditSongToolbarContent: ToolbarContent {
                 )
             }
 
-            ToolbarItem {
-                Spacer(minLength: 0)
-            }
-
-            ToolbarItem {
+            ToolbarItem(placement: .principal) {
                 transportStrip(at: audioEngine.currentTime)
-            }
-
-            ToolbarItem {
-                Spacer(minLength: 0)
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -2159,7 +2146,8 @@ private struct EditSongToolbarContent: ToolbarContent {
             onPlay: viewModel.play,
             onPause: viewModel.pause,
             onToggleLoop: { onToggleLoopAtTime(time) },
-            onTapBPM: { showingTempoToolbarEditor = true }
+            onTapBPM: { showingTempoToolbarEditor = true },
+            onTapMeter: { showingTimeSignatureEditor = true }
         )
         .popover(isPresented: $showingTempoToolbarEditor, arrowEdge: .bottom) {
             TempoEditorMenu(
@@ -2168,6 +2156,33 @@ private struct EditSongToolbarContent: ToolbarContent {
                 normalizedTempoChanges: normalizedTempoChanges,
                 onPersist: onPersistTempoChanges
             )
+        }
+        .popover(isPresented: $showingTimeSignatureEditor, arrowEdge: .bottom) {
+            TimeSignatureEditorMenu(
+                song: song,
+                timeSignatureChanges: $timeSignatureChanges,
+                normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
+                onPersist: onPersistTimeSignatureChanges
+            )
+        }
+    }
+
+    private var songMenuButton: some View {
+        Menu {
+            ForEach(availableSongs) { candidate in
+                Button {
+                    onSelectSong(candidate)
+                } label: {
+                    if candidate.id == song.id {
+                        Label(candidate.name, systemImage: "checkmark")
+                    } else {
+                        Text(candidate.name)
+                    }
+                }
+                .disabled(candidate.id == song.id)
+            }
+        } label: {
+            Label("Songs", systemImage: "music.note.list")
         }
     }
 
@@ -2223,27 +2238,6 @@ private struct EditSongToolbarContent: ToolbarContent {
             return "Key +\(value)"
         default:
             return "Key \(song.transposeSemitones)"
-        }
-    }
-
-    private var timeSignatureEditorButton: some View {
-        Button {
-            showingTimeSignatureEditor = true
-        } label: {
-            Label(
-                song.timeSignatureDisplay ?? "4/4",
-                systemImage: "music.quarternote.3"
-            )
-            .labelStyle(.titleAndIcon)
-        }
-        .appEditorToolbarPill()
-        .popover(isPresented: $showingTimeSignatureEditor, arrowEdge: .bottom) {
-            TimeSignatureEditorMenu(
-                song: song,
-                timeSignatureChanges: $timeSignatureChanges,
-                normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
-                onPersist: onPersistTimeSignatureChanges
-            )
         }
     }
 
@@ -2291,8 +2285,10 @@ private struct EditTransportBar: View {
     @Binding var clipGaps: [ArrangementClipGap]
     @Binding var clipRegions: [ClipRegion]
     @Binding var loopSlotIDs: Set<UUID>
+    let availableSongs: [Song]
     let onClearMarkerCue: () -> Void
     let onPersistArrangement: () -> Void
+    let onSelectSong: (Song) -> Void
     let onUndoableChange: UndoableChangeHandler
     let captureSnapshot: () -> SongEditSnapshot
     let currentSectionAtTime: (TimeInterval) -> ArrangementDisplaySection?
@@ -2306,27 +2302,6 @@ private struct EditTransportBar: View {
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
-                HStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        timeSignatureEditorButton
-                        ClickTrackEditorButton(
-                            song: song,
-                            viewModel: viewModel,
-                            captureSnapshot: captureSnapshot,
-                            registerUndo: registerUndo
-                        )
-                    }
-
-                    Spacer(minLength: 8)
-
-                    HStack(spacing: 8) {
-                        changeKeyButton
-                        if !markers.isEmpty {
-                            arrangementEditorButton
-                        }
-                    }
-                }
-
                 if audioEngine.isPlaying {
                     TimelineView(.animation(minimumInterval: 1.0 / 15.0)) { _ in
                         transportStrip(at: audioEngine.currentTime)
@@ -2334,12 +2309,14 @@ private struct EditTransportBar: View {
                 } else {
                     transportStrip(at: audioEngine.currentTime)
                 }
+
+                HStack(alignment: .center, spacing: AppSpacing.md) {
+                    leadingControls
+                    Spacer(minLength: 0)
+                    trailingControls
+                }
             }
             .padding(.horizontal)
-
-            Text(song.name)
-                .font(.caption)
-                .foregroundStyle(.secondary)
 
             if let loadError = viewModel.loadError {
                 Text(loadError)
@@ -2365,7 +2342,8 @@ private struct EditTransportBar: View {
             onPlay: viewModel.play,
             onPause: viewModel.pause,
             onToggleLoop: { onToggleLoopAtTime(time) },
-            onTapBPM: { showingTempoToolbarEditor = true }
+            onTapBPM: { showingTempoToolbarEditor = true },
+            onTapMeter: { showingTimeSignatureEditor = true }
         )
         .popover(isPresented: $showingTempoToolbarEditor, arrowEdge: .bottom) {
             TempoEditorMenu(
@@ -2374,6 +2352,36 @@ private struct EditTransportBar: View {
                 normalizedTempoChanges: normalizedTempoChanges,
                 onPersist: onPersistTempoChanges
             )
+        }
+        .popover(isPresented: $showingTimeSignatureEditor, arrowEdge: .bottom) {
+            TimeSignatureEditorMenu(
+                song: song,
+                timeSignatureChanges: $timeSignatureChanges,
+                normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
+                onPersist: onPersistTimeSignatureChanges
+            )
+        }
+    }
+
+    private var leadingControls: some View {
+        HStack(spacing: 8) {
+            ClickTrackEditorButton(
+                song: song,
+                viewModel: viewModel,
+                captureSnapshot: captureSnapshot,
+                registerUndo: registerUndo
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var trailingControls: some View {
+        HStack(spacing: 8) {
+            changeKeyButton
+            songMenuButton
+            if !markers.isEmpty {
+                arrangementEditorButton
+            }
         }
     }
 
@@ -2474,6 +2482,27 @@ private struct EditTransportBar: View {
                 onUndoableChange: onUndoableChange
             )
         }
+    }
+
+    private var songMenuButton: some View {
+        Menu {
+            ForEach(availableSongs) { candidate in
+                Button {
+                    onSelectSong(candidate)
+                } label: {
+                    if candidate.id == song.id {
+                        Label(candidate.name, systemImage: "checkmark")
+                    } else {
+                        Text(candidate.name)
+                    }
+                }
+                .disabled(candidate.id == song.id)
+            }
+        } label: {
+            Label("Songs", systemImage: "music.note.list")
+                .labelStyle(.titleAndIcon)
+        }
+        .appEditorToolbarPill()
     }
 
 }
