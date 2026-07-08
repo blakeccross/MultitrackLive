@@ -127,6 +127,7 @@
 		AA00000100000000000000D7 /* SongUndoController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D7 /* SongUndoController.swift */; };
 		AA00000100000000000000D8 /* SongEditSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D8 /* SongEditSnapshotTests.swift */; };
 		AA00000100000000000000D9 /* SongUndoControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D9 /* SongUndoControllerTests.swift */; };
+		AA00000100000000000000DA /* SharedTransportStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000DA /* SharedTransportStrip.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -266,6 +267,7 @@
 		AA00000200000000000000D7 /* SongUndoController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongUndoController.swift; sourceTree = "<group>"; };
 		AA00000200000000000000D8 /* SongEditSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongEditSnapshotTests.swift; sourceTree = "<group>"; };
 		AA00000200000000000000D9 /* SongUndoControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongUndoControllerTests.swift; sourceTree = "<group>"; };
+		AA00000200000000000000DA /* SharedTransportStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedTransportStrip.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -468,6 +470,7 @@
 			isa = PBXGroup;
 			children = (
 				AA000002000000000000007A /* TrackMixControls.swift */,
+				AA00000200000000000000DA /* SharedTransportStrip.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -744,6 +747,7 @@
 				AA00000100000000000000D3 /* SongGroupBaker.swift in Sources */,
 				AA00000100000000000000D6 /* SongEditSnapshot.swift in Sources */,
 				AA00000100000000000000D7 /* SongUndoController.swift in Sources */,
+				AA00000100000000000000DA /* SharedTransportStrip.swift in Sources */,
 				AA00000100000000000000D4 /* BakeSongSheet.swift in Sources */,
 				AA0000010000000000000079 /* GroupMixStore.swift in Sources */,
 				AA000001000000000000007A /* TrackMixControls.swift in Sources */,

@@ -27,71 +27,26 @@ struct LiveSetlistNowPlayingInfoView: View {
         let snapshot = displaySnapshot(at: time)
         let transportButtonSize = max(infoPanelHeight, 44)
 
-        return HStack(alignment: .center, spacing: AppSpacing.sm) {
-            HStack(spacing: AppSpacing.sm) {
-                AppIconButton(
-                    systemImage: "stop.fill",
-                    size: transportButtonSize,
-                    isEnabled: isLoaded,
-                    accessibilityLabel: "Stop"
-                ) {
-                    onStop()
-                }
-
-                AppIconButton(
-                    systemImage: coordinator.isPlaying ? "pause.fill" : "play.fill",
-                    size: transportButtonSize,
-                    isActive: coordinator.isPlaying,
-                    isEnabled: isLoaded,
-                    cornerRadius: transportButtonSize * 0.25,
-                    activeBackgroundColor: Color(red: 0.22, green: 0.82, blue: 0.36),
-                    accessibilityLabel: coordinator.isPlaying ? "Pause" : "Play"
-                ) {
-                    if coordinator.isPlaying {
-                        onPause()
-                    } else {
-                        onPlay()
-                    }
-                }
-
-                AppIconButton(
-                    systemImage: "repeat",
-                    size: transportButtonSize,
-                    isActive: sectionLoop.isLooping,
-                    isEnabled: isLoaded && canLoop,
-                    cornerRadius: transportButtonSize * 0.25,
-                    activeBackgroundColor: AppColors.accent,
-                    accessibilityLabel: sectionLoop.isLooping ? "End Loop" : "Loop Section"
-                ) {
-                    onToggleLoop()
-                }
+        return SharedTransportStrip(
+            snapshot: snapshot,
+            buttonSize: transportButtonSize,
+            isPlaying: coordinator.isPlaying,
+            isLoaded: isLoaded,
+            isLooping: sectionLoop.isLooping,
+            canLoop: canLoop,
+            onStop: onStop,
+            onPlay: onPlay,
+            onPause: onPause,
+            onToggleLoop: onToggleLoop,
+            onReadoutHeightChange: { height in
+                infoPanelHeight = height
             }
-
-            TransportStatusReadout(
-                position: snapshot.position,
-                bpm: snapshot.bpm,
-                meter: snapshot.meter,
-                key: snapshot.key
-            )
-            .background {
-                GeometryReader { geometry in
-                    Color.clear.preference(
-                        key: InfoPanelHeightPreferenceKey.self,
-                        value: geometry.size.height
-                    )
-                }
-            }
-            .onPreferenceChange(InfoPanelHeightPreferenceKey.self) { height in
-                if height > 0 {
-                    infoPanelHeight = height
-                }
-            }
-        }
+        )
     }
 
-    private func displaySnapshot(at time: TimeInterval) -> DisplaySnapshot {
+    private func displaySnapshot(at time: TimeInterval) -> TransportStatusSnapshot {
         guard let song = coordinator.currentSong else {
-            return DisplaySnapshot(
+            return TransportStatusSnapshot(
                 position: "- - -",
                 bpm: "-",
                 meter: "-",
@@ -118,26 +73,11 @@ struct LiveSetlistNowPlayingInfoView: View {
             timeSignatureChanges: timeSignatureChanges
         )
 
-        return DisplaySnapshot(
+        return TransportStatusSnapshot(
             position: MeasureTiming.formatTransportPosition(position),
             bpm: String(format: "%.1f", bpm),
             meter: "\(signature.numerator) / \(signature.denominator)",
             key: "-"
         )
     }
-}
-
-private struct InfoPanelHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
-private struct DisplaySnapshot {
-    let position: String
-    let bpm: String
-    let meter: String
-    let key: String
 }

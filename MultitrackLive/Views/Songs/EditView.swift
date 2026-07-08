@@ -534,7 +534,7 @@ struct EditView: View {
     var body: some View {
         VStack(spacing: 0) {
 #if os(macOS)
-            EditTransportStatusStrip(viewModel: viewModel)
+            EditTransportStatusStrip(songName: song.name, viewModel: viewModel)
 #else
             transportBar
 #endif
@@ -706,6 +706,17 @@ struct EditView: View {
                 clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
                 onClearMarkerCue: { clearMarkerCue() },
+                currentSectionAtTime: { time in
+                    displaySections.section(atTimeline: time)
+                },
+                onStopTransport: {
+                    clearMarkerCue()
+                    viewModel.stop()
+                },
+                onToggleLoopAtTime: { time in
+                    guard let section = displaySections.section(atTimeline: time) else { return }
+                    toggleLoopSection(section)
+                },
                 onPersistArrangement: {
                     performUndoableChange("Edit Arrangement") {
                         persistArrangement()
@@ -1363,6 +1374,17 @@ struct EditView: View {
             },
             onUndoableChange: undoableChange,
             captureSnapshot: captureSnapshot,
+            currentSectionAtTime: { time in
+                displaySections.section(atTimeline: time)
+            },
+            onStopTransport: {
+                clearMarkerCue()
+                viewModel.stop()
+            },
+            onToggleLoopAtTime: { time in
+                guard let section = displaySections.section(atTimeline: time) else { return }
+                toggleLoopSection(section)
+            },
             registerUndo: { actionName, before, after in
                 undoController.registerChange(
                     actionName: actionName,
@@ -1990,18 +2012,26 @@ private struct EditViewMacToolbarBackgroundVisibilityModifier: ViewModifier {
 #endif
 
 private struct EditTransportStatusStrip: View {
+    let songName: String
     let viewModel: SongEditorViewModel
 
     var body: some View {
-        if let loadError = viewModel.loadError {
-            Text(loadError)
+        VStack(spacing: 4) {
+            Text(songName)
                 .font(.caption)
-                .foregroundStyle(AppColors.textTertiary)
+                .foregroundStyle(AppColors.textSecondary)
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal)
-                .padding(.vertical, 6)
-                .background(AppColors.surfaceElevated)
+
+            if let loadError = viewModel.loadError {
+                Text(loadError)
+                    .font(.caption)
+                    .foregroundStyle(AppColors.textTertiary)
+                    .frame(maxWidth: .infinity)
+            }
         }
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+        .background(AppColors.surfaceElevated)
     }
 }
 
@@ -2026,6 +2056,9 @@ private struct EditSongToolbarContent: ToolbarContent {
     @Binding var clipRegions: [ClipRegion]
     @Binding var loopSlotIDs: Set<UUID>
     let onClearMarkerCue: () -> Void
+    let currentSectionAtTime: (TimeInterval) -> ArrangementDisplaySection?
+    let onStopTransport: () -> Void
+    let onToggleLoopAtTime: (TimeInterval) -> Void
     let onPersistArrangement: () -> Void
     let onUndoableChange: UndoableChangeHandler
     let captureSnapshot: () -> SongEditSnapshot
@@ -2037,11 +2070,6 @@ private struct EditSongToolbarContent: ToolbarContent {
     @ToolbarContentBuilder
     var body: some ToolbarContent {
         if #available(macOS 26.0, *) {
-            ToolbarItem(placement: .navigation) {
-                tempoEditorButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-
             ToolbarItem(placement: .navigation) {
                 timeSignatureEditorButton
             }
@@ -2062,12 +2090,7 @@ private struct EditSongToolbarContent: ToolbarContent {
             }
 
             ToolbarItem {
-                transportStopButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem {
-                transportPlayButton
+                transportStrip(at: audioEngine.currentTime)
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -2088,10 +2111,6 @@ private struct EditSongToolbarContent: ToolbarContent {
             }
         } else {
             ToolbarItem(placement: .navigation) {
-                tempoEditorButton
-            }
-
-            ToolbarItem(placement: .navigation) {
                 timeSignatureEditorButton
             }
 
@@ -2109,11 +2128,7 @@ private struct EditSongToolbarContent: ToolbarContent {
             }
 
             ToolbarItem {
-                transportStopButton
-            }
-
-            ToolbarItem {
-                transportPlayButton
+                transportStrip(at: audioEngine.currentTime)
             }
 
             ToolbarItem {
@@ -2132,38 +2147,20 @@ private struct EditSongToolbarContent: ToolbarContent {
         }
     }
 
-    private var transportStopButton: some View {
-        Button {
-            onClearMarkerCue()
-            viewModel.stop()
-        } label: {
-            Image(systemName: "stop")
-                .font(.title2)
-        }
-        .buttonStyle(.plain)
-        .disabled(!viewModel.isLoaded)
-    }
-
-    private var transportPlayButton: some View {
-        Button(action: audioEngine.isPlaying ? viewModel.pause : viewModel.play) {
-            Image(systemName: audioEngine.isPlaying ? "pause" : "play")
-                .font(.title2)
-        }
-        .buttonStyle(.plain)
-        .disabled(!viewModel.isLoaded)
-    }
-
-    private var tempoEditorButton: some View {
-        Button {
-            showingTempoToolbarEditor = true
-        } label: {
-            Label(
-                String(format: "%.0f BPM", normalizedTempoChanges.referenceBPM),
-                systemImage: "metronome"
-            )
-            .labelStyle(.titleAndIcon)
-        }
-        .appEditorToolbarPill()
+    private func transportStrip(at time: TimeInterval) -> some View {
+        SharedTransportStrip(
+            snapshot: displaySnapshot(at: time),
+            buttonSize: 44,
+            isPlaying: audioEngine.isPlaying,
+            isLoaded: viewModel.isLoaded,
+            isLooping: sectionLoopIsActive(at: time),
+            canLoop: currentSectionAtTime(time) != nil,
+            onStop: onStopTransport,
+            onPlay: viewModel.play,
+            onPause: viewModel.pause,
+            onToggleLoop: { onToggleLoopAtTime(time) },
+            onTapBPM: { showingTempoToolbarEditor = true }
+        )
         .popover(isPresented: $showingTempoToolbarEditor, arrowEdge: .bottom) {
             TempoEditorMenu(
                 song: song,
@@ -2172,6 +2169,35 @@ private struct EditSongToolbarContent: ToolbarContent {
                 onPersist: onPersistTempoChanges
             )
         }
+    }
+
+    private func displaySnapshot(at time: TimeInterval) -> TransportStatusSnapshot {
+        let position = MeasureTiming.position(
+            at: time,
+            tempoChanges: normalizedTempoChanges,
+            timeSignatureChanges: normalizedTimeSignatureChanges
+        )
+        let signature = MeasureTiming.numeratorDenominatorForMeasure(
+            position.bar,
+            changes: normalizedTimeSignatureChanges
+        )
+        let bpm = MeasureTiming.activeBPM(
+            at: time,
+            tempoChanges: normalizedTempoChanges,
+            timeSignatureChanges: normalizedTimeSignatureChanges
+        )
+
+        return TransportStatusSnapshot(
+            position: MeasureTiming.formatTransportPosition(position),
+            bpm: String(format: "%.1f", bpm),
+            meter: "\(signature.numerator) / \(signature.denominator)",
+            key: "-"
+        )
+    }
+
+    private func sectionLoopIsActive(at time: TimeInterval) -> Bool {
+        guard let section = currentSectionAtTime(time) else { return false }
+        return loopSlotIDs.contains(section.id)
     }
 
     private var changeKeyButton: some View {
@@ -2269,6 +2295,9 @@ private struct EditTransportBar: View {
     let onPersistArrangement: () -> Void
     let onUndoableChange: UndoableChangeHandler
     let captureSnapshot: () -> SongEditSnapshot
+    let currentSectionAtTime: (TimeInterval) -> ArrangementDisplaySection?
+    let onStopTransport: () -> Void
+    let onToggleLoopAtTime: (TimeInterval) -> Void
     let registerUndo: (_ actionName: String, _ before: SongEditSnapshot, _ after: SongEditSnapshot) -> Void
 
     @State private var showingTempoToolbarEditor = false
@@ -2279,7 +2308,6 @@ private struct EditTransportBar: View {
             ZStack {
                 HStack(spacing: 8) {
                     HStack(spacing: 8) {
-                        tempoEditorButton
                         timeSignatureEditorButton
                         ClickTrackEditorButton(
                             song: song,
@@ -2299,24 +2327,19 @@ private struct EditTransportBar: View {
                     }
                 }
 
-                HStack(spacing: 8) {
-                    Button {
-                        onClearMarkerCue()
-                        viewModel.stop()
-                    } label: {
-                        Image(systemName: "stop")
-                            .font(.title2)
+                if audioEngine.isPlaying {
+                    TimelineView(.animation(minimumInterval: 1.0 / 15.0)) { _ in
+                        transportStrip(at: audioEngine.currentTime)
                     }
-                    .disabled(!viewModel.isLoaded)
-
-                    Button(action: audioEngine.isPlaying ? viewModel.pause : viewModel.play) {
-                        Image(systemName: audioEngine.isPlaying ? "pause" : "play")
-                            .font(.title2)
-                    }
-                    .disabled(!viewModel.isLoaded)
+                } else {
+                    transportStrip(at: audioEngine.currentTime)
                 }
             }
             .padding(.horizontal)
+
+            Text(song.name)
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             if let loadError = viewModel.loadError {
                 Text(loadError)
@@ -2328,17 +2351,22 @@ private struct EditTransportBar: View {
         .background(AppColors.surfaceElevated)
     }
 
-    private var tempoEditorButton: some View {
-        Button {
-            showingTempoToolbarEditor = true
-        } label: {
-            Label(
-                String(format: "%.0f BPM", normalizedTempoChanges.referenceBPM),
-                systemImage: "metronome"
-            )
-            .labelStyle(.titleAndIcon)
-        }
-        .appEditorToolbarPill()
+    private func transportStrip(at time: TimeInterval) -> some View {
+        let snapshot = displaySnapshot(at: time)
+
+        return SharedTransportStrip(
+            snapshot: snapshot,
+            buttonSize: 44,
+            isPlaying: audioEngine.isPlaying,
+            isLoaded: viewModel.isLoaded,
+            isLooping: sectionLoopIsActive(at: time),
+            canLoop: currentSectionAtTime(time) != nil,
+            onStop: onStopTransport,
+            onPlay: viewModel.play,
+            onPause: viewModel.pause,
+            onToggleLoop: { onToggleLoopAtTime(time) },
+            onTapBPM: { showingTempoToolbarEditor = true }
+        )
         .popover(isPresented: $showingTempoToolbarEditor, arrowEdge: .bottom) {
             TempoEditorMenu(
                 song: song,
@@ -2347,6 +2375,35 @@ private struct EditTransportBar: View {
                 onPersist: onPersistTempoChanges
             )
         }
+    }
+
+    private func displaySnapshot(at time: TimeInterval) -> TransportStatusSnapshot {
+        let position = MeasureTiming.position(
+            at: time,
+            tempoChanges: normalizedTempoChanges,
+            timeSignatureChanges: normalizedTimeSignatureChanges
+        )
+        let signature = MeasureTiming.numeratorDenominatorForMeasure(
+            position.bar,
+            changes: normalizedTimeSignatureChanges
+        )
+        let bpm = MeasureTiming.activeBPM(
+            at: time,
+            tempoChanges: normalizedTempoChanges,
+            timeSignatureChanges: normalizedTimeSignatureChanges
+        )
+
+        return TransportStatusSnapshot(
+            position: MeasureTiming.formatTransportPosition(position),
+            bpm: String(format: "%.1f", bpm),
+            meter: "\(signature.numerator) / \(signature.denominator)",
+            key: "-"
+        )
+    }
+
+    private func sectionLoopIsActive(at time: TimeInterval) -> Bool {
+        guard let section = currentSectionAtTime(time) else { return false }
+        return loopSlotIDs.contains(section.id)
     }
 
     private var changeKeyButton: some View {
