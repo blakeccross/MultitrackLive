@@ -51,6 +51,8 @@ struct EditView: View {
     @State private var editingTimeSignatureMarkerID: UUID?
     @State private var sectionPendingRename: ArrangementDisplaySection?
     @State private var renameSectionName = ""
+    @State private var trackPendingRename: AudioTrack?
+    @State private var renameTrackName = ""
     @State private var clipSelection: TimelineClipSelection?
     @State private var rulerMeasureSelection: MeasureRangeSelection?
     @State private var selectedTrackID: UUID?
@@ -159,7 +161,9 @@ struct EditView: View {
         midiEvents = snapshot.midiEvents
 
         snapshot.applyMetadata(to: song)
+        let trackIDsBeforeApply = Set(song.sortedTracks.map(\.id))
         snapshot.applyTracks(to: song, context: modelContext)
+        let trackIDsChanged = trackIDsBeforeApply != Set(song.sortedTracks.map(\.id))
 
         let defaultBPM = song.bpm ?? TempoChange.defaultBPM
         let defaultNumerator = song.timeSignatureNumerator ?? MeasureTiming.defaultNumerator
@@ -213,6 +217,10 @@ struct EditView: View {
             viewModel.reloadSongForClickTrackChanges()
         } else {
             viewModel.updateClickTrackMix(context: modelContext)
+        }
+
+        if trackIDsChanged {
+            viewModel.loadSong()
         }
     }
 
@@ -654,6 +662,18 @@ struct EditView: View {
             }
             Button("Cancel", role: .cancel) {
                 sectionPendingRename = nil
+            }
+        }
+        .alert("Rename Track", isPresented: Binding(
+            get: { trackPendingRename != nil },
+            set: { if !$0 { trackPendingRename = nil } }
+        )) {
+            TextField("Track name", text: $renameTrackName)
+            Button("Rename") {
+                applyTrackRename()
+            }
+            Button("Cancel", role: .cancel) {
+                trackPendingRename = nil
             }
         }
 #if os(macOS)
@@ -1749,6 +1769,12 @@ struct EditView: View {
                     },
                     onManageGroups: {
                         showingGroupEditor = true
+                    },
+                    onRename: {
+                        beginRenameTrack(track)
+                    },
+                    onDelete: {
+                        deleteAudioTrack(track)
                     }
                 )
             }
@@ -1787,6 +1813,62 @@ struct EditView: View {
         guard count > 0 else { return 0 }
         return CGFloat(count) * TimelineLayout.laneHeight
             + CGFloat(count - 1) * TimelineLayout.laneSpacing
+    }
+
+    private func beginRenameTrack(_ track: AudioTrack) {
+        trackPendingRename = track
+        renameTrackName = track.displayName
+    }
+
+    private func applyTrackRename() {
+        guard let track = trackPendingRename else { return }
+        let trimmed = renameTrackName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            trackPendingRename = nil
+            return
+        }
+
+        performUndoableChange("Rename Track") {
+            track.displayName = trimmed
+            try? modelContext.save()
+            persistProjectState()
+            trackPendingRename = nil
+        }
+    }
+
+    private func removeArrangementData(for trackID: UUID) {
+        clipTrims.removeAll { $0.trackID == trackID || $0.slotID == trackID }
+        removedClips.removeAll { $0.trackID == trackID || $0.slotID == trackID }
+        clipGaps.removeAll { $0.trackID == trackID || $0.slotID == trackID }
+        clipRegions.removeAll { $0.trackID == trackID || $0.slotID == trackID }
+        loopSlotIDs.remove(trackID)
+    }
+
+    private func deleteAudioTrack(_ track: AudioTrack) {
+        let trackID = track.id
+
+        performUndoableChange("Delete Track") {
+            removeArrangementData(for: trackID)
+
+            if selectedTrackID == trackID {
+                selectedTrackID = nil
+            }
+            if clipSelection?.trackID == trackID {
+                clipSelection = nil
+            }
+
+            song.tracks.removeAll { $0.id == trackID }
+            modelContext.delete(track)
+
+            for (index, remainingTrack) in song.sortedTracks.enumerated() {
+                remainingTrack.sortOrder = index
+            }
+
+            persistProjectState()
+            refreshTimelineLayout()
+            syncPlayback()
+            viewModel.loadSong()
+        }
     }
 
     private func applyTempoMarker(markerID: UUID, bpm: Double) {

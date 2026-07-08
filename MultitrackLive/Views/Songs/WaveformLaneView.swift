@@ -14,6 +14,8 @@ struct TrackLaneHeaderView: View {
     let onMixChange: () -> Void
     let onGroupChange: () -> Void
     let onManageGroups: () -> Void
+    let onRename: () -> Void
+    let onDelete: () -> Void
 
     private var trackColors: (header: Color, body: Color) {
         TrackClipPalette.colors(for: trackColorIndex)
@@ -73,6 +75,14 @@ struct TrackLaneHeaderView: View {
             }
         }
         .contentShape(Rectangle())
+        .contextMenu {
+            Button("Rename") {
+                onRename()
+            }
+            Button("Delete", role: .destructive) {
+                onDelete()
+            }
+        }
         .onTapGesture(perform: onSelect)
     }
 

@@ -3,6 +3,12 @@ import SwiftData
 
 struct TrackEditSnapshot: Equatable, Hashable {
     let trackID: UUID
+    var displayName: String
+    var relativeFilePath: String
+    var sortOrder: Int
+    var mediaPath: String?
+    var mediaPathStyleRaw: String?
+    var mediaBookmarkData: Data?
     var volume: Double
     var isMuted: Bool
     var isSolo: Bool
@@ -74,6 +80,12 @@ struct SongEditSnapshot: Equatable {
             tracks: song.sortedTracks.map { track in
                 TrackEditSnapshot(
                     trackID: track.id,
+                    displayName: track.displayName,
+                    relativeFilePath: track.relativeFilePath,
+                    sortOrder: track.sortOrder,
+                    mediaPath: track.mediaPath,
+                    mediaPathStyleRaw: track.mediaPathStyleRaw,
+                    mediaBookmarkData: track.mediaBookmarkData,
                     volume: track.volume,
                     isMuted: track.isMuted,
                     isSolo: track.isSolo,
@@ -100,9 +112,30 @@ struct SongEditSnapshot: Equatable {
     func applyTracks(to song: Song, context: ModelContext) {
         let groups = (try? context.fetch(FetchDescriptor<TrackGroup>())) ?? []
         let groupsByName = Dictionary(uniqueKeysWithValues: groups.map { ($0.name, $0) })
+        let snapshotIDs = Set(tracks.map(\.trackID))
 
         for trackSnapshot in tracks {
-            guard let track = song.sortedTracks.first(where: { $0.id == trackSnapshot.trackID }) else { continue }
+            let track: AudioTrack
+            if let existing = song.sortedTracks.first(where: { $0.id == trackSnapshot.trackID }) {
+                track = existing
+            } else {
+                track = AudioTrack(
+                    displayName: trackSnapshot.displayName,
+                    relativeFilePath: trackSnapshot.relativeFilePath,
+                    sortOrder: trackSnapshot.sortOrder
+                )
+                track.id = trackSnapshot.trackID
+                track.song = song
+                context.insert(track)
+                song.tracks.append(track)
+            }
+
+            track.displayName = trackSnapshot.displayName
+            track.relativeFilePath = trackSnapshot.relativeFilePath
+            track.sortOrder = trackSnapshot.sortOrder
+            track.mediaPath = trackSnapshot.mediaPath
+            track.mediaPathStyleRaw = trackSnapshot.mediaPathStyleRaw
+            track.mediaBookmarkData = trackSnapshot.mediaBookmarkData
             track.volume = trackSnapshot.volume
             track.isMuted = trackSnapshot.isMuted
             track.isSolo = trackSnapshot.isSolo
@@ -114,6 +147,11 @@ struct SongEditSnapshot: Equatable {
             } else {
                 track.group = nil
             }
+        }
+
+        for track in song.sortedTracks where !snapshotIDs.contains(track.id) {
+            song.tracks.removeAll { $0.id == track.id }
+            context.delete(track)
         }
     }
 
