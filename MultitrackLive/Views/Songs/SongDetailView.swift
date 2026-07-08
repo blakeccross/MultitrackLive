@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SongDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
 
     @Bindable var song: Song
 
@@ -10,6 +11,9 @@ struct SongDetailView: View {
     @State private var showingAbletonImporter = false
     @State private var abletonImportError: String?
     @State private var abletonImportSummary: String?
+    @State private var showingBakePrompt = false
+    @State private var showingBakeSheet = false
+    @State private var shouldDismissAfterBake = false
     @State private var arrangementMarkers: [ArrangementMarker] = []
     @State private var arrangementSlots: [ArrangementSlot] = []
     @State private var clipTrims: [ArrangementClipTrim] = []
@@ -20,6 +24,7 @@ struct SongDetailView: View {
     @State private var tempoChanges: [TempoChange] = []
     @State private var timeSignatureChanges: [TimeSignatureChange] = []
     @State private var midiEvents: [MIDIEvent] = []
+    @State private var undoController = SongUndoController()
 
     var body: some View {
         songDetailContent
@@ -52,13 +57,91 @@ struct SongDetailView: View {
                 Text(abletonImportSummary ?? "")
             }
             .onAppear(perform: handleAppear)
+            .navigationBarBackButtonHidden(shouldPromptToBake)
+            .toolbar {
+                #if os(iOS)
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        undoController.undo()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .disabled(!undoController.canUndo)
+                    .accessibilityLabel(undoController.undoActionName.map { "Undo \($0)" } ?? "Undo")
+
+                    Button {
+                        undoController.redo()
+                    } label: {
+                        Image(systemName: "arrow.uturn.forward")
+                    }
+                    .disabled(!undoController.canRedo)
+                    .accessibilityLabel(undoController.redoActionName.map { "Redo \($0)" } ?? "Redo")
+                }
+                #endif
+
+                if shouldPromptToBake {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            attemptDismiss()
+                        } label: {
+                            Label("Back", systemImage: "chevron.backward")
+                        }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Bake…") {
+                            showingBakeSheet = true
+                        }
+                    }
+                }
+            }
+            .confirmationDialog(
+                "Bake for performance?",
+                isPresented: $showingBakePrompt,
+                titleVisibility: .visible
+            ) {
+                Button("Bake Now") {
+                    shouldDismissAfterBake = true
+                    showingBakeSheet = true
+                }
+                Button("Bake Later", role: .cancel) {
+                    dismiss()
+                }
+            } message: {
+                Text(bakePromptMessage)
+            }
+            .sheet(isPresented: $showingBakeSheet) {
+                BakeSongSheet(song: song) {
+                    if shouldDismissAfterBake {
+                        dismiss()
+                    }
+                }
+            }
             #if os(macOS)
             .focusedValue(\.songEditorActions, songEditorActions)
+            .focusedValue(\.songUndoActions, songUndoActions)
             #endif
             .onDisappear {
                 AudioEngineManager.shared.stop()
                 persistSongState()
             }
+    }
+
+    private var shouldPromptToBake: Bool {
+        SongBakeStore.needsBake(for: song)
+    }
+
+    private var bakePromptMessage: String {
+        let trackCount = song.sortedTracks.count
+        return "This song has \(trackCount) tracks. Baking creates one stem per group for smoother live playback. You can still edit the original multitracks anytime."
+    }
+
+    private func attemptDismiss() {
+        persistSongState()
+        if SongBakeStore.needsBake(for: song) {
+            showingBakePrompt = true
+        } else {
+            dismiss()
+        }
     }
 
     private var songDetailContent: some View {
@@ -68,6 +151,7 @@ struct SongDetailView: View {
                     EditView(
                         song: song,
                         viewModel: viewModel,
+                        undoController: undoController,
                         arrangementMarkers: $arrangementMarkers,
                         arrangementSlots: $arrangementSlots,
                         clipTrims: $clipTrims,
@@ -118,6 +202,17 @@ struct SongDetailView: View {
             importAbleton: {
                 showingAbletonImporter = true
             }
+        )
+    }
+
+    private var songUndoActions: SongUndoActions {
+        SongUndoActions(
+            canUndo: undoController.canUndo,
+            canRedo: undoController.canRedo,
+            undoActionName: undoController.undoActionName,
+            redoActionName: undoController.redoActionName,
+            undo: { undoController.undo() },
+            redo: { undoController.redo() }
         )
     }
     #endif

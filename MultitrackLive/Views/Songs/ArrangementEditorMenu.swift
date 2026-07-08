@@ -9,6 +9,7 @@ struct ArrangementEditorMenu: View {
     @Binding var loopSlotIDs: Set<UUID>
     let markers: [ArrangementMarker]
     let onPersist: () -> Void
+    let onUndoableChange: UndoableChangeHandler
 
     private var markersByID: [UUID: ArrangementMarker] {
         Dictionary(uniqueKeysWithValues: markers.map { ($0.id, $0) })
@@ -95,24 +96,30 @@ struct ArrangementEditorMenu: View {
     }
 
     private func move(from source: IndexSet, to destination: Int) {
-        slots.move(fromOffsets: source, toOffset: destination)
-        onPersist()
+        onUndoableChange("Reorder Sections") {
+            slots.move(fromOffsets: source, toOffset: destination)
+            onPersist()
+        }
     }
 
     private func duplicate(_ slot: ArrangementSlot) {
         guard let index = slots.firstIndex(where: { $0.id == slot.id }) else { return }
-        let copy = ArrangementSlot(markerID: slot.markerID)
-        slots.insert(copy, at: index + 1)
-        onPersist()
+        onUndoableChange("Duplicate Section") {
+            let copy = ArrangementSlot(markerID: slot.markerID)
+            slots.insert(copy, at: index + 1)
+            onPersist()
+        }
     }
 
     private func remove(_ slot: ArrangementSlot) {
-        slots.removeAll { $0.id == slot.id }
-        clipTrims.removeAll { $0.slotID == slot.id }
-        removedClips.removeAll { $0.slotID == slot.id }
-        clipGaps.removeAll { $0.slotID == slot.id }
-        clipRegions.removeAll { $0.slotID == slot.id }
-        loopSlotIDs.remove(slot.id)
-        onPersist()
+        onUndoableChange("Remove Section") {
+            slots.removeAll { $0.id == slot.id }
+            clipTrims.removeAll { $0.slotID == slot.id }
+            removedClips.removeAll { $0.slotID == slot.id }
+            clipGaps.removeAll { $0.slotID == slot.id }
+            clipRegions.removeAll { $0.slotID == slot.id }
+            loopSlotIDs.remove(slot.id)
+            onPersist()
+        }
     }
 }

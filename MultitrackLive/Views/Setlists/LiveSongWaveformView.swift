@@ -179,6 +179,7 @@ struct LiveSongWaveformView: View {
     var showsPlayhead = true
     var isInteractive = true
     var playheadTimeProvider: (() -> TimeInterval)?
+    var isPlayingProvider: (() -> Bool)?
     let onSeek: (TimeInterval) -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
 
@@ -448,7 +449,7 @@ struct LiveSongWaveformView: View {
         timelineEnd: TimeInterval,
         width: CGFloat
     ) -> some View {
-        if audioEngine.isPlaying {
+        if resolvedIsPlaying {
             TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { _ in
                 playedMaskRect(
                     width: playedWidth(
@@ -525,7 +526,7 @@ struct LiveSongWaveformView: View {
     @ViewBuilder
     private func playhead(contentWidth: CGFloat) -> some View {
         Group {
-            if audioEngine.isPlaying {
+            if resolvedIsPlaying {
                 TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { _ in
                     playheadMarker(
                         at: resolvedPlayheadTime(live: true),
@@ -547,6 +548,13 @@ struct LiveSongWaveformView: View {
             return playheadTimeProvider()
         }
         return live ? audioEngine.livePlayheadTime() : audioEngine.currentTime
+    }
+
+    private var resolvedIsPlaying: Bool {
+        if let isPlayingProvider {
+            return isPlayingProvider()
+        }
+        return audioEngine.isPlaying
     }
 
     @ViewBuilder
@@ -662,6 +670,7 @@ struct LiveSetlistWaveformScrollView: View {
     let waveformSnapshotForSong: (Song) -> LiveSongWaveformSnapshot?
     let ensureWaveformSnapshot: (Song) -> Void
     let playheadTimeProvider: () -> TimeInterval
+    let isPlayingProvider: () -> Bool
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
     let onSeek: (TimeInterval) -> Void
@@ -852,6 +861,7 @@ struct LiveSetlistWaveformScrollView: View {
             showsPlayhead: isCurrent,
             isInteractive: isCurrent,
             playheadTimeProvider: isCurrent ? playheadTimeProvider : nil,
+            isPlayingProvider: isCurrent ? isPlayingProvider : nil,
             onSeek: onSeek,
             onCueSection: onCueSection
         )

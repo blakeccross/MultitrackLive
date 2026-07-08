@@ -2,7 +2,6 @@ import SwiftUI
 
 struct LiveSetlistNowPlayingInfoView: View {
     let coordinator: PlaybackCoordinator
-    @Bindable var audioEngine: AudioEngineManager
     @Bindable var sectionLoop: SectionLoopController
     let isLoaded: Bool
     let canLoop: Bool
@@ -14,12 +13,12 @@ struct LiveSetlistNowPlayingInfoView: View {
 
     var body: some View {
         Group {
-            if audioEngine.isPlaying {
+            if coordinator.isPlaying {
                 TimelineView(.animation(minimumInterval: 1.0 / 15.0)) { _ in
-                    transportContent(at: audioEngine.livePlayheadTime())
+                    transportContent(at: coordinator.livePlayheadTime())
                 }
             } else {
-                transportContent(at: audioEngine.currentTime)
+                transportContent(at: coordinator.currentTime)
             }
         }
     }
@@ -40,15 +39,15 @@ struct LiveSetlistNowPlayingInfoView: View {
                 }
 
                 AppIconButton(
-                    systemImage: audioEngine.isPlaying ? "pause.fill" : "play.fill",
+                    systemImage: coordinator.isPlaying ? "pause.fill" : "play.fill",
                     size: transportButtonSize,
-                    isActive: audioEngine.isPlaying,
+                    isActive: coordinator.isPlaying,
                     isEnabled: isLoaded,
                     cornerRadius: transportButtonSize * 0.25,
                     activeBackgroundColor: Color(red: 0.22, green: 0.82, blue: 0.36),
-                    accessibilityLabel: audioEngine.isPlaying ? "Pause" : "Play"
+                    accessibilityLabel: coordinator.isPlaying ? "Pause" : "Play"
                 ) {
-                    if audioEngine.isPlaying {
+                    if coordinator.isPlaying {
                         onPause()
                     } else {
                         onPlay()

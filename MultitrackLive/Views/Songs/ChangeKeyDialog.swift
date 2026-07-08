@@ -12,6 +12,8 @@ struct ChangeKeyDialog: View {
 
     @Bindable var song: Song
     let viewModel: SongEditorViewModel
+    let captureSnapshot: () -> SongEditSnapshot
+    let registerUndo: (_ actionName: String, _ before: SongEditSnapshot, _ after: SongEditSnapshot) -> Void
 
     @State private var step: Step = .semitones
     @State private var semitones: Int = 0
@@ -207,6 +209,7 @@ struct ChangeKeyDialog: View {
     }
 
     private func applyChanges() {
+        let before = captureSnapshot()
         song.transposeSemitones = semitones
         for track in song.sortedTracks {
             track.excludeFromTranspose = !transposeTrackIDs.contains(track.id)
@@ -224,12 +227,16 @@ struct ChangeKeyDialog: View {
                 if let loadError = viewModel.loadError {
                     applyError = loadError
                 } else {
+                    let after = captureSnapshot()
+                    registerUndo("Change Key", before, after)
                     dismiss()
                 }
             }
         } else {
             Task {
                 await viewModel.applyKeyChange(context: modelContext, highQuality: false)
+                let after = captureSnapshot()
+                registerUndo("Change Key", before, after)
                 dismiss()
             }
         }

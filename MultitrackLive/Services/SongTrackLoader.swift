@@ -182,6 +182,86 @@ enum SongTrackLoader {
         }
     }
 
+    /// Live/setlist playback payloads. Prefers valid baked group stems when available;
+    /// edit mode should continue to use `trackInputs` / `streamingPayloads` directly.
+    static func playbackPayloads(
+        for song: Song,
+        preferBaked: Bool = true
+    ) throws -> [AudioEngineManager.PreparedTrackPayload] {
+        if preferBaked, let baked = try bakedPlaybackPayloads(for: song) {
+            return baked
+        }
+
+        let trackInputs = trackInputs(for: song)
+        return try streamingPayloads(trackInputs: trackInputs)
+    }
+
+    static func bakedPlaybackPayloads(for song: Song) throws -> [AudioEngineManager.PreparedTrackPayload]? {
+        guard SongBakeStore.hasValidBake(for: song),
+              let manifest = SongBakeStore.manifest(for: song) else {
+            return nil
+        }
+
+        var payloads: [AudioEngineManager.PreparedTrackPayload] = []
+        payloads.reserveCapacity(manifest.groupStems.count + (manifest.clickStem == nil ? 0 : 1))
+
+        for stem in manifest.groupStems {
+            guard let url = SongBakeStore.bakedStemURL(for: song, relativePath: stem.relativePath) else {
+                return nil
+            }
+
+            let buffer = try StreamingStemBuffer(url: url)
+            let settings = AudioEngineManager.TrackSettings(
+                volume: 1,
+                isMuted: false,
+                isSolo: false,
+                trimStart: 0,
+                trimEnd: stem.duration,
+                pitchCents: 0,
+                excludeFromTranspose: true,
+                ignoresSolo: true,
+                bypassesArrangementMapping: true
+            )
+
+            payloads.append(
+                AudioEngineManager.PreparedTrackPayload(
+                    id: stem.playbackTrackID,
+                    buffer: buffer,
+                    settings: settings,
+                    groupID: stem.groupID
+                )
+            )
+        }
+
+        if let clickStem = manifest.clickStem,
+           song.clickTrackEnabled,
+           let url = SongBakeStore.bakedStemURL(for: song, relativePath: clickStem.relativePath) {
+            let buffer = try StreamingStemBuffer(url: url)
+            let settings = AudioEngineManager.TrackSettings(
+                volume: Float(song.clickTrackVolume),
+                isMuted: false,
+                isSolo: false,
+                trimStart: 0,
+                trimEnd: clickStem.duration,
+                pitchCents: 0,
+                excludeFromTranspose: true,
+                ignoresSolo: true,
+                bypassesArrangementMapping: true
+            )
+            payloads.append(
+                AudioEngineManager.PreparedTrackPayload(
+                    id: clickStem.playbackTrackID,
+                    buffer: buffer,
+                    settings: settings,
+                    groupID: nil
+                )
+            )
+        }
+
+        guard !payloads.isEmpty else { return nil }
+        return payloads
+    }
+
     /// Builds payloads that stream their audio from disk on demand instead of
     /// decoding the entire stem into memory. This is cheap (it only opens each
     /// file and reads its header), so songs become near-instant to load.

@@ -76,6 +76,9 @@
 		AA000001000000000000004B /* ClipRegionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004B /* ClipRegionStoreTests.swift */; };
 		AA00000100000000000000A0 /* TimelineRippleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000A0 /* TimelineRippleStore.swift */; };
 		AA00000100000000000000A1 /* TimelineRippleStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000A1 /* TimelineRippleStoreTests.swift */; };
+		AA00000100000000000000C6 /* OverlapTransitionConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000C6 /* OverlapTransitionConfigTests.swift */; };
+		AA00000100000000000000C7 /* AudioTimelineMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000C7 /* AudioTimelineMathTests.swift */; };
+		AA00000100000000000000C8 /* AudioPlaybackTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000C8 /* AudioPlaybackTransportTests.swift */; };
 		AA000001000000000000004C /* SectionLoopController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004C /* SectionLoopController.swift */; };
 		AA000001000000000000004D /* WaveformBarsCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004D /* WaveformBarsCanvas.swift */; };
 		AA000001000000000000004E /* ClickTrackScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004E /* ClickTrackScheduler.swift */; };
@@ -114,6 +117,16 @@
 		AA000001000000000000008C /* AppSheetContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000008C /* AppSheetContainer.swift */; };
 		AA000001000000000000008D /* AppEmptyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000008D /* AppEmptyState.swift */; };
 		AA000001000000000000008E /* TransportStatusReadout.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000008E /* TransportStatusReadout.swift */; };
+		AA00000100000000000000D0 /* SongBakeManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D0 /* SongBakeManifest.swift */; };
+		AA00000100000000000000D1 /* SongBakeFingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D1 /* SongBakeFingerprint.swift */; };
+		AA00000100000000000000D2 /* SongBakeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D2 /* SongBakeStore.swift */; };
+		AA00000100000000000000D3 /* SongGroupBaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D3 /* SongGroupBaker.swift */; };
+		AA00000100000000000000D4 /* BakeSongSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D4 /* BakeSongSheet.swift */; };
+		AA00000100000000000000D5 /* SongBakeFingerprintTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D5 /* SongBakeFingerprintTests.swift */; };
+		AA00000100000000000000D6 /* SongEditSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D6 /* SongEditSnapshot.swift */; };
+		AA00000100000000000000D7 /* SongUndoController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D7 /* SongUndoController.swift */; };
+		AA00000100000000000000D8 /* SongEditSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D8 /* SongEditSnapshotTests.swift */; };
+		AA00000100000000000000D9 /* SongUndoControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D9 /* SongUndoControllerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -200,6 +213,9 @@
 		AA000002000000000000004B /* ClipRegionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipRegionStoreTests.swift; sourceTree = "<group>"; };
 		AA00000200000000000000A0 /* TimelineRippleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineRippleStore.swift; sourceTree = "<group>"; };
 		AA00000200000000000000A1 /* TimelineRippleStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineRippleStoreTests.swift; sourceTree = "<group>"; };
+		AA00000200000000000000C6 /* OverlapTransitionConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlapTransitionConfigTests.swift; sourceTree = "<group>"; };
+		AA00000200000000000000C7 /* AudioTimelineMathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioTimelineMathTests.swift; sourceTree = "<group>"; };
+		AA00000200000000000000C8 /* AudioPlaybackTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlaybackTransportTests.swift; sourceTree = "<group>"; };
 		AA000002000000000000004C /* SectionLoopController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionLoopController.swift; sourceTree = "<group>"; };
 		AA000002000000000000004D /* WaveformBarsCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsCanvas.swift; sourceTree = "<group>"; };
 		AA000002000000000000004E /* ClickTrackScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackScheduler.swift; sourceTree = "<group>"; };
@@ -240,6 +256,16 @@
 		AA000002000000000000008E /* TransportStatusReadout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportStatusReadout.swift; sourceTree = "<group>"; };
 		AA0000030000000000000001 /* MultitrackLive.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MultitrackLive.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000030000000000000002 /* MultitrackLiveTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MultitrackLiveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA00000200000000000000D0 /* SongBakeManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongBakeManifest.swift; sourceTree = "<group>"; };
+		AA00000200000000000000D1 /* SongBakeFingerprint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongBakeFingerprint.swift; sourceTree = "<group>"; };
+		AA00000200000000000000D2 /* SongBakeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongBakeStore.swift; sourceTree = "<group>"; };
+		AA00000200000000000000D3 /* SongGroupBaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongGroupBaker.swift; sourceTree = "<group>"; };
+		AA00000200000000000000D4 /* BakeSongSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BakeSongSheet.swift; sourceTree = "<group>"; };
+		AA00000200000000000000D5 /* SongBakeFingerprintTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongBakeFingerprintTests.swift; sourceTree = "<group>"; };
+		AA00000200000000000000D6 /* SongEditSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongEditSnapshot.swift; sourceTree = "<group>"; };
+		AA00000200000000000000D7 /* SongUndoController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongUndoController.swift; sourceTree = "<group>"; };
+		AA00000200000000000000D8 /* SongEditSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongEditSnapshotTests.swift; sourceTree = "<group>"; };
+		AA00000200000000000000D9 /* SongUndoControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongUndoControllerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -310,6 +336,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000050000000000000012 /* Project */,
+				AA00000500000000000000D6 /* Editing */,
 				AA0000020000000000000002 /* Song.swift */,
 				AA0000020000000000000003 /* AudioTrack.swift */,
 				AA0000020000000000000060 /* MIDITrack.swift */,
@@ -371,6 +398,10 @@
 				AA0000020000000000000076 /* ProjectFileStore.swift */,
 				AA0000020000000000000077 /* SongProjectBridge.swift */,
 				AA0000020000000000000078 /* MediaConsolidator.swift */,
+				AA00000200000000000000D1 /* SongBakeFingerprint.swift */,
+				AA00000200000000000000D2 /* SongBakeStore.swift */,
+				AA00000200000000000000D3 /* SongGroupBaker.swift */,
+				AA00000200000000000000D7 /* SongUndoController.swift */,
 				AA0000020000000000000079 /* GroupMixStore.swift */,
 				AA000002000000000000007C /* PeakMeterHolder.swift */,
 			);
@@ -402,6 +433,7 @@
 			children = (
 				AA000002000000000000000C /* SongLibraryView.swift */,
 				AA000002000000000000000D /* SongDetailView.swift */,
+				AA00000200000000000000D4 /* BakeSongSheet.swift */,
 				AA000002000000000000000F /* EditView.swift */,
 				AA0000020000000000000020 /* ArrangementEditorMenu.swift */,
 				AA0000020000000000000037 /* ChangeKeyDialog.swift */,
@@ -467,6 +499,14 @@
 			path = Click;
 			sourceTree = "<group>";
 		};
+		AA00000500000000000000D6 /* Editing */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000200000000000000D6 /* SongEditSnapshot.swift */,
+			);
+			path = Editing;
+			sourceTree = "<group>";
+		};
 		AA0000050000000000000011 /* MultitrackLiveTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -475,6 +515,12 @@
 				AA0000020000000000000049 /* SongArrangementLayoutTests.swift */,
 				AA000002000000000000004B /* ClipRegionStoreTests.swift */,
 				AA00000200000000000000A1 /* TimelineRippleStoreTests.swift */,
+				AA00000200000000000000C6 /* OverlapTransitionConfigTests.swift */,
+				AA00000200000000000000C7 /* AudioTimelineMathTests.swift */,
+				AA00000200000000000000C8 /* AudioPlaybackTransportTests.swift */,
+				AA00000200000000000000D5 /* SongBakeFingerprintTests.swift */,
+				AA00000200000000000000D8 /* SongEditSnapshotTests.swift */,
+				AA00000200000000000000D9 /* SongUndoControllerTests.swift */,
 			);
 			path = MultitrackLiveTests;
 			sourceTree = "<group>";
@@ -484,6 +530,7 @@
 			children = (
 				AA0000020000000000000071 /* MediaReference.swift */,
 				AA0000020000000000000072 /* SongProjectDocument.swift */,
+				AA00000200000000000000D0 /* SongBakeManifest.swift */,
 				AA0000020000000000000073 /* ShowProjectDocument.swift */,
 			);
 			path = Project;
@@ -691,6 +738,13 @@
 				AA0000010000000000000076 /* ProjectFileStore.swift in Sources */,
 				AA0000010000000000000077 /* SongProjectBridge.swift in Sources */,
 				AA0000010000000000000078 /* MediaConsolidator.swift in Sources */,
+				AA00000100000000000000D0 /* SongBakeManifest.swift in Sources */,
+				AA00000100000000000000D1 /* SongBakeFingerprint.swift in Sources */,
+				AA00000100000000000000D2 /* SongBakeStore.swift in Sources */,
+				AA00000100000000000000D3 /* SongGroupBaker.swift in Sources */,
+				AA00000100000000000000D6 /* SongEditSnapshot.swift in Sources */,
+				AA00000100000000000000D7 /* SongUndoController.swift in Sources */,
+				AA00000100000000000000D4 /* BakeSongSheet.swift in Sources */,
 				AA0000010000000000000079 /* GroupMixStore.swift in Sources */,
 				AA000001000000000000007A /* TrackMixControls.swift in Sources */,
 				AA000001000000000000007B /* LiveGroupMixerView.swift in Sources */,
@@ -719,6 +773,12 @@
 				AA0000010000000000000049 /* SongArrangementLayoutTests.swift in Sources */,
 				AA000001000000000000004B /* ClipRegionStoreTests.swift in Sources */,
 				AA00000100000000000000A1 /* TimelineRippleStoreTests.swift in Sources */,
+				AA00000100000000000000C6 /* OverlapTransitionConfigTests.swift in Sources */,
+				AA00000100000000000000C7 /* AudioTimelineMathTests.swift in Sources */,
+				AA00000100000000000000C8 /* AudioPlaybackTransportTests.swift in Sources */,
+				AA00000100000000000000D5 /* SongBakeFingerprintTests.swift in Sources */,
+				AA00000100000000000000D8 /* SongEditSnapshotTests.swift in Sources */,
+				AA00000100000000000000D9 /* SongUndoControllerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

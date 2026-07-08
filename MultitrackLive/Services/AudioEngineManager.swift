@@ -52,6 +52,7 @@ final class AudioEngineManager {
     private var scheduledOverlapStartTime: TimeInterval?
     private var overlapStartHandler: (() -> Void)?
     private var didNotifyPlaybackFinished = false
+    private var suppressAutoStopOnPlaybackFinished = false
     private var playbackTimer: Timer?
     private var masterArrangementSections: [ArrangementDisplaySection] = []
     private var arrangementSectionsByTrack: [UUID: [ArrangementDisplaySection]] = [:]
@@ -96,7 +97,7 @@ final class AudioEngineManager {
 
     var onPlaybackFinished: (() -> Void)?
 
-    private init() {
+    init() {
         midiScheduler = MIDIScheduler(transport: transport)
         engine.attach(masterMixer)
         engine.connect(masterMixer, to: engine.mainMixerNode, format: nil)
@@ -471,6 +472,43 @@ final class AudioEngineManager {
         midiScheduler.stop()
     }
 
+    /// When true, this engine will not call `stop()` automatically when it reaches
+    /// the end of its timeline. Useful for external handoffs (e.g. crossfades
+    /// between two independent engines).
+    func setSuppressAutoStopOnPlaybackFinished(_ suppress: Bool) {
+        suppressAutoStopOnPlaybackFinished = suppress
+    }
+
+    /// Sets a master output gain for this engine. This is used for crossfades
+    /// between two engines.
+    func setMasterVolume(_ volume: Float) {
+        masterMixer.outputVolume = volume
+    }
+
+    /// Updates the transport timeline without swapping the audio graph.
+    ///
+    /// This is useful when another engine is providing audible output but the
+    /// app needs a consistent playhead for UI (e.g. overlap crossfades).
+    func retargetTimeline(duration newDuration: TimeInterval, at timelineSeconds: TimeInterval) {
+        // Reset end-of-playback notification state for the new duration.
+        didNotifyPlaybackFinished = false
+
+        let clampedDuration = max(0, newDuration)
+        duration = clampedDuration
+        hasFiniteDuration = true
+
+        transport.setDuration(clampedDuration)
+
+        let clampedTimeline = quantizeTimelineTime(max(0, min(timelineSeconds, clampedDuration)))
+        currentTime = clampedTimeline
+        transport.setPausedTimeline(clampedTimeline)
+
+        if isPlaying, let hostTime = currentHostTime() {
+            // Re-anchor so wall time continues from the right timeline instantly.
+            transport.resetAnchor(to: clampedTimeline, hostTime: hostTime)
+        }
+    }
+
     func configureScheduledOverlapStart(at time: TimeInterval?, handler: (() -> Void)?) {
         scheduledOverlapStartTime = time
         overlapStartHandler = handler
@@ -509,8 +547,19 @@ final class AudioEngineManager {
     func completeOverlapTransition(incomingDuration: TimeInterval) -> TimeInterval {
         guard isOverlapPlaybackActive else { return 0 }
 
+        // This method runs at an "audible" boundary. We reset the finish-notification
+        // guard so the incoming song can finish later, and we re-anchor transport
+        // so the timeline stays continuous.
+        didNotifyPlaybackFinished = false
+
         let incomingTimeline = max(0, currentTime - overlapStartMasterTime)
         cancelScheduledOverlapStart()
+
+        // Prevent any pending timeline warps from the outgoing song from affecting the
+        // incoming song immediately after promotion.
+        transport.cancelScheduledTransition()
+
+        // Keep the engine running so we don't introduce a tiny silence gap.
         teardownTracks(withIDs: Set(tracks.keys), stopEngine: false)
 
         tracks = overlapTracks
@@ -528,9 +577,18 @@ final class AudioEngineManager {
 
         let clampedIncoming = quantizeTimelineTime(min(incomingTimeline, incomingDuration))
         currentTime = clampedIncoming
-        transport.setPausedTimeline(clampedIncoming)
         if isPlaying {
-            transport.beginPlayback(from: clampedIncoming)
+            // Re-anchor the shared transport at the new song's timeline position using
+            // the current render host time, so timeline mapping continues without waiting
+            // for the next render callback.
+            if let hostTime = currentHostTime() {
+                transport.resetAnchor(to: clampedIncoming, hostTime: hostTime)
+            } else {
+                transport.setPausedTimeline(clampedIncoming)
+                transport.beginPlayback(from: clampedIncoming)
+            }
+        } else {
+            transport.setPausedTimeline(clampedIncoming)
         }
 
         applyAllMixSettings()
@@ -1138,7 +1196,7 @@ final class AudioEngineManager {
                !self.didNotifyPlaybackFinished,
                self.currentTime >= self.duration - (1.0 / self.referenceSampleRate) {
                 self.didNotifyPlaybackFinished = true
-                if self.isOverlapPlaybackActive {
+                if self.isOverlapPlaybackActive || self.suppressAutoStopOnPlaybackFinished {
                     self.onPlaybackFinished?()
                 } else {
                     self.stop()

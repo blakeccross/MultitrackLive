@@ -149,6 +149,10 @@ final class DecodedStemBuffer: StemSampleSource, @unchecked Sendable {
         UnsafePointer(channels[channel])
     }
 
+    func mutableChannelPointer(_ channel: Int) -> UnsafeMutablePointer<Float> {
+        channels[channel]
+    }
+
     static func fromPitchShiftResult(
         _ result: PitchShiftResult,
         sampleRate: Double,

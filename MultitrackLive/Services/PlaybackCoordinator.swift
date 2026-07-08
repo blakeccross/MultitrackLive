@@ -38,7 +38,9 @@ enum LiveSetlistTimelineItem: Identifiable {
 
 @Observable
 final class PlaybackCoordinator {
-    private let audioEngine = AudioEngineManager.shared
+    private var audioEngine = AudioEngineManager.shared
+    private let clockEngine = AudioEngineManager.shared
+    private var incomingAudioEngine: AudioEngineManager?
 
     private(set) var songs: [Song] = []
     private(set) var transitions: [SetlistTransition] = []
@@ -60,6 +62,7 @@ final class PlaybackCoordinator {
     private var prefetchedIncomingLayout: SongEngineLayout?
     private var prefetchedIncomingSongID: UUID?
     private var incomingPrefetchTask: Task<Void, Never>?
+    private var activeOverlapConfig: OverlapTransitionConfig?
 
     var routingProvider: (() -> OutputRoutingSnapshot)?
     var groupMixProvider: (() -> GroupMixSnapshot)?
@@ -67,6 +70,25 @@ final class PlaybackCoordinator {
     var currentSong: Song? {
         guard songs.indices.contains(currentIndex) else { return nil }
         return songs[currentIndex]
+    }
+
+    var isPlaying: Bool {
+        audioEngine.isPlaying
+    }
+
+    var currentTime: TimeInterval {
+        audioEngine.currentTime
+    }
+
+    func livePlayheadTime() -> TimeInterval {
+        audioEngine.livePlayheadTime()
+    }
+
+    /// Whether any audible playback engine is currently playing.
+    /// This is used by UI navigation to decide whether the transport should keep
+    /// running when switching songs.
+    var isAudiblePlaying: Bool {
+        audioEngine.isPlaying || incomingAudioEngine?.isPlaying == true
     }
 
     var nextSong: Song? {
@@ -100,15 +122,27 @@ final class PlaybackCoordinator {
     /// constructs throwaway `@State` default instances on every view re-render,
     /// and an `init`-time assignment would let those throwaways clobber the callback.
     func bindPlaybackHandlers() {
-        audioEngine.onPlaybackFinished = { [weak self] in
+        let handler: (() -> Void) = { [weak self] in
             Task { @MainActor in
                 self?.handlePlaybackFinished()
             }
+        }
+
+        audioEngine.onPlaybackFinished = handler
+
+        // The shared clock engine is used for cursor/UI time, not for advancing
+        // the setlist. If the audible engine is a separate instance, clear the
+        // callback from the clock to avoid double-advances after overlap handoffs.
+        if clockEngine !== audioEngine {
+            clockEngine.onPlaybackFinished = nil
+        } else {
+            clockEngine.onPlaybackFinished = handler
         }
     }
 
     func unbindPlaybackHandlers() {
         audioEngine.onPlaybackFinished = nil
+        clockEngine.onPlaybackFinished = nil
     }
 
     private func bindPlaybackFinishedHandler() {
@@ -246,7 +280,7 @@ final class PlaybackCoordinator {
         case .continue:
             advanceToNextSong(autoPlay: true)
         case .overlap:
-            if audioEngine.isOverlapPlaybackActive, let incoming = nextSong {
+            if incomingAudioEngine != nil, let incoming = nextSong {
                 completeActiveOverlapTransition(to: incoming)
             } else {
                 advanceToNextSong(autoPlay: true)
@@ -268,16 +302,31 @@ final class PlaybackCoordinator {
 
     func play() {
         guard isLoaded, !isLoadingSong else { return }
+        if clockEngine !== audioEngine {
+            clockEngine.play()
+        }
         audioEngine.play()
+        incomingAudioEngine?.play()
     }
 
     func pause() {
+        if clockEngine !== audioEngine {
+            clockEngine.pause()
+        }
         audioEngine.pause()
+        incomingAudioEngine?.pause()
     }
 
     func stop() {
         loadTask?.cancel()
+        if clockEngine !== audioEngine {
+            clockEngine.stop()
+        }
         audioEngine.stop()
+        incomingAudioEngine?.stop()
+        incomingAudioEngine = nil
+        activeOverlapConfig = nil
+        clearIncomingPrefetch()
     }
 
     /// Reloads arrangement and waveform metadata for the already-loaded current song.
@@ -288,20 +337,46 @@ final class PlaybackCoordinator {
     }
 
     func seek(to time: TimeInterval) {
+        // Seeking during overlap would require timeline alignment between two
+        // independent engines. For now, we cancel the overlap handoff and seek
+        // only the active engine.
+        guard incomingAudioEngine == nil else {
+            audioEngine.cancelScheduledOverlapStart()
+            incomingAudioEngine?.stop()
+            incomingAudioEngine = nil
+            activeOverlapConfig = nil
+            clearIncomingPrefetch()
+            clockEngine.seek(to: time)
+            audioEngine.seek(to: time)
+            return
+        }
+
+        if clockEngine !== audioEngine {
+            clockEngine.seek(to: time)
+        }
         audioEngine.seek(to: time)
     }
 
     func scheduleSectionTransition(to markerStart: TimeInterval, at transitionTime: TimeInterval) {
         guard isLoaded else { return }
         audioEngine.scheduleTransition(to: markerStart, at: transitionTime)
+        if clockEngine !== audioEngine {
+            clockEngine.scheduleTransition(to: markerStart, at: transitionTime)
+        }
     }
 
     func cancelScheduledSectionTransition() {
         audioEngine.cancelScheduledTransition()
+        if clockEngine !== audioEngine {
+            clockEngine.cancelScheduledTransition()
+        }
     }
 
     func snapToScheduledSection(_ markerStart: TimeInterval) {
         audioEngine.snapToTransitionTarget(markerStart)
+        if clockEngine !== audioEngine {
+            clockEngine.snapToTransitionTarget(markerStart)
+        }
     }
 
     func goToNextSong(autoPlay: Bool = false) {
@@ -332,8 +407,12 @@ final class PlaybackCoordinator {
         audioEngine.cancelScheduledOverlapStart()
         audioEngine.cancelOverlapPlayback()
         clearIncomingPrefetch()
+        activeOverlapConfig = nil
         audioEngine.cancelScheduledTransition()
         audioEngine.stop()
+        clockEngine.stop()
+        incomingAudioEngine?.stop()
+        incomingAudioEngine = nil
         loadCurrentSong(autoPlay: autoPlay)
     }
 
@@ -349,12 +428,33 @@ final class PlaybackCoordinator {
     func updateGroupMix(context: ModelContext) {
         guard let snapshot = groupMixProvider?() else { return }
         audioEngine.applyGroupMix(snapshot)
+        incomingAudioEngine?.applyGroupMix(snapshot)
         try? context.save()
     }
 
     private func applyGroupMixFromProvider() {
         guard let snapshot = groupMixProvider?() else { return }
         audioEngine.applyGroupMix(snapshot)
+        incomingAudioEngine?.applyGroupMix(snapshot)
+    }
+
+    /// Keeps the shared UI clock engine timeline aligned with the currently loaded song.
+    /// The audible playback engine may differ during overlap crossfades, so we must
+    /// retarget the clock used by section cue UI to the same song duration/tempo.
+    private func syncClockEngine(for song: Song, preservedTime: TimeInterval?) {
+        let isClockMuted = clockEngine !== audioEngine
+        let layout = songEngineLayout(for: song)
+        let targetDuration = audioEngine.duration
+        let targetTime = preservedTime ?? 0
+
+        clockEngine.setMasterVolume(isClockMuted ? 0 : 1)
+        clockEngine.setSuppressAutoStopOnPlaybackFinished(isClockMuted)
+        clockEngine.setTempoMap(
+            layout.tempoChanges,
+            referenceBPM: layout.tempoChanges.referenceBPM,
+            timeSignatureChanges: layout.timeSignatureChanges
+        )
+        clockEngine.retargetTimeline(duration: targetDuration, at: targetTime)
     }
 
     @MainActor
@@ -383,6 +483,7 @@ final class PlaybackCoordinator {
         }
 
         audioEngine.stop()
+        clockEngine.stop()
 
         if song.isClickOnly {
             do {
@@ -409,8 +510,14 @@ final class PlaybackCoordinator {
                 if let preservedTime {
                     audioEngine.seek(to: preservedTime)
                 }
+
+                // Keep the shared UI clock timeline aligned with this song.
+                syncClockEngine(for: song, preservedTime: preservedTime)
                 if autoPlay {
                     audioEngine.play()
+                    if clockEngine !== audioEngine {
+                        clockEngine.play()
+                    }
                 }
                 configureOverlapSchedulingIfNeeded()
             } catch {
@@ -422,13 +529,11 @@ final class PlaybackCoordinator {
             return
         }
 
-        let trackInputs = SongTrackLoader.trackInputs(for: song)
-
         let preparationResult: Result<[AudioEngineManager.PreparedTrackPayload], Error> =
             await Task.detached(priority: .userInitiated) {
                 do {
                     return .success(
-                        try SongTrackLoader.streamingPayloads(trackInputs: trackInputs)
+                        try SongTrackLoader.playbackPayloads(for: song)
                     )
                 } catch {
                     return .failure(error)
@@ -443,13 +548,15 @@ final class PlaybackCoordinator {
                 let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
                 let tempoChanges = projectState.tempoChanges
                 let timeSignatureChanges = projectState.timeSignatureChanges
-                try SongTrackLoader.appendClickTrackIfNeeded(
-                    to: &prepared,
-                    song: song,
-                    sourceDurationForTrack: { Self.trackSourceDuration(for: $0, in: song) },
-                    tempoChanges: tempoChanges,
-                    timeSignatureChanges: timeSignatureChanges
-                )
+                if !SongBakeStore.hasValidBake(for: song) {
+                    try SongTrackLoader.appendClickTrackIfNeeded(
+                        to: &prepared,
+                        song: song,
+                        sourceDurationForTrack: { Self.trackSourceDuration(for: $0, in: song) },
+                        tempoChanges: tempoChanges,
+                        timeSignatureChanges: timeSignatureChanges
+                    )
+                }
 
                 let routing = routingProvider?()
                 try audioEngine.loadPreparedTracks(prepared, routing: routing)
@@ -466,8 +573,14 @@ final class PlaybackCoordinator {
                 if let preservedTime {
                     audioEngine.seek(to: preservedTime)
                 }
+
+                // Keep the shared UI clock timeline aligned with this song.
+                syncClockEngine(for: song, preservedTime: preservedTime)
                 if autoPlay {
                     audioEngine.play()
+                    if clockEngine !== audioEngine {
+                        clockEngine.play()
+                    }
                 }
                 configureOverlapSchedulingIfNeeded()
             } catch {
@@ -562,10 +675,21 @@ final class PlaybackCoordinator {
     static func makeWaveformSnapshot(for song: Song) -> LiveSongWaveformSnapshot? {
         guard !song.isClickOnly, !song.sortedTracks.isEmpty else { return nil }
 
-        let trackSources: [(url: URL, duration: TimeInterval)] = song.sortedTracks.compactMap { track in
-            guard let url = FileStore.trackURL(for: song, track: track),
-                  let duration = FileStore.fileDuration(at: url) else { return nil }
-            return (url, duration)
+        let trackSources: [(url: URL, duration: TimeInterval)]
+        if SongBakeStore.hasValidBake(for: song),
+           let manifest = SongBakeStore.manifest(for: song) {
+            trackSources = manifest.groupStems.compactMap { stem in
+                guard let url = SongBakeStore.bakedStemURL(for: song, relativePath: stem.relativePath) else {
+                    return nil
+                }
+                return (url, stem.duration)
+            }
+        } else {
+            trackSources = song.sortedTracks.compactMap { track in
+                guard let url = FileStore.trackURL(for: song, track: track),
+                      let duration = FileStore.fileDuration(at: url) else { return nil }
+                return (url, duration)
+            }
         }
         guard !trackSources.isEmpty else { return nil }
 
@@ -647,6 +771,7 @@ final class PlaybackCoordinator {
     private func configureOverlapSchedulingIfNeeded() {
         audioEngine.cancelScheduledOverlapStart()
         clearIncomingPrefetch()
+        activeOverlapConfig = nil
 
         guard transitionAfterCurrentSong == .overlap,
               let config = overlapConfigAfterCurrentSong,
@@ -658,6 +783,7 @@ final class PlaybackCoordinator {
             return
         }
 
+        activeOverlapConfig = config
         prefetchIncomingSong(incoming)
 
         let triggerTime = max(0, audioEngine.duration - config.startOffsetSeconds)
@@ -676,21 +802,22 @@ final class PlaybackCoordinator {
 
         let layout = songEngineLayout(for: incoming)
         prefetchedIncomingLayout = layout
-        let trackInputs = SongTrackLoader.trackInputs(for: incoming)
 
         incomingPrefetchTask = Task { @MainActor in
             let result: Result<[AudioEngineManager.PreparedTrackPayload], Error> =
                 await Task.detached(priority: .utility) {
                     do {
-                        var prepared = try SongTrackLoader.streamingPayloads(trackInputs: trackInputs)
+                        var prepared = try SongTrackLoader.playbackPayloads(for: incoming)
                         let projectState = SongProjectBridge.projectStateOrDefaults(for: incoming)
-                        try SongTrackLoader.appendClickTrackIfNeeded(
-                            to: &prepared,
-                            song: incoming,
-                            sourceDurationForTrack: { Self.trackSourceDuration(for: $0, in: incoming) },
-                            tempoChanges: projectState.tempoChanges,
-                            timeSignatureChanges: projectState.timeSignatureChanges
-                        )
+                        if !SongBakeStore.hasValidBake(for: incoming) {
+                            try SongTrackLoader.appendClickTrackIfNeeded(
+                                to: &prepared,
+                                song: incoming,
+                                sourceDurationForTrack: { Self.trackSourceDuration(for: $0, in: incoming) },
+                                tempoChanges: projectState.tempoChanges,
+                                timeSignatureChanges: projectState.timeSignatureChanges
+                            )
+                        }
                         return .success(prepared)
                     } catch {
                         return .failure(error)
@@ -714,10 +841,54 @@ final class PlaybackCoordinator {
         }
 
         do {
-            try audioEngine.beginOverlapPlayback(
-                payloads: payloads,
+            // Prepare/play the incoming song on a second audio engine so the audible
+            // handoff doesn't require promoting track graphs inside a single engine.
+            let engine: AudioEngineManager
+            if let existing = incomingAudioEngine {
+                engine = existing
+            } else {
+                engine = AudioEngineManager()
+                incomingAudioEngine = engine
+            }
+
+            let routing = routingProvider?()
+
+            try engine.loadPreparedTracks(payloads, routing: routing)
+            engine.setArrangement(
                 sectionsByTrack: layout.sectionsByTrack,
-                atMasterTime: audioEngine.currentTime
+                masterSections: layout.masterSections,
+                removedClips: layout.removedClips
+            )
+            engine.setTempoMap(
+                layout.tempoChanges,
+                referenceBPM: layout.tempoChanges.referenceBPM,
+                timeSignatureChanges: layout.timeSignatureChanges
+            )
+            engine.configureMIDI(events: layout.midiEvents)
+
+            if let snapshot = groupMixProvider?() {
+                engine.applyGroupMix(snapshot)
+            }
+
+            // Fade in the incoming engine during the overlap window.
+            // Outgoing stays alive but we suppress auto-stop at its end boundary.
+            engine.setMasterVolume(0)
+            engine.setSuppressAutoStopOnPlaybackFinished(true)
+            engine.seek(to: 0)
+
+            audioEngine.setSuppressAutoStopOnPlaybackFinished(true)
+            audioEngine.setMasterVolume(1)
+
+            if !engine.isPlaying {
+                engine.play()
+            }
+
+            let fadeSeconds = min(0.02, activeOverlapConfig?.startOffsetSeconds ?? 0.02)
+            rampEngineMasterVolume(
+                engine: engine,
+                from: 0,
+                to: 1,
+                duration: fadeSeconds
             )
         } catch {
             loadError = error.localizedDescription
@@ -727,23 +898,66 @@ final class PlaybackCoordinator {
     private func completeActiveOverlapTransition(to incoming: Song) {
         audioEngine.cancelScheduledOverlapStart()
         clearIncomingPrefetch()
+        let startOffsetSeconds = activeOverlapConfig?.startOffsetSeconds
+        activeOverlapConfig = nil
 
-        let layout = songEngineLayout(for: incoming)
-        let incomingDuration = Self.incomingTimelineDuration(for: incoming, layout: layout)
-        _ = audioEngine.completeOverlapTransition(incomingDuration: incomingDuration)
+        let outgoingEngine = audioEngine
+        guard let incomingEngine = incomingAudioEngine else {
+            // Fallback: if the second engine wasn't created for some reason.
+            currentIndex += 1
+            loadedSongID = incoming.id
+            isLoaded = true
+            loadError = nil
+            currentWaveformSnapshot = Self.makeWaveformSnapshot(for: incoming)
+            if let currentWaveformSnapshot {
+                waveformSnapshotsBySongID[incoming.id] = currentWaveformSnapshot
+            }
+            configureOverlapSchedulingIfNeeded()
+            return
+        }
 
-        audioEngine.setArrangement(
-            sectionsByTrack: layout.sectionsByTrack,
-            masterSections: layout.masterSections,
-            removedClips: layout.removedClips
+        // Crossfade boundary: fade outgoing engine down, then stop it.
+        let fadeSeconds = min(0.02, startOffsetSeconds ?? 0.02)
+        rampEngineMasterVolume(
+            engine: outgoingEngine,
+            from: 1,
+            to: 0,
+            duration: fadeSeconds
         )
-        audioEngine.setTempoMap(
-            layout.tempoChanges,
-            referenceBPM: layout.tempoChanges.referenceBPM,
-            timeSignatureChanges: layout.timeSignatureChanges
-        )
-        audioEngine.configureMIDI(events: layout.midiEvents)
-        applyGroupMixFromProvider()
+        // Only stop the outgoing engine if it's not also the UI clock engine.
+        // Stopping the clock engine would pause the playback cursor.
+        if outgoingEngine !== clockEngine {
+            DispatchQueue.main.asyncAfter(deadline: .now() + fadeSeconds) {
+                outgoingEngine.stop()
+            }
+        }
+
+        // Keep the clock engine (UI playhead) running by retargeting its
+        // transport to the incoming song timing. We do this even though the
+        // outgoing engine may no longer be audible.
+        do {
+            let layout = songEngineLayout(for: incoming)
+            let incomingDuration = Self.incomingTimelineDuration(for: incoming, layout: layout)
+
+            clockEngine.setSuppressAutoStopOnPlaybackFinished(true)
+            clockEngine.retargetTimeline(
+                duration: incomingDuration,
+                at: min(incomingEngine.currentTime, incomingDuration)
+            )
+            clockEngine.setTempoMap(
+                layout.tempoChanges,
+                referenceBPM: layout.tempoChanges.referenceBPM,
+                timeSignatureChanges: layout.timeSignatureChanges
+            )
+            clockEngine.setMasterVolume(0)
+        }
+
+        // Promote: the incoming engine becomes the active engine.
+        audioEngine = incomingEngine
+        incomingAudioEngine = nil
+        audioEngine.setMasterVolume(1)
+        audioEngine.setSuppressAutoStopOnPlaybackFinished(false)
+        bindPlaybackHandlers()
 
         currentIndex += 1
         loadedSongID = incoming.id
@@ -754,6 +968,29 @@ final class PlaybackCoordinator {
             waveformSnapshotsBySongID[incoming.id] = currentWaveformSnapshot
         }
         configureOverlapSchedulingIfNeeded()
+    }
+
+    private func rampEngineMasterVolume(
+        engine: AudioEngineManager,
+        from: Float,
+        to target: Float,
+        duration: TimeInterval
+    ) {
+        engine.setMasterVolume(from)
+        guard duration > 0.0001 else {
+            engine.setMasterVolume(target)
+            return
+        }
+
+        let stepInterval: TimeInterval = 0.005
+        let steps = max(1, Int((duration / stepInterval).rounded(.up)))
+        for i in 0...steps {
+            let t = TimeInterval(i) / TimeInterval(steps)
+            let value = from + (target - from) * Float(t)
+            DispatchQueue.main.asyncAfter(deadline: .now() + (duration * t)) {
+                engine.setMasterVolume(value)
+            }
+        }
     }
 
     private func clearIncomingPrefetch() {

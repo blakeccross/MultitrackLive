@@ -86,7 +86,7 @@ struct SongProjectArrangement: Codable {
 }
 
 struct SongProjectDocument: Codable, Identifiable {
-    static let currentFormatVersion = 1
+    static let currentFormatVersion = 2
 
     var formatVersion: Int
     var id: UUID
@@ -100,6 +100,8 @@ struct SongProjectDocument: Codable, Identifiable {
     var tempo: [TempoChange]
     var timeSignatures: [TimeSignatureChange]
     var midiEvents: [MIDIEvent]
+    /// Read-only performance cache metadata. Audio files live under `Baked/`.
+    var bakeManifest: SongBakeManifest?
 
     init(
         id: UUID,
@@ -112,7 +114,8 @@ struct SongProjectDocument: Codable, Identifiable {
         arrangement: SongProjectArrangement,
         tempo: [TempoChange] = [],
         timeSignatures: [TimeSignatureChange] = [],
-        midiEvents: [MIDIEvent] = []
+        midiEvents: [MIDIEvent] = [],
+        bakeManifest: SongBakeManifest? = nil
     ) {
         formatVersion = Self.currentFormatVersion
         self.id = id
@@ -126,5 +129,6 @@ struct SongProjectDocument: Codable, Identifiable {
         self.tempo = tempo
         self.timeSignatures = timeSignatures
         self.midiEvents = midiEvents
+        self.bakeManifest = bakeManifest
     }
 }

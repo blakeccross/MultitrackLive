@@ -44,6 +44,7 @@ struct MultitrackLiveApp: App {
         .commands {
             FileMenuCommands()
             SongMenuCommands()
+            SongUndoCommands()
             ClipEditorCommands()
         }
         #endif
@@ -70,6 +71,15 @@ struct ClipEditorActions {
     var join: () -> Void = {}
 }
 
+struct SongUndoActions {
+    var canUndo = false
+    var canRedo = false
+    var undoActionName: String?
+    var redoActionName: String?
+    var undo: () -> Void = {}
+    var redo: () -> Void = {}
+}
+
 private struct LiveSetlistActionsKey: FocusedValueKey {
     typealias Value = LiveSetlistActions
     static var defaultValue: Value? { nil }
@@ -82,6 +92,11 @@ private struct SongEditorActionsKey: FocusedValueKey {
 
 private struct ClipEditorActionsKey: FocusedValueKey {
     typealias Value = ClipEditorActions
+    static var defaultValue: Value? { nil }
+}
+
+private struct SongUndoActionsKey: FocusedValueKey {
+    typealias Value = SongUndoActions
     static var defaultValue: Value? { nil }
 }
 
@@ -99,6 +114,11 @@ extension FocusedValues {
     var clipEditorActions: ClipEditorActions? {
         get { self[ClipEditorActionsKey.self] }
         set { self[ClipEditorActionsKey.self] = newValue }
+    }
+
+    var songUndoActions: SongUndoActions? {
+        get { self[SongUndoActionsKey.self] }
+        set { self[SongUndoActionsKey.self] = newValue }
     }
 }
 
@@ -141,6 +161,26 @@ struct SongMenuCommands: Commands {
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])
             .disabled(actions == nil)
+        }
+    }
+}
+
+struct SongUndoCommands: Commands {
+    @FocusedValue(\.songUndoActions) private var actions
+
+    var body: some Commands {
+        CommandGroup(replacing: .undoRedo) {
+            Button(actions?.undoActionName.map { "Undo \($0)" } ?? "Undo") {
+                actions?.undo()
+            }
+            .keyboardShortcut("z", modifiers: .command)
+            .disabled(actions?.canUndo != true)
+
+            Button(actions?.redoActionName.map { "Redo \($0)" } ?? "Redo") {
+                actions?.redo()
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .disabled(actions?.canRedo != true)
         }
     }
 }

@@ -10,11 +10,14 @@ private struct MeasureRangeSelection: Equatable {
     var endMeasure: Int
 }
 
+typealias UndoableChangeHandler = (_ actionName: String, _ change: () -> Void) -> Void
+
 struct EditView: View {
     @Environment(\.modelContext) private var modelContext
 
     @Bindable var song: Song
     let viewModel: SongEditorViewModel
+    let undoController: SongUndoController
     @Binding var arrangementMarkers: [ArrangementMarker]
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
@@ -129,6 +132,114 @@ struct EditView: View {
         )
     }
 
+    private func captureSnapshot() -> SongEditSnapshot {
+        SongEditSnapshot.capture(
+            song: song,
+            markers: arrangementMarkers,
+            arrangementSlots: arrangementSlots,
+            clipTrims: clipTrims,
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions,
+            loopSlotIDs: loopSlotIDs,
+            tempoChanges: tempoChanges,
+            timeSignatureChanges: timeSignatureChanges,
+            midiEvents: midiEvents
+        )
+    }
+
+    private func applySnapshot(_ snapshot: SongEditSnapshot) {
+        arrangementMarkers = snapshot.markers
+        arrangementSlots = snapshot.arrangementSlots
+        clipTrims = snapshot.clipTrims
+        removedClips = snapshot.removedClips
+        clipGaps = snapshot.clipGaps
+        clipRegions = snapshot.clipRegions
+        loopSlotIDs = snapshot.loopSlotIDs
+        midiEvents = snapshot.midiEvents
+
+        snapshot.applyMetadata(to: song)
+        snapshot.applyTracks(to: song, context: modelContext)
+
+        let defaultBPM = song.bpm ?? TempoChange.defaultBPM
+        let defaultNumerator = song.timeSignatureNumerator ?? MeasureTiming.defaultNumerator
+        let defaultDenominator = song.timeSignatureDenominator ?? MeasureTiming.defaultDenominator
+        let normalizedTempo = snapshot.normalizedTempoChanges(defaultBPM: defaultBPM)
+        let normalizedTimeSignature = snapshot.normalizedTimeSignatureChanges(
+            defaultNumerator: defaultNumerator,
+            defaultDenominator: defaultDenominator
+        )
+        tempoChanges = normalizedTempo
+        timeSignatureChanges = normalizedTimeSignature
+
+        try? SongProjectBridge.persist(
+            song: song,
+            markers: markers,
+            arrangementSlots: arrangementSlots,
+            clipTrims: clipTrims,
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions,
+            loopSlotIDs: loopSlotIDs,
+            tempoChanges: normalizedTempo,
+            timeSignatureChanges: normalizedTimeSignature,
+            midiEvents: midiEvents,
+            context: modelContext
+        )
+        try? modelContext.save()
+
+        refreshTimelineLayout()
+        syncPlayback()
+        viewModel.syncTempoMap(normalizedTempo, timeSignatureChanges: normalizedTimeSignature)
+
+        for track in song.sortedTracks {
+            viewModel.updateMix(for: track, context: modelContext)
+            viewModel.updateTrim(for: track, context: modelContext)
+        }
+
+        reconfigureMIDI()
+
+        if snapshot.songMetadata.transposeHighQuality {
+            Task {
+                await viewModel.applyKeyChange(context: modelContext, highQuality: true)
+            }
+        } else if snapshot.songMetadata.transposeSemitones != 0 {
+            Task {
+                await viewModel.applyKeyChange(context: modelContext, highQuality: false)
+            }
+        }
+
+        if snapshot.songMetadata.clickTrackEnabled {
+            viewModel.reloadSongForClickTrackChanges()
+        } else {
+            viewModel.updateClickTrackMix(context: modelContext)
+        }
+    }
+
+    private func performUndoableChange(_ actionName: String, _ change: () -> Void) {
+        guard !undoController.isApplyingUndo else {
+            change()
+            return
+        }
+        let before = captureSnapshot()
+        change()
+        let after = captureSnapshot()
+        undoController.registerChange(
+            actionName: actionName,
+            before: before,
+            after: after,
+            apply: { snapshot in
+                applySnapshot(snapshot)
+            }
+        )
+    }
+
+    private var undoableChange: UndoableChangeHandler {
+        { actionName, change in
+            performUndoableChange(actionName, change)
+        }
+    }
+
     private func handleTempoRulerTap(at time: TimeInterval) {
         let boundary = MeasureTiming.nearestMeasureBoundary(
             to: time,
@@ -155,9 +266,11 @@ struct EditView: View {
 
     private func deleteTempoMarker(_ marker: TempoChange) {
         guard marker.startMeasure > 1 else { return }
-        tempoChanges.removeAll { $0.id == marker.id }
-        tempoChanges = normalizedTempoChanges
-        persistTempoChanges()
+        performUndoableChange("Delete Tempo Marker") {
+            tempoChanges.removeAll { $0.id == marker.id }
+            tempoChanges = normalizedTempoChanges
+            persistTempoChanges()
+        }
     }
 
     private func handleTimeSignatureRulerTap(at time: TimeInterval) {
@@ -188,9 +301,11 @@ struct EditView: View {
 
     private func deleteTimeSignatureMarker(_ marker: TimeSignatureChange) {
         guard marker.startMeasure > 1 else { return }
-        timeSignatureChanges.removeAll { $0.id == marker.id }
-        timeSignatureChanges = normalizedTimeSignatureChanges
-        persistTimeSignatureChanges()
+        performUndoableChange("Delete Time Signature Marker") {
+            timeSignatureChanges.removeAll { $0.id == marker.id }
+            timeSignatureChanges = normalizedTimeSignatureChanges
+            persistTimeSignatureChanges()
+        }
     }
 
     private var markers: [ArrangementMarker] {
@@ -356,8 +471,10 @@ struct EditView: View {
     }
 
     private func commitMIDIEvents() {
-        persistProjectState()
-        reconfigureMIDI()
+        performUndoableChange("Edit MIDI") {
+            persistProjectState()
+            reconfigureMIDI()
+        }
     }
 
     private func commitMIDIConfig() {
@@ -499,7 +616,21 @@ struct EditView: View {
             TrackGroupEditorView()
         }
         .sheet(isPresented: $showingChangeKey) {
-            ChangeKeyDialog(song: song, viewModel: viewModel)
+            ChangeKeyDialog(
+                song: song,
+                viewModel: viewModel,
+                captureSnapshot: captureSnapshot,
+                registerUndo: { actionName, before, after in
+                    undoController.registerChange(
+                        actionName: actionName,
+                        before: before,
+                        after: after,
+                        apply: { snapshot in
+                            applySnapshot(snapshot)
+                        }
+                    )
+                }
+            )
         }
         .sheet(isPresented: $showingMIDIDevicePicker) {
             MIDIDevicePickerView { device in
@@ -535,10 +666,18 @@ struct EditView: View {
                 showingTimeSignatureEditor: $showingTimeSignatureEditor,
                 timeSignatureChanges: $timeSignatureChanges,
                 normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
-                onPersistTimeSignatureChanges: persistTimeSignatureChanges,
+                onPersistTimeSignatureChanges: {
+                    performUndoableChange("Edit Time Signature") {
+                        persistTimeSignatureChanges()
+                    }
+                },
                 tempoChanges: $tempoChanges,
                 normalizedTempoChanges: normalizedTempoChanges,
-                onPersistTempoChanges: persistTempoChanges,
+                onPersistTempoChanges: {
+                    performUndoableChange("Edit Tempo") {
+                        persistTempoChanges()
+                    }
+                },
                 showingChangeKey: $showingChangeKey,
                 arrangementSlots: $arrangementSlots,
                 clipTrims: $clipTrims,
@@ -547,7 +686,23 @@ struct EditView: View {
                 clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
                 onClearMarkerCue: { clearMarkerCue() },
-                onPersistArrangement: persistArrangement
+                onPersistArrangement: {
+                    performUndoableChange("Edit Arrangement") {
+                        persistArrangement()
+                    }
+                },
+                onUndoableChange: undoableChange,
+                captureSnapshot: captureSnapshot,
+                registerUndo: { actionName, before, after in
+                    undoController.registerChange(
+                        actionName: actionName,
+                        before: before,
+                        after: after,
+                        apply: { snapshot in
+                            applySnapshot(snapshot)
+                        }
+                    )
+                }
             )
         }
         .toolbarBackground(AppColors.surfaceElevated, for: .windowToolbar)
@@ -558,42 +713,45 @@ struct EditView: View {
     private func removeClipSelection() {
         guard let clipSelection else { return }
         let trackID = clipSelection.trackID
+        let selection = clipSelection
 
-        switch clipSelection {
-        case .whole(let clipID, let slotID, let trackID, _):
-            deleteWholeClip(clipID: clipID, slotID: slotID, trackID: trackID)
-        case .range(_, let slotID, let trackID, let start, let end):
-            if !displaySections.isEmpty,
-               let track = song.sortedTracks.first(where: { $0.id == trackID }),
-               let slot = arrangementSlots.first(where: { $0.id == slotID }),
-               let marker = markers.first(where: { $0.id == slot.markerID }),
-               let section = trackLaneSections(for: track).first(where: { $0.slotID == slotID }) {
-                SongArrangementStore.deleteVisibleRange(
-                    slotID: slotID,
-                    trackID: trackID,
-                    rangeStart: start,
-                    rangeEnd: end,
-                    sections: trackLaneSections(for: track),
-                    marker: marker,
-                    markers: markers,
-                    tempoChanges: normalizedTempoChanges,
-                    timeSignatureChanges: normalizedTimeSignatureChanges,
-                    sourceDuration: viewModel.fileDuration(for: track),
-                    clipTrims: &clipTrims,
-                    removedClips: &removedClips,
-                    clipGaps: &clipGaps,
-                    clipRegions: &clipRegions,
-                    columnStart: section.columnStartSeconds
-                )
-            } else if let track = song.sortedTracks.first(where: { $0.id == trackID }) {
-                deleteSourceTrackRange(track: track, rangeStart: start, rangeEnd: end)
+        performUndoableChange("Delete Clip") {
+            switch selection {
+            case .whole(let clipID, let slotID, let trackID, _):
+                deleteWholeClip(clipID: clipID, slotID: slotID, trackID: trackID)
+            case .range(_, let slotID, let trackID, let start, let end):
+                if !displaySections.isEmpty,
+                   let track = song.sortedTracks.first(where: { $0.id == trackID }),
+                   let slot = arrangementSlots.first(where: { $0.id == slotID }),
+                   let marker = markers.first(where: { $0.id == slot.markerID }),
+                   let section = trackLaneSections(for: track).first(where: { $0.slotID == slotID }) {
+                    SongArrangementStore.deleteVisibleRange(
+                        slotID: slotID,
+                        trackID: trackID,
+                        rangeStart: start,
+                        rangeEnd: end,
+                        sections: trackLaneSections(for: track),
+                        marker: marker,
+                        markers: markers,
+                        tempoChanges: normalizedTempoChanges,
+                        timeSignatureChanges: normalizedTimeSignatureChanges,
+                        sourceDuration: viewModel.fileDuration(for: track),
+                        clipTrims: &clipTrims,
+                        removedClips: &removedClips,
+                        clipGaps: &clipGaps,
+                        clipRegions: &clipRegions,
+                        columnStart: section.columnStartSeconds
+                    )
+                } else if let track = song.sortedTracks.first(where: { $0.id == trackID }) {
+                    deleteSourceTrackRange(track: track, rangeStart: start, rangeEnd: end)
+                }
             }
-        }
 
-        self.clipSelection = nil
-        clearMarkerCue(cancellingScheduledTransition: false)
-        persistArrangement()
-        commitTrackArrangementChange(for: trackID)
+            self.clipSelection = nil
+            clearMarkerCue(cancellingScheduledTransition: false)
+            persistArrangement()
+            commitTrackArrangementChange(for: trackID)
+        }
     }
 
     /// Ripple-deletes the ruler measure selection: removes that span from every track and shifts
@@ -601,49 +759,51 @@ struct EditView: View {
     private func rippleDeleteSelectedMeasures() {
         guard let selection = rulerMeasureSelection else { return }
 
-        let tracks = song.sortedTracks.map { track in
-            TimelineRippleStore.Track(
-                id: track.id,
-                trimStart: track.trimStartSeconds,
-                trimEnd: track.trimEndSeconds ?? viewModel.fileDuration(for: track),
-                sourceDuration: viewModel.fileDuration(for: track)
+        performUndoableChange("Ripple Delete") {
+            let tracks = song.sortedTracks.map { track in
+                TimelineRippleStore.Track(
+                    id: track.id,
+                    trimStart: track.trimStartSeconds,
+                    trimEnd: track.trimEndSeconds ?? viewModel.fileDuration(for: track),
+                    sourceDuration: viewModel.fileDuration(for: track)
+                )
+            }
+
+            let result = TimelineRippleStore.rippleDeleteMeasures(
+                startMeasure: selection.startMeasure,
+                endMeasure: selection.endMeasure,
+                markers: &arrangementMarkers,
+                slots: &arrangementSlots,
+                clipTrims: clipTrims,
+                removedClips: removedClips,
+                clipGaps: &clipGaps,
+                clipRegions: &clipRegions,
+                loopSlotIDs: &loopSlotIDs,
+                tempoChanges: &tempoChanges,
+                timeSignatureChanges: &timeSignatureChanges,
+                midiEvents: &midiEvents,
+                tracks: tracks,
+                defaultBPM: song.bpm ?? TempoChange.defaultBPM,
+                defaultNumerator: song.timeSignatureNumerator ?? MeasureTiming.defaultNumerator,
+                defaultDenominator: song.timeSignatureDenominator ?? MeasureTiming.defaultDenominator
             )
+
+            for track in song.sortedTracks where result.emptiedTrackIDs.contains(track.id) {
+                track.trimEndSeconds = track.trimStartSeconds
+                viewModel.updateTrim(for: track, context: modelContext)
+            }
+
+            rulerMeasureSelection = nil
+            clipSelection = nil
+            clearMarkerCue(cancellingScheduledTransition: false)
+
+            refreshTimelineLayout()
+            persistTempoChanges()
+            persistTimeSignatureChanges()
+            persistArrangement()
+            reconfigureMIDI()
+            syncPlayback()
         }
-
-        let result = TimelineRippleStore.rippleDeleteMeasures(
-            startMeasure: selection.startMeasure,
-            endMeasure: selection.endMeasure,
-            markers: &arrangementMarkers,
-            slots: &arrangementSlots,
-            clipTrims: clipTrims,
-            removedClips: removedClips,
-            clipGaps: &clipGaps,
-            clipRegions: &clipRegions,
-            loopSlotIDs: &loopSlotIDs,
-            tempoChanges: &tempoChanges,
-            timeSignatureChanges: &timeSignatureChanges,
-            midiEvents: &midiEvents,
-            tracks: tracks,
-            defaultBPM: song.bpm ?? TempoChange.defaultBPM,
-            defaultNumerator: song.timeSignatureNumerator ?? MeasureTiming.defaultNumerator,
-            defaultDenominator: song.timeSignatureDenominator ?? MeasureTiming.defaultDenominator
-        )
-
-        for track in song.sortedTracks where result.emptiedTrackIDs.contains(track.id) {
-            track.trimEndSeconds = track.trimStartSeconds
-            viewModel.updateTrim(for: track, context: modelContext)
-        }
-
-        rulerMeasureSelection = nil
-        clipSelection = nil
-        clearMarkerCue(cancellingScheduledTransition: false)
-
-        refreshTimelineLayout()
-        persistTempoChanges()
-        persistTimeSignatureChanges()
-        persistArrangement()
-        reconfigureMIDI()
-        syncPlayback()
     }
 
     private func deleteWholeClip(clipID: UUID, slotID: UUID, trackID: UUID) {
@@ -778,38 +938,40 @@ struct EditView: View {
         guard let selection = clipSelection else { return }
         let trackID = selection.trackID
 
-        switch selection {
-        case .range(let clipID, let slotID, _, let start, let end):
-            let minDuration = SongArrangementStore.minimumClipDuration
-            if end - start < minDuration {
+        performUndoableChange("Split Clip") {
+            switch selection {
+            case .range(let clipID, let slotID, _, let start, let end):
+                let minDuration = SongArrangementStore.minimumClipDuration
+                if end - start < minDuration {
+                    if let rightID = performSplit(
+                        clipID: clipID,
+                        slotID: slotID,
+                        trackID: trackID,
+                        at: start
+                    ) {
+                        clipSelection = .whole(clipID: rightID, slotID: slotID, trackID: trackID, editTime: nil)
+                        finalizeSplit(trackID: trackID)
+                    }
+                    return
+                }
+
+                _ = performSplit(clipID: clipID, slotID: slotID, trackID: trackID, at: end)
+                if let rightID = performSplit(clipID: clipID, slotID: slotID, trackID: trackID, at: start) {
+                    clipSelection = .whole(clipID: rightID, slotID: slotID, trackID: trackID, editTime: nil)
+                }
+                finalizeSplit(trackID: trackID)
+
+            case .whole(let clipID, let slotID, _, let editTime):
+                let splitTime = editTime ?? AudioEngineManager.shared.currentTime
                 if let rightID = performSplit(
                     clipID: clipID,
                     slotID: slotID,
                     trackID: trackID,
-                    at: start
+                    at: splitTime
                 ) {
                     clipSelection = .whole(clipID: rightID, slotID: slotID, trackID: trackID, editTime: nil)
                     finalizeSplit(trackID: trackID)
                 }
-                return
-            }
-
-            _ = performSplit(clipID: clipID, slotID: slotID, trackID: trackID, at: end)
-            if let rightID = performSplit(clipID: clipID, slotID: slotID, trackID: trackID, at: start) {
-                clipSelection = .whole(clipID: rightID, slotID: slotID, trackID: trackID, editTime: nil)
-            }
-            finalizeSplit(trackID: trackID)
-
-        case .whole(let clipID, let slotID, _, let editTime):
-            let splitTime = editTime ?? AudioEngineManager.shared.currentTime
-            if let rightID = performSplit(
-                clipID: clipID,
-                slotID: slotID,
-                trackID: trackID,
-                at: splitTime
-            ) {
-                clipSelection = .whole(clipID: rightID, slotID: slotID, trackID: trackID, editTime: nil)
-                finalizeSplit(trackID: trackID)
             }
         }
     }
@@ -922,50 +1084,52 @@ struct EditView: View {
 
         let nextID = sections[index + 1].id
 
-        if let firstSection = sections.first, !trackLaneSections(for: track).isEmpty,
-           let slot = arrangementSlots.first(where: { $0.id == slotID }),
-           let marker = markers.first(where: { $0.id == slot.markerID }),
-           let sourceRange = SongArrangementStore.trimmedSourceRange(
-               slot: slot,
-               trackID: trackID,
-               marker: marker,
-               markers: markers,
-               clipTrims: clipTrims,
-               sourceDuration: viewModel.fileDuration(for: track)
-           ) {
-            let bounds = SongArrangementStore.markerSourceRange(
-                for: marker,
-                markers: markers,
-                sourceDuration: viewModel.fileDuration(for: track)
-            )
-            SongArrangementStore.ensureClipRegions(
-                slotID: slotID,
-                trackID: trackID,
-                markerID: marker.id,
-                sourceRange: sourceRange,
-                boundsStart: bounds.start,
-                columnStart: firstSection.columnStartSeconds,
-                clipGaps: clipGaps,
-                clipRegions: &clipRegions
-            )
-        } else {
-            SongArrangementStore.ensureSourceTrackRegions(
-                trackID: track.id,
-                trimStart: track.trimStartSeconds,
-                trimEnd: track.trimEndSeconds ?? viewModel.fileDuration(for: track),
-                clipGaps: clipGaps,
-                clipRegions: &clipRegions
-            )
-        }
-        clipGaps.removeAll { $0.slotID == slotID && $0.trackID == trackID }
+        performUndoableChange("Join Clips") {
+            if let firstSection = sections.first, !trackLaneSections(for: track).isEmpty,
+               let slot = arrangementSlots.first(where: { $0.id == slotID }),
+               let marker = markers.first(where: { $0.id == slot.markerID }),
+               let sourceRange = SongArrangementStore.trimmedSourceRange(
+                   slot: slot,
+                   trackID: trackID,
+                   marker: marker,
+                   markers: markers,
+                   clipTrims: clipTrims,
+                   sourceDuration: viewModel.fileDuration(for: track)
+               ) {
+                let bounds = SongArrangementStore.markerSourceRange(
+                    for: marker,
+                    markers: markers,
+                    sourceDuration: viewModel.fileDuration(for: track)
+                )
+                SongArrangementStore.ensureClipRegions(
+                    slotID: slotID,
+                    trackID: trackID,
+                    markerID: marker.id,
+                    sourceRange: sourceRange,
+                    boundsStart: bounds.start,
+                    columnStart: firstSection.columnStartSeconds,
+                    clipGaps: clipGaps,
+                    clipRegions: &clipRegions
+                )
+            } else {
+                SongArrangementStore.ensureSourceTrackRegions(
+                    trackID: track.id,
+                    trimStart: track.trimStartSeconds,
+                    trimEnd: track.trimEndSeconds ?? viewModel.fileDuration(for: track),
+                    clipGaps: clipGaps,
+                    clipRegions: &clipRegions
+                )
+            }
+            clipGaps.removeAll { $0.slotID == slotID && $0.trackID == trackID }
 
-        if SongArrangementStore.joinRegions(
-            firstID: clipID,
-            secondID: nextID,
-            clipRegions: &clipRegions
-        ) != nil {
-            persistArrangement()
-            commitTrackArrangementChange(for: trackID)
+            if SongArrangementStore.joinRegions(
+                firstID: clipID,
+                secondID: nextID,
+                clipRegions: &clipRegions
+            ) != nil {
+                persistArrangement()
+                commitTrackArrangementChange(for: trackID)
+            }
         }
     }
 
@@ -1025,46 +1189,50 @@ struct EditView: View {
     }
 
     private func toggleLoopSection(_ section: ArrangementDisplaySection) {
-        sectionLoop.toggleLoop(on: section.id, loopSlotIDs: &loopSlotIDs)
-        persistArrangement()
+        performUndoableChange("Toggle Loop") {
+            sectionLoop.toggleLoop(on: section.id, loopSlotIDs: &loopSlotIDs)
+            persistArrangement()
+        }
     }
 
     private func addSection(at timelineTime: TimeInterval) {
         guard !song.isClickOnly else { return }
 
-        let snappedTime = MeasureTiming.snapToNearestBeat(
-            max(0, timelineTime),
-            tempoChanges: normalizedTempoChanges,
-            timeSignatureChanges: normalizedTimeSignatureChanges
-        )
-        let sourceTime = min(max(0, snappedTime), max(sourceDuration - 0.01, 0))
+        performUndoableChange("Add Section") {
+            let snappedTime = MeasureTiming.snapToNearestBeat(
+                max(0, timelineTime),
+                tempoChanges: normalizedTempoChanges,
+                timeSignatureChanges: normalizedTimeSignatureChanges
+            )
+            let sourceTime = min(max(0, snappedTime), max(sourceDuration - 0.01, 0))
 
-        if markers.contains(where: { abs($0.startSeconds - sourceTime) < 0.02 }) {
-            return
-        }
+            if markers.contains(where: { abs($0.startSeconds - sourceTime) < 0.02 }) {
+                return
+            }
 
-        let newMarker = ArrangementMarker(
-            name: "Section \(markers.count + 1)",
-            startSeconds: sourceTime,
-            sortOrder: markers.count
-        )
-        let markerInsertIndex = markers.firstIndex(where: { $0.startSeconds > sourceTime + 0.001 })
-            ?? markers.count
+            let newMarker = ArrangementMarker(
+                name: "Section \(markers.count + 1)",
+                startSeconds: sourceTime,
+                sortOrder: markers.count
+            )
+            let markerInsertIndex = markers.firstIndex(where: { $0.startSeconds > sourceTime + 0.001 })
+                ?? markers.count
 
-        arrangementMarkers.insert(newMarker, at: markerInsertIndex)
+            arrangementMarkers.insert(newMarker, at: markerInsertIndex)
 
-        let newSlot = ArrangementSlot(markerID: newMarker.id)
-        let slotInsertIndex = displaySections.firstIndex(where: { timelineTime < $0.timelineStartSeconds - 0.001 })
-            ?? arrangementSlots.count
-        arrangementSlots.insert(newSlot, at: slotInsertIndex)
+            let newSlot = ArrangementSlot(markerID: newMarker.id)
+            let slotInsertIndex = displaySections.firstIndex(where: { timelineTime < $0.timelineStartSeconds - 0.001 })
+                ?? arrangementSlots.count
+            arrangementSlots.insert(newSlot, at: slotInsertIndex)
 
-        refreshTimelineLayout()
-        persistArrangement()
-        syncPlayback()
+            refreshTimelineLayout()
+            persistArrangement()
+            syncPlayback()
 
-        if let section = displaySections.first(where: { $0.markerID == newMarker.id }) {
-            sectionPendingRename = section
-            renameSectionName = newMarker.name
+            if let section = displaySections.first(where: { $0.markerID == newMarker.id }) {
+                sectionPendingRename = section
+                renameSectionName = newMarker.name
+            }
         }
     }
 
@@ -1082,42 +1250,46 @@ struct EditView: View {
             return
         }
 
-        let marker = arrangementMarkers[index]
-        arrangementMarkers[index] = ArrangementMarker(
-            id: marker.id,
-            name: trimmed,
-            startSeconds: marker.startSeconds,
-            sortOrder: marker.sortOrder
-        )
-        sectionPendingRename = nil
-        refreshTimelineLayout()
-        persistArrangement()
-        syncPlayback()
+        performUndoableChange("Rename Section") {
+            let marker = arrangementMarkers[index]
+            arrangementMarkers[index] = ArrangementMarker(
+                id: marker.id,
+                name: trimmed,
+                startSeconds: marker.startSeconds,
+                sortOrder: marker.sortOrder
+            )
+            sectionPendingRename = nil
+            refreshTimelineLayout()
+            persistArrangement()
+            syncPlayback()
+        }
     }
 
     private func deleteSection(_ section: ArrangementDisplaySection) {
-        let slotID = section.slotID
-        let markerID = section.markerID
+        performUndoableChange("Delete Section") {
+            let slotID = section.slotID
+            let markerID = section.markerID
 
-        arrangementSlots.removeAll { $0.id == slotID }
-        clipTrims.removeAll { $0.slotID == slotID }
-        removedClips.removeAll { $0.slotID == slotID }
-        clipGaps.removeAll { $0.slotID == slotID }
-        clipRegions.removeAll { $0.slotID == slotID }
-        loopSlotIDs.remove(slotID)
-        loopSlotIDs.remove(section.id)
+            arrangementSlots.removeAll { $0.id == slotID }
+            clipTrims.removeAll { $0.slotID == slotID }
+            removedClips.removeAll { $0.slotID == slotID }
+            clipGaps.removeAll { $0.slotID == slotID }
+            clipRegions.removeAll { $0.slotID == slotID }
+            loopSlotIDs.remove(slotID)
+            loopSlotIDs.remove(section.id)
 
-        if !arrangementSlots.contains(where: { $0.markerID == markerID }) {
-            arrangementMarkers.removeAll { $0.id == markerID }
+            if !arrangementSlots.contains(where: { $0.markerID == markerID }) {
+                arrangementMarkers.removeAll { $0.id == markerID }
+            }
+
+            if cuedSectionID == section.id {
+                clearMarkerCue()
+            }
+
+            refreshTimelineLayout()
+            persistArrangement()
+            syncPlayback()
         }
-
-        if cuedSectionID == section.id {
-            clearMarkerCue()
-        }
-
-        refreshTimelineLayout()
-        persistArrangement()
-        syncPlayback()
     }
 
     private func seekOnTimeline(to time: TimeInterval) {
@@ -1144,10 +1316,18 @@ struct EditView: View {
             showingTimeSignatureEditor: $showingTimeSignatureEditor,
             timeSignatureChanges: $timeSignatureChanges,
             normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
-            onPersistTimeSignatureChanges: persistTimeSignatureChanges,
+            onPersistTimeSignatureChanges: {
+                performUndoableChange("Edit Time Signature") {
+                    persistTimeSignatureChanges()
+                }
+            },
             tempoChanges: $tempoChanges,
             normalizedTempoChanges: normalizedTempoChanges,
-            onPersistTempoChanges: persistTempoChanges,
+            onPersistTempoChanges: {
+                performUndoableChange("Edit Tempo") {
+                    persistTempoChanges()
+                }
+            },
             showingChangeKey: $showingChangeKey,
             arrangementSlots: $arrangementSlots,
             clipTrims: $clipTrims,
@@ -1156,7 +1336,23 @@ struct EditView: View {
             clipRegions: $clipRegions,
             loopSlotIDs: $loopSlotIDs,
             onClearMarkerCue: { clearMarkerCue() },
-            onPersistArrangement: persistArrangement
+            onPersistArrangement: {
+                performUndoableChange("Edit Arrangement") {
+                    persistArrangement()
+                }
+            },
+            onUndoableChange: undoableChange,
+            captureSnapshot: captureSnapshot,
+            registerUndo: { actionName, before, after in
+                undoController.registerChange(
+                    actionName: actionName,
+                    before: before,
+                    after: after,
+                    apply: { snapshot in
+                        applySnapshot(snapshot)
+                    }
+                )
+            }
         )
     }
 
@@ -1487,14 +1683,18 @@ struct EditView: View {
                     laneHeight: TimelineLayout.laneHeight,
                     trackColorIndex: index,
                     onTrimChange: {
-                        viewModel.updateTrim(for: track, context: modelContext)
+                        performUndoableChange("Trim Track") {
+                            viewModel.updateTrim(for: track, context: modelContext)
+                        }
                     },
                     onCueSection: cueSection,
                     loopSlotIDs: loopSlotIDs,
                     onToggleLoopSection: toggleLoopSection,
                     onClipTrimCommitted: {
-                        persistArrangement()
-                        commitTrackArrangementChange(for: track.id)
+                        performUndoableChange("Trim Clip") {
+                            persistArrangement()
+                            commitTrackArrangementChange(for: track.id)
+                        }
                     },
                     onSeek: { time in
                         AudioEngineManager.shared.seek(to: time)
@@ -1538,10 +1738,14 @@ struct EditView: View {
                         clipSelection = nil
                     },
                     onMixChange: {
-                        viewModel.updateMix(for: track, context: modelContext)
+                        performUndoableChange("Mix Track") {
+                            viewModel.updateMix(for: track, context: modelContext)
+                        }
                     },
                     onGroupChange: {
-                        viewModel.updateGroup(for: track, context: modelContext)
+                        performUndoableChange("Assign Group") {
+                            viewModel.updateGroup(for: track, context: modelContext)
+                        }
                     },
                     onManageGroups: {
                         showingGroupEditor = true
@@ -1588,42 +1792,46 @@ struct EditView: View {
     private func applyTempoMarker(markerID: UUID, bpm: Double) {
         guard TempoChange.validBPMRange.contains(bpm) else { return }
 
-        tempoChanges = tempoChanges.map { change in
-            guard change.id == markerID else { return change }
-            return TempoChange(
-                id: change.id,
-                startMeasure: change.startMeasure,
-                bpm: bpm,
-                sortOrder: change.sortOrder
-            )
-        }.normalizedEnsuringInitialMarker(defaultBPM: song.bpm ?? TempoChange.defaultBPM)
+        performUndoableChange("Edit Tempo") {
+            tempoChanges = tempoChanges.map { change in
+                guard change.id == markerID else { return change }
+                return TempoChange(
+                    id: change.id,
+                    startMeasure: change.startMeasure,
+                    bpm: bpm,
+                    sortOrder: change.sortOrder
+                )
+            }.normalizedEnsuringInitialMarker(defaultBPM: song.bpm ?? TempoChange.defaultBPM)
 
-        persistTempoChanges()
-        showingTempoEditor = false
-        editingTempoMarkerID = nil
+            persistTempoChanges()
+            showingTempoEditor = false
+            editingTempoMarkerID = nil
+        }
     }
 
     private func applyTimeSignatureMarker(markerID: UUID, numerator: Int, denominator: Int) {
         guard (1...32).contains(numerator),
               TimeSignatureChange.validDenominators.contains(denominator) else { return }
 
-        timeSignatureChanges = timeSignatureChanges.map { change in
-            guard change.id == markerID else { return change }
-            return TimeSignatureChange(
-                id: change.id,
-                numerator: numerator,
-                denominator: denominator,
-                startMeasure: change.startMeasure,
-                sortOrder: change.sortOrder
+        performUndoableChange("Edit Time Signature") {
+            timeSignatureChanges = timeSignatureChanges.map { change in
+                guard change.id == markerID else { return change }
+                return TimeSignatureChange(
+                    id: change.id,
+                    numerator: numerator,
+                    denominator: denominator,
+                    startMeasure: change.startMeasure,
+                    sortOrder: change.sortOrder
+                )
+            }.normalizedEnsuringInitialMarker(
+                defaultNumerator: measureNumerator,
+                defaultDenominator: measureDenominator
             )
-        }.normalizedEnsuringInitialMarker(
-            defaultNumerator: measureNumerator,
-            defaultDenominator: measureDenominator
-        )
 
-        persistTimeSignatureChanges()
-        showingTimeSignatureMarkerEditor = false
-        editingTimeSignatureMarkerID = nil
+            persistTimeSignatureChanges()
+            showingTimeSignatureMarkerEditor = false
+            editingTimeSignatureMarkerID = nil
+        }
     }
 
     private var trackHeaderRulerCorner: some View {
@@ -1737,6 +1945,9 @@ private struct EditSongToolbarContent: ToolbarContent {
     @Binding var loopSlotIDs: Set<UUID>
     let onClearMarkerCue: () -> Void
     let onPersistArrangement: () -> Void
+    let onUndoableChange: UndoableChangeHandler
+    let captureSnapshot: () -> SongEditSnapshot
+    let registerUndo: (_ actionName: String, _ before: SongEditSnapshot, _ after: SongEditSnapshot) -> Void
 
     @State private var showingTempoToolbarEditor = false
     @Bindable private var audioEngine = AudioEngineManager.shared
@@ -1755,7 +1966,12 @@ private struct EditSongToolbarContent: ToolbarContent {
             .sharedBackgroundVisibility(.hidden)
 
             ToolbarItem(placement: .navigation) {
-                ClickTrackEditorButton(song: song, viewModel: viewModel)
+                ClickTrackEditorButton(
+                    song: song,
+                    viewModel: viewModel,
+                    captureSnapshot: captureSnapshot,
+                    registerUndo: registerUndo
+                )
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -1798,7 +2014,12 @@ private struct EditSongToolbarContent: ToolbarContent {
             }
 
             ToolbarItem(placement: .navigation) {
-                ClickTrackEditorButton(song: song, viewModel: viewModel)
+                ClickTrackEditorButton(
+                    song: song,
+                    viewModel: viewModel,
+                    captureSnapshot: captureSnapshot,
+                    registerUndo: registerUndo
+                )
             }
 
             ToolbarItem {
@@ -1935,7 +2156,8 @@ private struct EditSongToolbarContent: ToolbarContent {
                 clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
                 markers: markers,
-                onPersist: onPersistArrangement
+                onPersist: onPersistArrangement,
+                onUndoableChange: onUndoableChange
             )
         }
     }
@@ -1963,6 +2185,9 @@ private struct EditTransportBar: View {
     @Binding var loopSlotIDs: Set<UUID>
     let onClearMarkerCue: () -> Void
     let onPersistArrangement: () -> Void
+    let onUndoableChange: UndoableChangeHandler
+    let captureSnapshot: () -> SongEditSnapshot
+    let registerUndo: (_ actionName: String, _ before: SongEditSnapshot, _ after: SongEditSnapshot) -> Void
 
     @State private var showingTempoToolbarEditor = false
     @Bindable private var audioEngine = AudioEngineManager.shared
@@ -1974,7 +2199,12 @@ private struct EditTransportBar: View {
                     HStack(spacing: 8) {
                         tempoEditorButton
                         timeSignatureEditorButton
-                        ClickTrackEditorButton(song: song, viewModel: viewModel)
+                        ClickTrackEditorButton(
+                            song: song,
+                            viewModel: viewModel,
+                            captureSnapshot: captureSnapshot,
+                            registerUndo: registerUndo
+                        )
                     }
 
                     Spacer(minLength: 8)
@@ -2101,7 +2331,8 @@ private struct EditTransportBar: View {
                 clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
                 markers: markers,
-                onPersist: onPersistArrangement
+                onPersist: onPersistArrangement,
+                onUndoableChange: onUndoableChange
             )
         }
     }
@@ -3256,11 +3487,15 @@ private struct TimelineTempoRulerView: View {
 private struct ClickTrackEditorButton: View {
     @Bindable var song: Song
     let viewModel: SongEditorViewModel
+    let captureSnapshot: () -> SongEditSnapshot
+    let registerUndo: (_ actionName: String, _ before: SongEditSnapshot, _ after: SongEditSnapshot) -> Void
 
     @State private var showingEditor = false
+    @State private var editStartSnapshot: SongEditSnapshot?
 
     var body: some View {
         Button {
+            editStartSnapshot = captureSnapshot()
             showingEditor = true
         } label: {
             Label("Click", systemImage: "cursorarrow.click")
@@ -3270,6 +3505,14 @@ private struct ClickTrackEditorButton: View {
         .tint(song.clickTrackEnabled ? AppColors.accent : nil)
         .popover(isPresented: $showingEditor, arrowEdge: .bottom) {
             ClickTrackEditorMenu(song: song, viewModel: viewModel)
+        }
+        .onChange(of: showingEditor) { _, isShowing in
+            guard !isShowing, let before = editStartSnapshot else { return }
+            let after = captureSnapshot()
+            if before != after {
+                registerUndo("Edit Click Track", before, after)
+            }
+            editStartSnapshot = nil
         }
     }
 }
@@ -3353,6 +3596,7 @@ private struct ClickTrackEditorMenu: View {
     EditView(
         song: Song(name: "Preview"),
         viewModel: SongEditorViewModel(song: Song(name: "Preview")),
+        undoController: SongUndoController(),
         arrangementMarkers: .constant([]),
         arrangementSlots: .constant([]),
         clipTrims: .constant([]),

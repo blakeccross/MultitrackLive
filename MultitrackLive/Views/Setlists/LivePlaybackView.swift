@@ -308,7 +308,6 @@ struct LivePlaybackView: View {
         LiveSetlistToolbarContent(
             setlistSwitcher: { setlistSwitcherMenu(for: setlist) },
             coordinator: coordinator,
-            audioEngine: audioEngine,
             sectionLoop: sectionLoop,
             isLoaded: coordinator.isLoaded && !coordinator.isLoadingSong,
             canLoop: !loopSections.isEmpty,
@@ -364,7 +363,7 @@ struct LivePlaybackView: View {
             return
         }
 
-        guard let section = loopSections.section(atTimeline: audioEngine.currentTime) else { return }
+        guard let section = loopSections.section(atTimeline: coordinator.currentTime) else { return }
         clearMarkerCue()
         sectionLoop.beginManualLoop(sectionID: section.id)
     }
@@ -529,7 +528,8 @@ struct LivePlaybackView: View {
                 songForID: { coordinator.song(for: $0) },
                 waveformSnapshotForSong: { coordinator.waveformSnapshot(for: $0) },
                 ensureWaveformSnapshot: { coordinator.ensureWaveformSnapshot(for: $0) },
-                playheadTimeProvider: { audioEngine.currentTime },
+                playheadTimeProvider: { coordinator.currentTime },
+                isPlayingProvider: { coordinator.isPlaying },
                 cuedSectionID: cuedSectionID,
                 cueFlashPhase: cueFlashPhase,
                 onSeek: coordinator.seek,
@@ -687,13 +687,13 @@ struct LivePlaybackView: View {
         let transition = workingSetlist.hasNextSong(after: entry) ? entry.transition : nil
 
         return Button {
-            coordinator.goToSong(at: playbackIndex, autoPlay: audioEngine.isPlaying)
+            coordinator.goToSong(at: playbackIndex, autoPlay: coordinator.isAudiblePlaying)
         } label: {
             SetlistPlaybackRow(
                 song: song,
                 index: playbackIndex,
                 currentIndex: coordinator.currentIndex,
-                isPlaying: audioEngine.isPlaying,
+                isPlaying: coordinator.isPlaying,
                 transition: transition,
                 onOverlapBadgeTap: transition == .overlap
                     ? { presentOverlapEditor(for: entry) }
@@ -710,7 +710,7 @@ struct LivePlaybackView: View {
         .listRowBackground(Color.clear)
         .contextMenu {
             Button {
-                coordinator.goToSong(at: playbackIndex, autoPlay: audioEngine.isPlaying)
+                coordinator.goToSong(at: playbackIndex, autoPlay: coordinator.isAudiblePlaying)
             } label: {
                 Label("Play", systemImage: "play.fill")
             }
@@ -835,43 +835,43 @@ struct LivePlaybackView: View {
     private func cueSection(_ section: ArrangementDisplaySection) {
         sectionLoop.endLoopIfActive()
 
-        if !audioEngine.isPlaying {
+        if !coordinator.isPlaying {
             clearMarkerCue()
             coordinator.seek(to: section.timelineStartSeconds)
             return
         }
 
         cuedSectionID = section.id
-        cueFireTime = sectionCueFireTime(for: section)
+        let fireTime = sectionCueFireTime(for: section)
+        cueFireTime = fireTime
 
         guard coordinator.isLoaded else { return }
         coordinator.scheduleSectionTransition(
             to: section.timelineStartSeconds,
-            at: cueFireTime ?? section.timelineStartSeconds
+            at: fireTime
         )
     }
 
     private func sectionCueFireTime(for cuedSection: ArrangementDisplaySection) -> TimeInterval {
         let sections = loopSections
 
-        if let currentSection = sections.section(atTimeline: audioEngine.currentTime) {
+        if let currentSection = sections.section(atTimeline: coordinator.currentTime) {
             return currentSection.timelineEndSeconds
         }
 
         return sections
             .map(\.timelineEndSeconds)
-            .first(where: { $0 > audioEngine.currentTime })
+            .first(where: { $0 > coordinator.currentTime })
             ?? cuedSection.timelineEndSeconds
     }
 
     private func fireMarkerCue() {
         guard let cueFireTime, let cuedSectionID else { return }
-        guard audioEngine.currentTime >= cueFireTime else { return }
+        guard coordinator.currentTime >= cueFireTime else { return }
         guard let section = coordinator.currentWaveformSnapshot?.sections.first(where: { $0.id == cuedSectionID }) else {
             clearMarkerCue(cancellingScheduledTransition: false)
             return
         }
-
         coordinator.snapToScheduledSection(section.timelineStartSeconds)
         clearMarkerCue(cancellingScheduledTransition: false)
     }
@@ -1013,7 +1013,6 @@ private struct PlayingBadge: View {
 private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @ViewBuilder let setlistSwitcher: Switcher
     let coordinator: PlaybackCoordinator
-    @Bindable var audioEngine: AudioEngineManager
     @Bindable var sectionLoop: SectionLoopController
     let isLoaded: Bool
     let canLoop: Bool
@@ -1105,7 +1104,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     private var transportInfoBar: some View {
         LiveSetlistNowPlayingInfoView(
             coordinator: coordinator,
-            audioEngine: audioEngine,
             sectionLoop: sectionLoop,
             isLoaded: isLoaded,
             canLoop: canLoop,

@@ -57,7 +57,8 @@ enum SongProjectBridge {
         arrangement: SongArrangement,
         tempoChanges: [TempoChange],
         timeSignatureChanges: [TimeSignatureChange],
-        midiEvents: [MIDIEvent]
+        midiEvents: [MIDIEvent],
+        bakeManifest: SongBakeManifest? = nil
     ) -> SongProjectDocument {
         let tracks = song.sortedTracks.compactMap { track -> ProjectTrack? in
             guard let path = track.mediaPath, let style = track.mediaPathStyle else { return nil }
@@ -95,7 +96,8 @@ enum SongProjectBridge {
             arrangement: SongProjectArrangement(markers: markers, sequence: arrangement),
             tempo: tempoChanges,
             timeSignatures: timeSignatureChanges,
-            midiEvents: midiEvents
+            midiEvents: midiEvents,
+            bakeManifest: bakeManifest
         )
     }
 
@@ -128,10 +130,12 @@ enum SongProjectBridge {
             arrangement: resolvedArrangement,
             tempoChanges: resolvedTempo,
             timeSignatureChanges: resolvedTimeSignatures,
-            midiEvents: resolvedMIDIEvents
+            midiEvents: resolvedMIDIEvents,
+            bakeManifest: existingDocument?.bakeManifest
         )
         try ProjectFileStore.save(document, to: projectURL)
         try context.save()
+        try SongBakeStore.syncValidityOnPersist(for: song)
     }
 
     static func persist(
@@ -152,6 +156,8 @@ enum SongProjectBridge {
             throw BridgeError.missingProjectFile
         }
 
+        let existingDocument = try? ProjectFileStore.load(from: projectURL)
+
         let arrangement = SongArrangement(
             slots: arrangementSlots,
             clipTrims: clipTrims,
@@ -167,10 +173,12 @@ enum SongProjectBridge {
             arrangement: arrangement,
             tempoChanges: tempoChanges,
             timeSignatureChanges: timeSignatureChanges,
-            midiEvents: midiEvents
+            midiEvents: midiEvents,
+            bakeManifest: existingDocument?.bakeManifest
         )
         try ProjectFileStore.save(document, to: projectURL)
         try context.save()
+        try SongBakeStore.syncValidityOnPersist(for: song)
     }
 
     static func projectStateOrDefaults(for song: Song) -> ProjectState {
