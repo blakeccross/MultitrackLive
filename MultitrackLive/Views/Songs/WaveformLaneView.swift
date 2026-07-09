@@ -283,9 +283,7 @@ struct WaveformLaneView: View {
     }
 
     private var waveformArea: some View {
-        let palette = TrackClipPalette.colors(for: trackColorIndex)
-
-        return ZStack(alignment: .leading) {
+        ZStack(alignment: .leading) {
             Color.clear
                 .frame(width: timelineContentWidth, height: laneHeight)
                 .contentShape(Rectangle())
@@ -296,7 +294,6 @@ struct WaveformLaneView: View {
             clipLayer
         }
         .frame(width: timelineContentWidth, height: laneHeight)
-        .background(palette.body.opacity(0.12))
         .coordinateSpace(name: TimelineDragSpace.name)
     }
 
@@ -413,34 +410,34 @@ struct WaveformLaneView: View {
         let clipWidth = max(0, endX - startX)
 
         clipChrome(
-            clipID: section.id,
-            slotID: section.slotID,
-            title: section.name,
-            colorIndex: trackColorIndex,
-            clipWidth: clipWidth,
-            timelineStart: bounds.start,
-            timelineEnd: bounds.end,
-            regionTrimBoundsStart: section.columnStartSeconds,
-            regionTrimBoundsEnd: section.columnEndSeconds,
-            arrangementSection: resolvedClipRegion(clipID: section.id) == nil ? section : nil,
-            sourceTrimLeading: false,
-            sourceTrimTrailing: false
-        )
-        .contextMenu {
-            Button("Cue Section") {
-                onCueSection(section)
-            }
-            if loopSlotIDs.contains(section.id) {
-                Button("Remove Loop") {
-                    onToggleLoopSection(section)
+                clipID: section.id,
+                slotID: section.slotID,
+                title: section.name,
+                colorIndex: trackColorIndex,
+                clipWidth: clipWidth,
+                timelineStart: bounds.start,
+                timelineEnd: bounds.end,
+                regionTrimBoundsStart: section.columnStartSeconds,
+                regionTrimBoundsEnd: section.columnEndSeconds,
+                arrangementSection: resolvedClipRegion(clipID: section.id) == nil ? section : nil,
+                sourceTrimLeading: false,
+                sourceTrimTrailing: false
+            )
+            .contextMenu {
+                Button("Cue Section") {
+                    onCueSection(section)
                 }
-            } else {
-                Button("Loop Section") {
-                    onToggleLoopSection(section)
+                if loopSlotIDs.contains(section.id) {
+                    Button("Remove Loop") {
+                        onToggleLoopSection(section)
+                    }
+                } else {
+                    Button("Loop Section") {
+                        onToggleLoopSection(section)
+                    }
                 }
             }
-        }
-        .offset(x: startX)
+            .offset(x: startX)
     }
 
     private func clipChrome(
@@ -461,7 +458,6 @@ struct WaveformLaneView: View {
         let selection = matchingClipSelection(for: clipID)
         let isSelected = selection != nil
         let isWholeSelected = selection?.isWholeClip == true
-        let editTime = clipEditTime(clipID: clipID)
         let committedRange = committedSelectionRange(
             clipID: clipID,
             timelineStart: timelineStart,
@@ -511,15 +507,6 @@ struct WaveformLaneView: View {
                 } else if let committedRange, !isWholeSelected {
                     selectionOverlay(
                         range: committedRange,
-                        clipWidth: clipWidth,
-                        timelineStart: timelineStart,
-                        timelineEnd: timelineEnd
-                    )
-                }
-
-                if let editTime {
-                    editCursorOverlay(
-                        time: editTime,
                         clipWidth: clipWidth,
                         timelineStart: timelineStart,
                         timelineEnd: timelineEnd
@@ -717,42 +704,6 @@ struct WaveformLaneView: View {
         .allowsHitTesting(false)
     }
 
-    private func editCursorOverlay(
-        time: TimeInterval,
-        clipWidth: CGFloat,
-        timelineStart: TimeInterval,
-        timelineEnd: TimeInterval
-    ) -> some View {
-        let duration = max(timelineEnd - timelineStart, 0.001)
-        let x = clipWidth * CGFloat((time - timelineStart) / duration)
-
-        return ZStack(alignment: .top) {
-            Rectangle()
-                .fill(Color.white)
-                .frame(width: 2, height: clipBodyHeight)
-                .shadow(color: .black.opacity(0.45), radius: 1, x: 0, y: 0)
-
-            Triangle()
-                .fill(Color.white)
-                .frame(width: 8, height: 6)
-                .shadow(color: .black.opacity(0.35), radius: 1, x: 0, y: 0)
-                .offset(y: -1)
-        }
-        .offset(x: x - 1)
-        .allowsHitTesting(false)
-    }
-
-    private struct Triangle: Shape {
-        func path(in rect: CGRect) -> Path {
-            var path = Path()
-            path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
-            path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-            path.closeSubpath()
-            return path
-        }
-    }
-
     private func clipBodySelectionGesture(
         clipID: UUID,
         slotID: UUID,
@@ -874,10 +825,6 @@ struct WaveformLaneView: View {
         return overlapStart...overlapEnd
     }
 
-    private func clipEditTime(clipID: UUID) -> TimeInterval? {
-        matchingClipSelection(for: clipID)?.editTime
-    }
-
     private func selectWholeClip(clipID: UUID, slotID: UUID, editTime: TimeInterval? = nil) {
         clipSelection = .whole(clipID: clipID, slotID: slotID, trackID: track.id, editTime: editTime)
     }
@@ -974,10 +921,12 @@ struct WaveformLaneView: View {
     }
 
     private func resolvedClipRegion(clipID: UUID) -> ClipRegion? {
-        if let previewClipRegion, previewClipRegion.id == clipID {
+        if let previewClipRegion,
+           previewClipRegion.id == clipID,
+           previewClipRegion.trackID == track.id {
             return previewClipRegion
         }
-        return ClipRegionStore.region(id: clipID, in: clipRegions)
+        return ClipRegionStore.region(id: clipID, trackID: track.id, in: clipRegions)
     }
 
     private func resolvedClipBounds(
@@ -1008,7 +957,11 @@ struct WaveformLaneView: View {
             .onChanged { value in
                 if activeClipRegionTrim?.regionID != region.id || activeClipRegionTrim?.edge != edge {
                     activeClipRegionTrim = (region.id, edge)
-                    clipRegionTrimBaseline = ClipRegionStore.region(id: region.id, in: clipRegions) ?? region
+                    clipRegionTrimBaseline = ClipRegionStore.region(
+                        id: region.id,
+                        trackID: track.id,
+                        in: clipRegions
+                    ) ?? region
                 }
 
                 guard let clipRegionTrimBaseline else { return }
@@ -1039,7 +992,9 @@ struct WaveformLaneView: View {
                 }
 
                 guard let previewClipRegion,
-                      let index = clipRegions.firstIndex(where: { $0.id == previewClipRegion.id }) else {
+                      let index = clipRegions.firstIndex(where: {
+                          $0.id == previewClipRegion.id && $0.trackID == track.id
+                      }) else {
                     return
                 }
 

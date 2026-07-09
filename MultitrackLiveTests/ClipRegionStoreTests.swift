@@ -2,6 +2,46 @@ import XCTest
 @testable import MultitrackLive
 
 final class ClipRegionStoreTests: XCTestCase {
+    func testRegionLookupIsScopedToTrack() {
+        let slotID = UUID()
+        let firstTrackID = UUID()
+        let secondTrackID = UUID()
+        let markerID = UUID()
+        let regions = [
+            ClipRegion(
+                id: slotID,
+                slotID: slotID,
+                trackID: firstTrackID,
+                markerID: markerID,
+                sourceStartSeconds: 0,
+                sourceEndSeconds: 20,
+                timelineStartSeconds: 0,
+                timelineEndSeconds: 20
+            ),
+            ClipRegion(
+                id: slotID,
+                slotID: slotID,
+                trackID: secondTrackID,
+                markerID: markerID,
+                sourceStartSeconds: 0,
+                sourceEndSeconds: 30,
+                timelineStartSeconds: 0,
+                timelineEndSeconds: 30
+            ),
+        ]
+
+        XCTAssertEqual(
+            ClipRegionStore.region(id: slotID, trackID: firstTrackID, in: regions)!.timelineEndSeconds,
+            20,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            ClipRegionStore.region(id: slotID, trackID: secondTrackID, in: regions)!.timelineEndSeconds,
+            30,
+            accuracy: 0.001
+        )
+    }
+
     func testSplitRegionCreatesTwoTouchingRegions() {
         let slotID = UUID()
         let trackID = UUID()
@@ -21,6 +61,7 @@ final class ClipRegionStoreTests: XCTestCase {
 
         let rightID = ClipRegionStore.splitRegion(
             regionID: slotID,
+            trackID: trackID,
             at: 20,
             tempoChanges: [TempoChange(startMeasure: 1, bpm: 120)],
             timeSignatureChanges: [
@@ -35,6 +76,53 @@ final class ClipRegionStoreTests: XCTestCase {
         XCTAssertEqual(regions[1].timelineStartSeconds, 20, accuracy: 0.001)
         XCTAssertEqual(regions[0].sourceEndSeconds, 10, accuracy: 0.001)
         XCTAssertEqual(regions[1].sourceStartSeconds, 10, accuracy: 0.001)
+    }
+
+    func testSplitRegionDoesNotAffectOtherTracksSharingRegionID() {
+        let slotID = UUID()
+        let editedTrackID = UUID()
+        let otherTrackID = UUID()
+        let markerID = UUID()
+        var regions = [
+            ClipRegion(
+                id: slotID,
+                slotID: slotID,
+                trackID: editedTrackID,
+                markerID: markerID,
+                sourceStartSeconds: 0,
+                sourceEndSeconds: 20,
+                timelineStartSeconds: 10,
+                timelineEndSeconds: 30
+            ),
+            ClipRegion(
+                id: slotID,
+                slotID: slotID,
+                trackID: otherTrackID,
+                markerID: markerID,
+                sourceStartSeconds: 0,
+                sourceEndSeconds: 20,
+                timelineStartSeconds: 10,
+                timelineEndSeconds: 30
+            ),
+        ]
+
+        _ = ClipRegionStore.splitRegion(
+            regionID: slotID,
+            trackID: editedTrackID,
+            at: 20,
+            tempoChanges: [TempoChange(startMeasure: 1, bpm: 120)],
+            timeSignatureChanges: [
+                TimeSignatureChange(numerator: 4, denominator: 4, startMeasure: 1, sortOrder: 0),
+            ],
+            in: &regions
+        )
+
+        XCTAssertEqual(regions.count, 3)
+        XCTAssertEqual(
+            ClipRegionStore.region(id: slotID, trackID: otherTrackID, in: regions)!.timelineEndSeconds,
+            30,
+            accuracy: 0.001
+        )
     }
 
     func testJoinAdjacentRegionsMergesBounds() {
@@ -66,7 +154,12 @@ final class ClipRegionStoreTests: XCTestCase {
             ),
         ]
 
-        let mergedID = ClipRegionStore.joinRegions(firstID: leftID, secondID: rightID, in: &regions)
+        let mergedID = ClipRegionStore.joinRegions(
+            firstID: leftID,
+            secondID: rightID,
+            trackID: trackID,
+            in: &regions
+        )
 
         XCTAssertEqual(mergedID, leftID)
         XCTAssertEqual(regions.count, 1)

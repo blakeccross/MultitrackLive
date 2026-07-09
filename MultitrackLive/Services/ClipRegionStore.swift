@@ -104,9 +104,10 @@ enum ClipRegionStore {
 
     static func region(
         id: UUID,
+        trackID: UUID,
         in clipRegions: [ClipRegion]
     ) -> ClipRegion? {
-        clipRegions.first { $0.id == id }
+        clipRegions.first { $0.id == id && $0.trackID == trackID }
     }
 
     enum RegionTrimEdge {
@@ -149,12 +150,15 @@ enum ClipRegionStore {
     @discardableResult
     static func splitRegion(
         regionID: UUID,
+        trackID: UUID,
         at timelineTime: TimeInterval,
         tempoChanges: [TempoChange],
         timeSignatureChanges: [TimeSignatureChange],
         in clipRegions: inout [ClipRegion]
     ) -> UUID? {
-        guard let index = clipRegions.firstIndex(where: { $0.id == regionID }) else { return nil }
+        guard let index = clipRegions.firstIndex(where: { $0.id == regionID && $0.trackID == trackID }) else {
+            return nil
+        }
         let region = clipRegions[index]
         let snapped = MeasureTiming.snapToNearestBeat(
             timelineTime,
@@ -206,10 +210,11 @@ enum ClipRegionStore {
     static func joinRegions(
         firstID: UUID,
         secondID: UUID,
+        trackID: UUID,
         in clipRegions: inout [ClipRegion]
     ) -> UUID? {
-        guard let firstIndex = clipRegions.firstIndex(where: { $0.id == firstID }),
-              let secondIndex = clipRegions.firstIndex(where: { $0.id == secondID }),
+        guard let firstIndex = clipRegions.firstIndex(where: { $0.id == firstID && $0.trackID == trackID }),
+              let secondIndex = clipRegions.firstIndex(where: { $0.id == secondID && $0.trackID == trackID }),
               firstIndex != secondIndex else {
             return nil
         }
@@ -246,7 +251,9 @@ enum ClipRegionStore {
             timelineEndSeconds: mergedEnd
         )
 
-        clipRegions.removeAll { $0.id == first.id || $0.id == second.id }
+        clipRegions.removeAll {
+            $0.trackID == first.trackID && ($0.id == first.id || $0.id == second.id)
+        }
         clipRegions.append(merged)
         return merged.id
     }
@@ -254,10 +261,11 @@ enum ClipRegionStore {
     @discardableResult
     static func deleteRegion(
         regionID: UUID,
+        trackID: UUID,
         in clipRegions: inout [ClipRegion]
     ) -> Bool {
         let before = clipRegions.count
-        clipRegions.removeAll { $0.id == regionID }
+        clipRegions.removeAll { $0.id == regionID && $0.trackID == trackID }
         return clipRegions.count < before
     }
 

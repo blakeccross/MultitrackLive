@@ -1,5 +1,31 @@
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
+
+private enum SongImportFeedback: Identifiable {
+    case success(String)
+    case failure(String)
+
+    var id: String {
+        switch self {
+        case .success(let message): "success-\(message)"
+        case .failure(let message): "failure-\(message)"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .success: "Import Complete"
+        case .failure: "Import Failed"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .success(let message), .failure(let message): message
+        }
+    }
+}
 
 struct SongDetailView: View {
     @Environment(\.modelContext) private var modelContext
@@ -27,9 +53,23 @@ struct SongDetailView: View {
     @State private var midiEvents: [MIDIEvent] = []
     @State private var undoController = SongUndoController()
     @State private var selectedSongID: UUID?
+    @State private var showingSongLibrary = false
+    @State private var showingSongFolderImporter = false
+    @State private var songPendingTrackImport: Song?
+    @State private var songImportFeedback: SongImportFeedback?
 
     var body: some View {
-        songDetailContent
+        Group {
+            #if os(macOS)
+            LivePlaybackSidebarLayout(isVisible: $showingSongLibrary) {
+                songLibraryPanel()
+            } mainContent: {
+                songDetailContent
+            }
+            #else
+            songDetailContent
+            #endif
+        }
             .appBackground(.primary)
             .navigationTitle("")
             #if os(iOS)
@@ -118,6 +158,35 @@ struct SongDetailView: View {
                     }
                 }
             }
+            #if os(iOS)
+            .sheet(isPresented: $showingSongLibrary) {
+                AppSheetContainer {
+                    NavigationStack {
+                        songLibraryPanel()
+                    }
+                }
+                .presentationDetents([.large])
+            }
+            #endif
+            .fileImporter(
+                isPresented: $showingSongFolderImporter,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false
+            ) { result in
+                handleSongFolderImport(result)
+            }
+            .sheet(item: $songPendingTrackImport) { song in
+                TrackImportView(song: song) { error in
+                    songImportFeedback = .failure(error)
+                }
+            }
+            .alert(item: $songImportFeedback) { feedback in
+                Alert(
+                    title: Text(feedback.title),
+                    message: Text(feedback.message),
+                    dismissButton: .cancel(Text("OK"))
+                )
+            }
             #if os(macOS)
             .focusedValue(\.songEditorActions, songEditorActions)
             .focusedValue(\.songUndoActions, songUndoActions)
@@ -168,7 +237,7 @@ struct SongDetailView: View {
                         tempoChanges: $tempoChanges,
                         timeSignatureChanges: $timeSignatureChanges,
                         midiEvents: $midiEvents,
-                        onSelectSong: switchToSong
+                        showingSongLibrary: $showingSongLibrary
                     )
 
                     if viewModel.isReloadingSong {
@@ -325,6 +394,52 @@ struct SongDetailView: View {
         selectedSongID = nextSong.id
         undoController = SongUndoController()
         loadEditor(for: nextSong, forceReloadViewModel: true)
+    }
+
+    private func selectSongFromLibrary(_ selectedSong: Song) {
+        switchToSong(selectedSong)
+    }
+
+    private func songLibraryPanel() -> some View {
+        SongLibraryPanel(
+            onEdit: { song in
+                selectSongFromLibrary(song)
+            },
+            onDismiss: {
+                showingSongLibrary = false
+            },
+            onRequestFolderImport: {
+                #if os(iOS)
+                showingSongLibrary = false
+                #endif
+                showingSongFolderImporter = true
+            },
+            onRequestTrackImport: { song in
+                #if os(iOS)
+                showingSongLibrary = false
+                #endif
+                songPendingTrackImport = song
+            },
+            onAddToSetlist: { _ in }
+        )
+    }
+
+    private func handleSongFolderImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            songImportFeedback = .failure(error.localizedDescription)
+        case .success(let urls):
+            guard let folderURL = urls.first else { return }
+            do {
+                let importResult = try SongFolderImporter.importFromFolder(
+                    at: folderURL,
+                    context: modelContext
+                )
+                songImportFeedback = .success(SongFolderImporter.summaryMessage(for: importResult))
+            } catch {
+                songImportFeedback = .failure(error.localizedDescription)
+            }
+        }
     }
 
     private func handleAbletonImport(_ result: Result<[URL], Error>) {

@@ -659,6 +659,7 @@ enum SongArrangementStore {
     @discardableResult
     static func splitRegion(
         regionID: UUID,
+        trackID: UUID,
         at timelineTime: TimeInterval,
         tempoChanges: [TempoChange],
         timeSignatureChanges: [TimeSignatureChange],
@@ -666,6 +667,7 @@ enum SongArrangementStore {
     ) -> UUID? {
         ClipRegionStore.splitRegion(
             regionID: regionID,
+            trackID: trackID,
             at: timelineTime,
             tempoChanges: tempoChanges,
             timeSignatureChanges: timeSignatureChanges,
@@ -677,9 +679,10 @@ enum SongArrangementStore {
     static func joinRegions(
         firstID: UUID,
         secondID: UUID,
+        trackID: UUID,
         clipRegions: inout [ClipRegion]
     ) -> UUID? {
-        ClipRegionStore.joinRegions(firstID: firstID, secondID: secondID, in: &clipRegions)
+        ClipRegionStore.joinRegions(firstID: firstID, secondID: secondID, trackID: trackID, in: &clipRegions)
     }
 
     @discardableResult
@@ -692,7 +695,7 @@ enum SongArrangementStore {
         clipGaps: inout [ArrangementClipGap],
         clipRegions: inout [ClipRegion]
     ) -> Bool {
-        let deleted = ClipRegionStore.deleteRegion(regionID: regionID, in: &clipRegions)
+        let deleted = ClipRegionStore.deleteRegion(regionID: regionID, trackID: trackID, in: &clipRegions)
         guard deleted else { return false }
 
         if ClipRegionStore.regions(slotID: slotID, trackID: trackID, in: clipRegions).isEmpty {
@@ -879,10 +882,29 @@ enum SongArrangementStore {
                 in: clipRegions
             )
             if !storedRegions.isEmpty {
+                let trims = clampedTrims(
+                    slotID: column.slot.id,
+                    trackID: trackID,
+                    marker: column.marker,
+                    sortedMarkers: inputs.sortedMarkers,
+                    clipTrims: clipTrims,
+                    sourceDuration: sourceDuration
+                )
+                let visibleTimelineStart = column.columnStart + trims.leading
+                let visibleTimelineEnd = columnEnd - trims.trailing
+
                 for region in storedRegions {
+                    guard let clippedRegion = clippedRegion(
+                        region,
+                        visibleTimelineStart: visibleTimelineStart,
+                        visibleTimelineEnd: visibleTimelineEnd
+                    ) else {
+                        continue
+                    }
+
                     sections.append(
                         ClipRegionStore.displaySection(
-                            from: region,
+                            from: clippedRegion,
                             name: column.marker.name,
                             columnStart: column.columnStart,
                             columnEnd: columnEnd
@@ -1039,6 +1061,34 @@ enum SongArrangementStore {
         sections.compactMap { section in
             alignedRulerSection(section, to: duration)
         }
+    }
+
+    private static func clippedRegion(
+        _ region: ClipRegion,
+        visibleTimelineStart: TimeInterval,
+        visibleTimelineEnd: TimeInterval
+    ) -> ClipRegion? {
+        let timelineStart = max(region.timelineStartSeconds, visibleTimelineStart)
+        let timelineEnd = min(region.timelineEndSeconds, visibleTimelineEnd)
+        guard timelineEnd - timelineStart >= minimumClipDuration else { return nil }
+
+        let regionDuration = region.timelineEndSeconds - region.timelineStartSeconds
+        guard regionDuration >= minimumClipDuration else { return nil }
+
+        let sourceDuration = region.sourceEndSeconds - region.sourceStartSeconds
+        let startRatio = (timelineStart - region.timelineStartSeconds) / regionDuration
+        let endRatio = (timelineEnd - region.timelineStartSeconds) / regionDuration
+
+        return ClipRegion(
+            id: region.id,
+            slotID: region.slotID,
+            trackID: region.trackID,
+            markerID: region.markerID,
+            sourceStartSeconds: region.sourceStartSeconds + sourceDuration * startRatio,
+            sourceEndSeconds: region.sourceStartSeconds + sourceDuration * endRatio,
+            timelineStartSeconds: timelineStart,
+            timelineEndSeconds: timelineEnd
+        )
     }
 
     private static func alignedLayoutSnapshot(
