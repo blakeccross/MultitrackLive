@@ -56,6 +56,10 @@ struct LiveSetlistActions {
     var save: () -> Void = {}
     var canNew = false
     var newSetlist: () -> Void = {}
+    var canExportPackage = false
+    var exportPackage: () -> Void = {}
+    var canOpenPackage = false
+    var openPackage: () -> Void = {}
 }
 
 struct SongEditorActions {
@@ -141,6 +145,20 @@ struct FileMenuCommands: Commands {
             }
             .keyboardShortcut("s", modifiers: .command)
             .disabled(actions?.canSave != true)
+
+            Button("Export Setlist Folder…") {
+                actions?.exportPackage()
+            }
+            .keyboardShortcut("e", modifiers: [.command, .shift])
+            .disabled(actions?.canExportPackage != true)
+
+            Divider()
+
+            Button("Open Setlist Folder…") {
+                actions?.openPackage()
+            }
+            .keyboardShortcut("o", modifiers: [.command, .shift])
+            .disabled(actions?.canOpenPackage != true)
         }
     }
 }

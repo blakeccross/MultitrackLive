@@ -327,6 +327,13 @@ enum SongProjectBridge {
         showFileURL: URL
     ) throws -> ShowProjectDocument {
         let entries = setlist.sortedEntries.compactMap { entry -> ShowProjectEntry? in
+            if entry.isHeader, let headerTitle = entry.headerTitle {
+                return ShowProjectEntry(
+                    sortOrder: entry.sortOrder,
+                    headerTitle: headerTitle
+                )
+            }
+
             guard let song = entry.song,
                   let path = song.projectFilePath else {
                 return nil
@@ -381,17 +388,26 @@ enum SongProjectBridge {
         return setlist
     }
 
-    private static func importShowEntries(
+    static func importShowEntries(
         from document: ShowProjectDocument,
         showFileURL: URL,
         into setlist: Setlist,
         context: ModelContext
     ) throws {
         for showEntry in document.entries.sorted(by: { $0.sortOrder < $1.sortOrder }) {
-            guard let projectURL = MediaReferenceResolver.resolve(
-                showEntry.songProject,
-                showFileURL: showFileURL
-            ) else {
+            if showEntry.isHeader, let headerTitle = showEntry.headerTitle {
+                let entry = SetlistEntry(sortOrder: showEntry.sortOrder, headerTitle: headerTitle)
+                entry.setlist = setlist
+                context.insert(entry)
+                setlist.entries.append(entry)
+                continue
+            }
+
+            guard let songProject = showEntry.songProject,
+                  let projectURL = MediaReferenceResolver.resolve(
+                    songProject,
+                    showFileURL: showFileURL
+                  ) else {
                 continue
             }
 

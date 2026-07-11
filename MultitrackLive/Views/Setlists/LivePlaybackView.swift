@@ -2,6 +2,10 @@ import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
+#if os(macOS)
+import AppKit
+#endif
+
 private enum SongImportFeedback: Identifiable {
     case success(String)
     case failure(String)
@@ -15,8 +19,8 @@ private enum SongImportFeedback: Identifiable {
 
     var title: String {
         switch self {
-        case .success: "Import Complete"
-        case .failure: "Import Failed"
+        case .success: "Complete"
+        case .failure: "Failed"
         }
     }
 
@@ -25,6 +29,13 @@ private enum SongImportFeedback: Identifiable {
         case .success(let message), .failure(let message): message
         }
     }
+}
+
+private struct MissingMediaSheetContext: Identifiable {
+    let id = UUID()
+    let setlistID: UUID
+    let focusedSongID: UUID?
+    let missingTracks: [SongMediaHealth.MissingTrack]
 }
 
 struct LivePlaybackView: View {
@@ -47,6 +58,9 @@ struct LivePlaybackView: View {
     @State private var showingSaveSetlistAlert = false
     @State private var saveSetlistName = ""
     @State private var showingSongFolderImporter = false
+    @State private var showingSetlistPackageImporter = false
+    @State private var showingSetlistPackageExporter = false
+    @State private var setlistPackageDocument: SetlistPackageFileDocument?
     @State private var songPendingTrackImport: Song?
     @State private var songImportFeedback: SongImportFeedback?
     @State private var infoPanelHeight: CGFloat = 0
@@ -54,6 +68,10 @@ struct LivePlaybackView: View {
     @State private var headerPendingEdit: SetlistEntry?
     @State private var editHeaderTitle = ""
     @State private var overlapEditorContext: SetlistOverlapEditorContext?
+    @State private var showingMissingMediaAlert = false
+    @State private var missingMediaSheet: MissingMediaSheetContext?
+    @State private var ignoredMissingMediaPromptForSetlistID: UUID?
+    @State private var mediaHealthRevision = 0
 
     private var activeSetlist: Setlist? {
         if let activeSetlistID,
@@ -86,7 +104,11 @@ struct LivePlaybackView: View {
             canSave: activeSetlist != nil,
             save: presentSave,
             canNew: activeSetlist != nil,
-            newSetlist: createUntitledSetlist
+            newSetlist: createUntitledSetlist,
+            canExportPackage: activeSetlist != nil,
+            exportPackage: presentExportSetlistPackage,
+            canOpenPackage: true,
+            openPackage: { showingSetlistPackageImporter = true }
         ))
         .alert("Save Setlist", isPresented: $showingSaveSetlistAlert) {
             TextField("Setlist name", text: $saveSetlistName)
@@ -96,6 +118,28 @@ struct LivePlaybackView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Enter a name for this setlist.")
+        }
+        .alert("Missing Audio Files", isPresented: $showingMissingMediaAlert) {
+            Button("Relink…") {
+                presentMissingMediaRelink(for: nil)
+            }
+            Button("Ignore", role: .cancel) {
+                if let id = activeSetlistID {
+                    ignoredMissingMediaPromptForSetlistID = id
+                }
+            }
+        } message: {
+            Text(missingMediaAlertMessage)
+        }
+        .sheet(item: $missingMediaSheet) { context in
+            MissingMediaRelinkView(
+                setlistID: context.setlistID,
+                initialMissingTracks: context.missingTracks,
+                focusedSongID: context.focusedSongID,
+                onChanged: {
+                    mediaHealthRevision += 1
+                }
+            )
         }
         .alert("Edit Header", isPresented: Binding(
             get: { headerPendingEdit != nil },
@@ -109,6 +153,14 @@ struct LivePlaybackView: View {
                 headerPendingEdit = nil
             }
         }
+    }
+
+    private var missingMediaAlertMessage: String {
+        let songs = SongMediaHealth.songsWithMissingMedia(in: workingSetlist)
+        let trackCount = SongMediaHealth.missingTracks(in: workingSetlist).count
+        let songLabel = songs.count == 1 ? "1 song has" : "\(songs.count) songs have"
+        let trackLabel = trackCount == 1 ? "1 missing audio file" : "\(trackCount) missing audio files"
+        return "\(songLabel) \(trackLabel). Relink them now, or ignore and continue with warnings shown in the setlist."
     }
 
     private func playbackBody(for setlist: Setlist) -> some View {
@@ -161,6 +213,21 @@ struct LivePlaybackView: View {
             allowsMultipleSelection: false
         ) { result in
             handleSongFolderImport(result)
+        }
+        .fileImporter(
+            isPresented: $showingSetlistPackageImporter,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            handleSetlistPackageImport(result)
+        }
+        .fileExporter(
+            isPresented: $showingSetlistPackageExporter,
+            document: setlistPackageDocument,
+            contentType: .folder,
+            defaultFilename: setlistPackageExportFileName
+        ) { result in
+            handleSetlistPackageExportResult(result)
         }
         .sheet(item: $songPendingTrackImport) { song in
             TrackImportView(song: song) { error in
@@ -216,6 +283,7 @@ struct LivePlaybackView: View {
             }
             coordinator.configure(setlist: setlist)
             markSetlistOpened(setlist)
+            promptForMissingMediaIfNeeded(in: setlist)
         }
         .onChange(of: activeSetlistID) { _, _ in
             showingSongLibrary = false
@@ -340,6 +408,110 @@ struct LivePlaybackView: View {
         }
     }
 
+    private var setlistPackageExportFileName: String {
+        let raw = (activeSetlist?.name ?? "Setlist")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>")
+        let cleaned = (raw.isEmpty ? "Setlist" : raw)
+            .components(separatedBy: invalid)
+            .joined(separator: "-")
+        return cleaned
+    }
+
+    private func presentExportSetlistPackage() {
+        guard activeSetlist != nil else { return }
+        #if os(macOS)
+        presentExportSetlistFolderMac()
+        #else
+        presentExportSetlistFolderExporter()
+        #endif
+    }
+
+    #if os(macOS)
+    private func presentExportSetlistFolderMac() {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.title = "Export Setlist Folder"
+        panel.message = "Creates a folder with the show file and a Songs folder."
+        panel.nameFieldStringValue = setlistPackageExportFileName
+        panel.prompt = "Export"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            try SetlistPackageStore.export(
+                setlist: workingSetlist,
+                to: url,
+                context: modelContext
+            )
+            songImportFeedback = .success("Exported setlist folder with songs, stems, clicks, and headers.")
+        } catch {
+            songImportFeedback = .failure(error.localizedDescription)
+        }
+    }
+    #endif
+
+    private func presentExportSetlistFolderExporter() {
+        do {
+            let staging = FileManager.default.temporaryDirectory
+                .appendingPathComponent("MTLExport-\(UUID().uuidString)", isDirectory: true)
+            let packageURL = staging.appendingPathComponent(
+                setlistPackageExportFileName,
+                isDirectory: true
+            )
+            try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+            try SetlistPackageStore.export(
+                setlist: workingSetlist,
+                to: packageURL,
+                context: modelContext
+            )
+            setlistPackageDocument = try SetlistPackageFileDocument(packageDirectory: packageURL)
+            showingSetlistPackageExporter = true
+        } catch {
+            songImportFeedback = .failure(error.localizedDescription)
+        }
+    }
+
+    private func handleSetlistPackageExportResult(_ result: Result<URL, Error>) {
+        setlistPackageDocument = nil
+        switch result {
+        case .success:
+            songImportFeedback = .success("Exported setlist folder with songs, stems, clicks, and headers.")
+        case .failure(let error):
+            songImportFeedback = .failure(error.localizedDescription)
+        }
+    }
+
+    private func handleSetlistPackageImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            songImportFeedback = .failure(error.localizedDescription)
+        case .success(let urls):
+            guard let packageURL = urls.first else { return }
+            do {
+                let setlist = try SetlistPackageStore.importPackage(
+                    from: packageURL,
+                    into: modelContext
+                )
+                if setlist.id == activeSetlistID {
+                    clearMarkerCue()
+                    sectionLoop.reset()
+                    coordinator.stop()
+                    markSetlistOpened(setlist)
+                    coordinator.configure(setlist: setlist)
+                    ignoredMissingMediaPromptForSetlistID = nil
+                    promptForMissingMediaIfNeeded(in: setlist)
+                } else {
+                    ignoredMissingMediaPromptForSetlistID = nil
+                    switchToSetlist(setlist)
+                }
+                songImportFeedback = .success("Opened setlist folder “\(setlist.name)”.")
+            } catch {
+                songImportFeedback = .failure(error.localizedDescription)
+            }
+        }
+    }
+
     private var playbackMonitorSupport: some View {
         LivePlaybackMonitorSupport(
             cuedSectionID: cuedSectionID,
@@ -411,6 +583,18 @@ struct LivePlaybackView: View {
             } label: {
                 Label("New Setlist", systemImage: "plus")
             }
+
+            Button {
+                presentExportSetlistPackage()
+            } label: {
+                Label("Export Setlist Folder…", systemImage: "square.and.arrow.up")
+            }
+
+            Button {
+                showingSetlistPackageImporter = true
+            } label: {
+                Label("Open Setlist Folder…", systemImage: "square.and.arrow.down")
+            }
         } label: {
                 Text(setlist.name)
                     .fontWeight(.semibold)
@@ -444,6 +628,25 @@ struct LivePlaybackView: View {
         activeSetlistID = setlist.id
         markSetlistOpened(setlist)
         coordinator.configure(setlist: setlist)
+        promptForMissingMediaIfNeeded(in: setlist)
+    }
+
+    private func promptForMissingMediaIfNeeded(in setlist: Setlist) {
+        mediaHealthRevision += 1
+        let missing = SongMediaHealth.missingTracks(in: setlist)
+        guard !missing.isEmpty else { return }
+        guard ignoredMissingMediaPromptForSetlistID != setlist.id else { return }
+        showingMissingMediaAlert = true
+    }
+
+    private func presentMissingMediaRelink(for song: Song? = nil) {
+        let setlist = workingSetlist
+        let missing = SongMediaHealth.missingTracks(in: setlist)
+        missingMediaSheet = MissingMediaSheetContext(
+            setlistID: setlist.id,
+            focusedSongID: song?.id,
+            missingTracks: missing
+        )
     }
 
     private func markSetlistOpened(_ setlist: Setlist) {
@@ -694,6 +897,7 @@ struct LivePlaybackView: View {
                 index: playbackIndex,
                 currentIndex: coordinator.currentIndex,
                 isPlaying: coordinator.isPlaying,
+                hasMissingMedia: songHasMissingMedia(song),
                 transition: transition,
                 onOverlapBadgeTap: transition == .overlap
                     ? { presentOverlapEditor(for: entry) }
@@ -734,10 +938,23 @@ struct LivePlaybackView: View {
             }
             .disabled(song.isClickOnly)
 
+            if songHasMissingMedia(song) {
+                Button {
+                    presentMissingMediaRelink(for: song)
+                } label: {
+                    Label("Relink Missing Files…", systemImage: "exclamationmark.triangle")
+                }
+            }
+
             Button("Remove from Setlist", role: .destructive) {
                 removeFromSetlist(entry)
             }
         }
+    }
+
+    private func songHasMissingMedia(_ song: Song) -> Bool {
+        _ = mediaHealthRevision
+        return SongMediaHealth.hasMissingMedia(song)
     }
 
     private func removeFromSetlist(_ entry: SetlistEntry) {
@@ -922,6 +1139,7 @@ private struct SetlistPlaybackRow: View {
     let index: Int
     let currentIndex: Int
     let isPlaying: Bool
+    var hasMissingMedia: Bool = false
     var transition: SetlistTransition? = nil
     var onOverlapBadgeTap: (() -> Void)? = nil
 
@@ -970,6 +1188,14 @@ private struct SetlistPlaybackRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            if hasMissingMedia {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .font(isCurrent ? .body : .caption)
+                    .accessibilityLabel("Missing audio files")
+                    .help("Missing audio files — use Relink Missing Files in the context menu")
+            }
 
             if isCurrent {
                 PlayingBadge(isPlaying: isPlaying)
