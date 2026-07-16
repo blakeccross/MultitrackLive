@@ -81,11 +81,9 @@ struct LivePlaybackView: View {
         return allSetlists.first
     }
 
+    /// Prefer `activeSetlist` in outer body modifiers; SwiftUI may evaluate them before bootstrap.
     private var workingSetlist: Setlist {
-        guard let activeSetlist else {
-            preconditionFailure("Live playback requires an active setlist")
-        }
-        return activeSetlist
+        activeSetlist!
     }
 
     var body: some View {
@@ -95,10 +93,10 @@ struct LivePlaybackView: View {
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onAppear {
-                        bootstrapSetlistIfNeeded()
-                    }
             }
+        }
+        .task {
+            bootstrapSetlistIfNeeded()
         }
         .focusedValue(\.liveSetlistActions, LiveSetlistActions(
             canSave: activeSetlist != nil,
@@ -156,8 +154,11 @@ struct LivePlaybackView: View {
     }
 
     private var missingMediaAlertMessage: String {
-        let songs = SongMediaHealth.songsWithMissingMedia(in: workingSetlist)
-        let trackCount = SongMediaHealth.missingTracks(in: workingSetlist).count
+        guard let setlist = activeSetlist else {
+            return "Some songs have missing audio files. Relink them now, or ignore and continue with warnings shown in the setlist."
+        }
+        let songs = SongMediaHealth.songsWithMissingMedia(in: setlist)
+        let trackCount = SongMediaHealth.missingTracks(in: setlist).count
         let songLabel = songs.count == 1 ? "1 song has" : "\(songs.count) songs have"
         let trackLabel = trackCount == 1 ? "1 missing audio file" : "\(trackCount) missing audio files"
         return "\(songLabel) \(trackLabel). Relink them now, or ignore and continue with warnings shown in the setlist."
@@ -640,7 +641,7 @@ struct LivePlaybackView: View {
     }
 
     private func presentMissingMediaRelink(for song: Song? = nil) {
-        let setlist = workingSetlist
+        guard let setlist = activeSetlist else { return }
         let missing = SongMediaHealth.missingTracks(in: setlist)
         missingMediaSheet = MissingMediaSheetContext(
             setlistID: setlist.id,
@@ -661,23 +662,25 @@ struct LivePlaybackView: View {
     }
 
     private func presentSave() {
-        if workingSetlist.isDraft {
+        guard let setlist = activeSetlist else { return }
+        if setlist.isDraft {
             saveSetlistName = ""
             showingSaveSetlistAlert = true
         } else {
             try? modelContext.save()
-            try? SongProjectBridge.persistShow(for: workingSetlist, context: modelContext)
+            try? SongProjectBridge.persistShow(for: setlist, context: modelContext)
         }
     }
 
     private func saveSetlist() {
+        guard let setlist = activeSetlist else { return }
         let trimmed = saveSetlistName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        workingSetlist.name = trimmed
-        workingSetlist.isDraft = false
+        setlist.name = trimmed
+        setlist.isDraft = false
         try? modelContext.save()
-        try? SongProjectBridge.persistShow(for: workingSetlist, context: modelContext)
+        try? SongProjectBridge.persistShow(for: setlist, context: modelContext)
     }
 
     private func createUntitledSetlist() {
