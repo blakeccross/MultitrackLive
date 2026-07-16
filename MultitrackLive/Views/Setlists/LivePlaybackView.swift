@@ -1284,12 +1284,12 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             .sharedBackgroundVisibility(.hidden)
 
             ToolbarItem(placement: .automatic) {
-                manageOutputsButton
+                mixerButton
             }
             .sharedBackgroundVisibility(.hidden)
 
-            ToolbarItem(placement: .automatic) {
-                mixerButton
+            ToolbarItem(placement: .primaryAction) {
+                overflowMenu
             }
             .sharedBackgroundVisibility(.hidden)
         } else {
@@ -1306,11 +1306,11 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             }
 
             ToolbarItem(placement: .automatic) {
-                manageOutputsButton
+                mixerButton
             }
 
-            ToolbarItem(placement: .automatic) {
-                mixerButton
+            ToolbarItem(placement: .primaryAction) {
+                overflowMenu
             }
         }
         #else
@@ -1326,16 +1326,12 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             transportInfoBar
         }
 
-        ToolbarItem(placement: .automatic) {
-            manageOutputsButton
-        }
-
-        ToolbarItem(placement: .automatic) {
+        ToolbarItem(placement: .topBarTrailing) {
             mixerButton
         }
 
-        ToolbarItem(placement: .automatic) {
-            EditButton()
+        ToolbarItem(placement: .topBarTrailing) {
+            overflowMenu
         }
         #endif
     }
@@ -1363,11 +1359,20 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         .tint(showingSongLibrary ? AppColors.accent : AppColors.textSecondary)
     }
 
-    private var manageOutputsButton: some View {
-        Button("Manage Outputs") {
-            showingManageOutputs = true
+    private var overflowMenu: some View {
+        Menu {
+            #if !os(macOS)
+            EditButton()
+            #endif
+            Button {
+                showingManageOutputs = true
+            } label: {
+                Label("Manage Outputs", systemImage: "speaker.wave.2")
+            }
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
         }
-        .foregroundStyle(AppColors.textSecondary)
+        .tint(AppColors.textSecondary)
     }
 
     private var mixerButton: some View {
