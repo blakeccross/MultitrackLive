@@ -231,3 +231,118 @@ struct SectionCueMonitor: View {
             }
     }
 }
+
+/// Speaks the upcoming section name one measure before its boundary.
+struct SectionAnnounceMonitor: View {
+    @Bindable private var audioEngine = AudioEngineManager.shared
+    let enabled: Bool
+    let sections: [ArrangementDisplaySection]
+    let cuedSectionID: UUID?
+    let cueFireTime: TimeInterval?
+    let announcer: SectionAnnouncer
+
+    @State private var lastAnnouncedBoundary: TimeInterval?
+    @State private var lastSeenTime: TimeInterval = 0
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: audioEngine.currentTime) { _, time in
+                evaluate(at: time)
+            }
+            .onChange(of: enabled) { _, isEnabled in
+                if !isEnabled {
+                    resetTracking()
+                } else {
+                    evaluate(at: audioEngine.currentTime)
+                }
+            }
+            .onChange(of: cuedSectionID) { _, _ in
+                handleManualCueChange()
+            }
+            .onChange(of: cueFireTime) { _, _ in
+                handleManualCueChange()
+            }
+            .onChange(of: audioEngine.isPlaying) { _, isPlaying in
+                if !isPlaying {
+                    resetTracking()
+                } else {
+                    evaluate(at: audioEngine.currentTime)
+                }
+            }
+    }
+
+    private func resetTracking() {
+        lastAnnouncedBoundary = nil
+        lastSeenTime = audioEngine.currentTime
+    }
+
+    /// When the user cues a section, only schedule a spoken call if a full measure
+    /// of lead time remains. Cueing inside that final measure skips a late call.
+    private func handleManualCueChange() {
+        lastSeenTime = audioEngine.currentTime
+        lastAnnouncedBoundary = nil
+
+        guard enabled,
+              audioEngine.isPlaying,
+              let cueFireTime,
+              cuedSectionID != nil else {
+            return
+        }
+
+        let lead = audioEngine.measureLeadDuration(endingAt: cueFireTime)
+        let announceAt = max(0, cueFireTime - lead)
+        if audioEngine.currentTime + 0.001 >= announceAt {
+            // Not enough runway for a true one-measure-early call.
+            lastAnnouncedBoundary = cueFireTime
+            return
+        }
+
+        evaluate(at: audioEngine.currentTime)
+    }
+
+    private func evaluate(at time: TimeInterval) {
+        defer { lastSeenTime = time }
+
+        guard enabled, audioEngine.isPlaying else { return }
+
+        // Detect seeks / backward jumps so the same boundary can announce again.
+        if time + 0.05 < lastSeenTime {
+            lastAnnouncedBoundary = nil
+        }
+
+        guard let target = nextAnnouncementTarget(at: time) else { return }
+
+        let lead = audioEngine.measureLeadDuration(endingAt: target.boundary)
+        let announceAt = max(0, target.boundary - lead)
+
+        guard time >= announceAt else { return }
+        guard lastAnnouncedBoundary != target.boundary else { return }
+
+        // Manual cues only speak when we reach the one-measure mark with time to spare.
+        // If we somehow evaluate after the boundary, skip rather than calling late.
+        if target.isManualCue, time + 0.001 >= target.boundary {
+            lastAnnouncedBoundary = target.boundary
+            return
+        }
+
+        lastAnnouncedBoundary = target.boundary
+        announcer.announce(name: target.name)
+    }
+
+    private func nextAnnouncementTarget(
+        at time: TimeInterval
+    ) -> (name: String, boundary: TimeInterval, isManualCue: Bool)? {
+        if let cuedSectionID,
+           let cueFireTime,
+           cueFireTime > time + 0.001,
+           let section = sections.first(where: { $0.id == cuedSectionID }) {
+            return (section.name, cueFireTime, true)
+        }
+
+        guard let next = sections.first(where: { $0.timelineStartSeconds > time + 0.001 }) else {
+            return nil
+        }
+        return (next.name, next.timelineStartSeconds, false)
+    }
+}

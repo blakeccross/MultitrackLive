@@ -41,6 +41,7 @@ struct EditView: View {
     @State private var cueFireTime: TimeInterval?
     @State private var cueFlashPhase = false
     @State private var sectionLoop = SectionLoopController()
+    @State private var sectionAnnouncer = SectionAnnouncer()
     @Bindable private var audioEngine = AudioEngineManager.shared
     @State private var showingArrangementEditor = false
     @State private var showingTimeSignatureEditor = false
@@ -539,6 +540,7 @@ struct EditView: View {
             timeSignatureChanges = normalizedTimeSignatureChanges
             viewModel.syncTempoMap(tempoChanges, timeSignatureChanges: timeSignatureChanges)
             reconfigureMIDI()
+            prepareSectionAnnouncements()
         }
         .onChange(of: clipSelection) { _, newValue in
             if let trackID = newValue?.trackID {
@@ -552,9 +554,14 @@ struct EditView: View {
         .onChange(of: arrangementSlots) { _, _ in
             refreshTimelineLayout()
             syncPlayback()
+            prepareSectionAnnouncements()
         }
         .onChange(of: arrangementMarkers) { _, _ in
             refreshTimelineLayout()
+            prepareSectionAnnouncements()
+        }
+        .onChange(of: song.dynamicCuesEnabled) { _, _ in
+            prepareSectionAnnouncements()
         }
         .onChange(of: timelineDuration) { _, _ in
             clampTimelineZoom()
@@ -567,6 +574,13 @@ struct EditView: View {
                 cuedSectionID: cuedSectionID,
                 cueFireTime: cueFireTime,
                 onFire: fireMarkerCue
+            )
+            SectionAnnounceMonitor(
+                enabled: song.dynamicCuesEnabled,
+                sections: displaySections,
+                cuedSectionID: cuedSectionID,
+                cueFireTime: cueFireTime,
+                announcer: sectionAnnouncer
             )
             SectionLoopPlaybackSupport(
                 loopController: sectionLoop,
@@ -678,6 +692,7 @@ struct EditView: View {
                 loopSlotIDs: $loopSlotIDs,
                 showingSongLibrary: $showingSongLibrary,
                 onClearMarkerCue: { clearMarkerCue() },
+                onToggleDynamicCues: toggleDynamicCues,
                 currentSectionAtTime: { time in
                     displaySections.section(atTimeline: time)
                 },
@@ -1147,6 +1162,18 @@ struct EditView: View {
         cueFlashPhase = false
     }
 
+    private func prepareSectionAnnouncements() {
+        guard song.dynamicCuesEnabled else { return }
+        sectionAnnouncer.prepare(names: displaySections.map(\.name))
+    }
+
+    private func toggleDynamicCues() {
+        song.dynamicCuesEnabled.toggle()
+        try? modelContext.save()
+        persistProjectState()
+        prepareSectionAnnouncements()
+    }
+
     private func cueSection(_ section: ArrangementDisplaySection) {
         sectionLoop.endLoopIfActive()
 
@@ -1338,6 +1365,7 @@ struct EditView: View {
             loopSlotIDs: $loopSlotIDs,
             showingSongLibrary: $showingSongLibrary,
             onClearMarkerCue: { clearMarkerCue() },
+            onToggleDynamicCues: toggleDynamicCues,
             onPersistArrangement: {
                 performUndoableChange("Edit Arrangement") {
                     persistArrangement()
@@ -1960,6 +1988,7 @@ private struct EditSongToolbarContent: ToolbarContent {
     @Binding var loopSlotIDs: Set<UUID>
     @Binding var showingSongLibrary: Bool
     let onClearMarkerCue: () -> Void
+    let onToggleDynamicCues: () -> Void
     let currentSectionAtTime: (TimeInterval) -> ArrangementDisplaySection?
     let onStopTransport: () -> Void
     let onToggleLoopAtTime: (TimeInterval) -> Void
@@ -1999,6 +2028,11 @@ private struct EditSongToolbarContent: ToolbarContent {
             }
             .sharedBackgroundVisibility(.hidden)
 
+            ToolbarItem(placement: .primaryAction) {
+                DynamicCuesButton(isEnabled: song.dynamicCuesEnabled, onToggle: onToggleDynamicCues)
+            }
+            .sharedBackgroundVisibility(.hidden)
+
             if !markers.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
                     arrangementEditorButton
@@ -2025,6 +2059,10 @@ private struct EditSongToolbarContent: ToolbarContent {
 
             ToolbarItem(placement: .primaryAction) {
                 changeKeyButton
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                DynamicCuesButton(isEnabled: song.dynamicCuesEnabled, onToggle: onToggleDynamicCues)
             }
 
             if !markers.isEmpty {
@@ -2178,6 +2216,7 @@ private struct EditTransportBar: View {
     @Binding var loopSlotIDs: Set<UUID>
     @Binding var showingSongLibrary: Bool
     let onClearMarkerCue: () -> Void
+    let onToggleDynamicCues: () -> Void
     let onPersistArrangement: () -> Void
     let onUndoableChange: UndoableChangeHandler
     let captureSnapshot: () -> SongEditSnapshot
@@ -2268,6 +2307,7 @@ private struct EditTransportBar: View {
     private var trailingControls: some View {
         HStack(spacing: 8) {
             changeKeyButton
+            DynamicCuesButton(isEnabled: song.dynamicCuesEnabled, onToggle: onToggleDynamicCues)
             songsButton
             if !markers.isEmpty {
                 arrangementEditorButton
@@ -3527,6 +3567,21 @@ private struct TimelineTempoRulerView: View {
     private func tempoColor(_ index: Int) -> Color {
         let colors: [Color] = [.orange, .pink, .yellow, .red, .brown]
         return colors[index % colors.count]
+    }
+}
+
+private struct DynamicCuesButton: View {
+    let isEnabled: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            Label("Dynamic Cues", systemImage: isEnabled ? "speaker.wave.2.fill" : "speaker.wave.2")
+                .labelStyle(.titleAndIcon)
+        }
+        .appEditorToolbarPill()
+        .tint(isEnabled ? AppColors.accent : nil)
+        .help(isEnabled ? "Dynamic cues on — section names are spoken one measure early" : "Dynamic cues off")
     }
 }
 

@@ -24,6 +24,7 @@ struct SongMetadataSnapshot: Equatable, Hashable {
     var timeSignatureDenominator: Int?
     var transposeSemitones: Int
     var transposeHighQuality: Bool
+    var dynamicCuesEnabled: Bool
 }
 
 struct SongEditSnapshot: Equatable {
@@ -69,7 +70,8 @@ struct SongEditSnapshot: Equatable {
                 timeSignatureNumerator: song.timeSignatureNumerator,
                 timeSignatureDenominator: song.timeSignatureDenominator,
                 transposeSemitones: song.transposeSemitones,
-                transposeHighQuality: song.transposeHighQuality
+                transposeHighQuality: song.transposeHighQuality,
+                dynamicCuesEnabled: song.dynamicCuesEnabled
             ),
             tracks: song.sortedTracks.map { track in
                 TrackEditSnapshot(
@@ -98,6 +100,7 @@ struct SongEditSnapshot: Equatable {
         song.timeSignatureDenominator = songMetadata.timeSignatureDenominator
         song.transposeSemitones = songMetadata.transposeSemitones
         song.transposeHighQuality = songMetadata.transposeHighQuality
+        song.dynamicCuesEnabled = songMetadata.dynamicCuesEnabled
     }
 
     func applyTracks(to song: Song, context: ModelContext) {

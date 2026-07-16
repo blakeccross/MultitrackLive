@@ -333,6 +333,7 @@ struct SongLibraryPanel: View {
         copy.timeSignatureDenominator = source.timeSignatureDenominator
         copy.transposeSemitones = source.transposeSemitones
         copy.transposeHighQuality = source.transposeHighQuality
+        copy.dynamicCuesEnabled = source.dynamicCuesEnabled
         modelContext.insert(copy)
 
         var trackIDMap: [UUID: UUID] = [:]

@@ -52,6 +52,7 @@ struct LivePlaybackView: View {
     @State private var cueFireTime: TimeInterval?
     @State private var cueFlashPhase = false
     @State private var sectionLoop = SectionLoopController()
+    @State private var sectionAnnouncer = SectionAnnouncer()
     @State private var showingSongLibrary = false
     @State private var songToEditID: UUID?
     @State private var showingManageOutputs = false
@@ -268,6 +269,13 @@ struct LivePlaybackView: View {
         .onChange(of: coordinator.currentSong?.id) { _, _ in
             clearMarkerCue()
             sectionLoop.reset()
+            prepareSectionAnnouncements()
+        }
+        .onChange(of: coordinator.currentSong?.dynamicCuesEnabled ?? false) { _, _ in
+            prepareSectionAnnouncements()
+        }
+        .task(id: sectionAnnouncementTaskID) {
+            prepareSectionAnnouncements()
         }
         .onAppear {
             if activeSetlistID == nil {
@@ -516,12 +524,20 @@ struct LivePlaybackView: View {
             cuedSectionID: cuedSectionID,
             cueFireTime: cueFireTime,
             onFireMarkerCue: fireMarkerCue,
+            dynamicCuesEnabled: coordinator.currentSong?.dynamicCuesEnabled ?? false,
+            sections: loopSections,
+            announcer: sectionAnnouncer,
             sectionLoop: sectionLoop,
             loopSections: loopSections,
             loopSlotIDs: loopSlotIDs,
             onLoop: snapToLoopSectionStart,
             onLoopActivated: { clearMarkerCue() }
         )
+    }
+
+    private func prepareSectionAnnouncements() {
+        guard coordinator.currentSong?.dynamicCuesEnabled == true else { return }
+        sectionAnnouncer.prepare(names: loopSections.map(\.name))
     }
 
     private func snapToLoopSectionStart(_ section: ArrangementDisplaySection) {
@@ -1040,6 +1056,13 @@ struct LivePlaybackView: View {
         coordinator.currentWaveformSnapshot?.sections ?? []
     }
 
+    private var sectionAnnouncementTaskID: String {
+        let songID = coordinator.currentSong?.id.uuidString ?? "none"
+        let enabled = coordinator.currentSong?.dynamicCuesEnabled == true
+        let names = loopSections.map(\.name).joined(separator: "|")
+        return "\(songID)-\(enabled)-\(names)"
+    }
+
     private func clearMarkerCue(cancellingScheduledTransition: Bool = true) {
         if cancellingScheduledTransition, cuedSectionID != nil {
             coordinator.cancelScheduledSectionTransition()
@@ -1098,6 +1121,9 @@ private struct LivePlaybackMonitorSupport: View {
     let cuedSectionID: UUID?
     let cueFireTime: TimeInterval?
     let onFireMarkerCue: () -> Void
+    let dynamicCuesEnabled: Bool
+    let sections: [ArrangementDisplaySection]
+    let announcer: SectionAnnouncer
     @Bindable var sectionLoop: SectionLoopController
     let loopSections: [ArrangementDisplaySection]
     let loopSlotIDs: Set<UUID>
@@ -1109,6 +1135,13 @@ private struct LivePlaybackMonitorSupport: View {
             cuedSectionID: cuedSectionID,
             cueFireTime: cueFireTime,
             onFire: onFireMarkerCue
+        )
+        SectionAnnounceMonitor(
+            enabled: dynamicCuesEnabled,
+            sections: sections,
+            cuedSectionID: cuedSectionID,
+            cueFireTime: cueFireTime,
+            announcer: announcer
         )
         SectionLoopPlaybackSupport(
             loopController: sectionLoop,

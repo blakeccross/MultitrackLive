@@ -11,6 +11,7 @@ final class Song {
     var timeSignatureDenominator: Int?
     var transposeSemitones: Int
     var transposeHighQuality: Bool
+    var dynamicCuesEnabled: Bool = false
     var projectFilePath: String?
 
     @Relationship(deleteRule: .cascade, inverse: \AudioTrack.song)
@@ -28,6 +29,7 @@ final class Song {
         timeSignatureDenominator = nil
         transposeSemitones = 0
         transposeHighQuality = false
+        dynamicCuesEnabled = false
         projectFilePath = nil
         tracks = []
         midiTracks = []

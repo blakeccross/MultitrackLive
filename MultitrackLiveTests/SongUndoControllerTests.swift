@@ -27,7 +27,8 @@ final class SongUndoControllerTests: XCTestCase {
                 timeSignatureNumerator: 4,
                 timeSignatureDenominator: 4,
                 transposeSemitones: 0,
-                transposeHighQuality: false
+                transposeHighQuality: false,
+                dynamicCuesEnabled: false
             ),
             tracks: []
         )

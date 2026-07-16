@@ -42,6 +42,8 @@ final class AudioEngineManager {
 
     private let engine = AVAudioEngine()
     private let masterMixer = AVAudioMixerNode()
+    private let announcementPlayer = AVAudioPlayerNode()
+    private var isAnnouncementPlayerWired = false
     private let outputRoutingManager = OutputRoutingManager()
     private let transport = AudioPlaybackTransport()
     private let midiScheduler: MIDIScheduler
@@ -82,9 +84,64 @@ final class AudioEngineManager {
         midiScheduler = MIDIScheduler(transport: transport)
         engine.attach(masterMixer)
         engine.connect(masterMixer, to: engine.mainMixerNode, format: nil)
+        wireAnnouncementPlayerIfNeeded()
         #if os(iOS)
         configureAudioSession()
         #endif
+    }
+
+    /// Duration of one measure ending at `timelineSeconds`, using the active tempo/meter.
+    func measureLeadDuration(endingAt timelineSeconds: TimeInterval) -> TimeInterval {
+        let safeTime = max(0, timelineSeconds)
+        let tempos = tempoChanges.isEmpty
+            ? [TempoChange(startMeasure: 1, bpm: referenceBPM > 0 ? referenceBPM : TempoChange.defaultBPM)]
+            : tempoChanges
+        let signatures = timeSignatureChanges.isEmpty
+            ? [
+                TimeSignatureChange(
+                    numerator: MeasureTiming.defaultNumerator,
+                    denominator: MeasureTiming.defaultDenominator,
+                    startMeasure: 1
+                )
+            ]
+            : timeSignatureChanges
+
+        let measure = MeasureTiming.measureIndex(
+            at: max(0, safeTime - 0.0001),
+            tempoChanges: tempos,
+            timeSignatureChanges: signatures
+        )
+        let bpm = MeasureTiming.bpmForMeasure(measure, tempoChanges: tempos)
+        let signature = MeasureTiming.numeratorDenominatorForMeasure(measure, changes: signatures)
+        return MeasureTiming.measureDuration(
+            bpm: bpm,
+            numerator: signature.numerator,
+            denominator: signature.denominator
+        )
+    }
+
+    func playAnnouncement(_ buffer: AVAudioPCMBuffer) {
+        wireAnnouncementPlayerIfNeeded()
+        if !engine.isRunning {
+            try? engine.start()
+        }
+
+        announcementPlayer.stop()
+        announcementPlayer.scheduleBuffer(buffer, at: nil, options: [])
+        announcementPlayer.play()
+    }
+
+    private func wireAnnouncementPlayerIfNeeded() {
+        guard !isAnnouncementPlayerWired else { return }
+        if announcementPlayer.engine == nil {
+            engine.attach(announcementPlayer)
+        }
+        let format = AVAudioFormat(
+            standardFormatWithSampleRate: DecodedStemBuffer.engineSampleRate,
+            channels: 2
+        )
+        engine.connect(announcementPlayer, to: masterMixer, format: format)
+        isAnnouncementPlayerWired = true
     }
 
     #if os(iOS)
@@ -870,6 +927,8 @@ final class AudioEngineManager {
         if engine.isRunning {
             engine.stop()
         }
+        // Graph edits can invalidate player connections; rewire on next use.
+        isAnnouncementPlayerWired = false
     }
 
     private func startEngineIfNeeded() throws {
@@ -931,6 +990,8 @@ final class AudioEngineManager {
         for track in tracks.values {
             connectTrackToMasterMixer(track)
         }
+        isAnnouncementPlayerWired = false
+        wireAnnouncementPlayerIfNeeded()
     }
 
     private func connectTrackToMasterMixer(_ track: TrackState) {
