@@ -1269,17 +1269,17 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         #if os(macOS)
         if #available(macOS 26.0, *) {
             ToolbarItem(placement: .navigation) {
+                songsButton
+            }
+            .sharedBackgroundVisibility(.hidden)
+
+            ToolbarItem(placement: .navigation) {
                 setlistSwitcher
             }
             .sharedBackgroundVisibility(.hidden)
 
             ToolbarItem(placement: .principal) {
                 transportInfoBar
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .primaryAction) {
-                songsButton
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -1294,15 +1294,15 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             .sharedBackgroundVisibility(.hidden)
         } else {
             ToolbarItem(placement: .navigation) {
+                songsButton
+            }
+
+            ToolbarItem(placement: .navigation) {
                 setlistSwitcher
             }
 
             ToolbarItem(placement: .principal) {
                 transportInfoBar
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                songsButton
             }
 
             ToolbarItem(placement: .automatic) {
@@ -1315,15 +1315,15 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         }
         #else
         ToolbarItem(placement: .navigation) {
+            songsButton
+        }
+
+        ToolbarItem(placement: .navigation) {
             setlistSwitcher
         }
 
         ToolbarItem(placement: .principal) {
             transportInfoBar
-        }
-
-        ToolbarItem(placement: .primaryAction) {
-            songsButton
         }
 
         ToolbarItem(placement: .automatic) {

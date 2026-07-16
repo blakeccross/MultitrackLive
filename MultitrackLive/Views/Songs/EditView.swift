@@ -2004,6 +2004,11 @@ private struct EditSongToolbarContent: ToolbarContent {
     var body: some ToolbarContent {
         if #available(macOS 26.0, *) {
             ToolbarItem(placement: .navigation) {
+                songsButton
+            }
+            .sharedBackgroundVisibility(.hidden)
+
+            ToolbarItem(placement: .navigation) {
                 ClickTrackEditorButton(
                     song: song,
                     viewModel: viewModel,
@@ -2015,11 +2020,6 @@ private struct EditSongToolbarContent: ToolbarContent {
 
             ToolbarItem(placement: .principal) {
                 transportStrip(at: audioEngine.currentTime)
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .primaryAction) {
-                songsButton
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -2041,6 +2041,10 @@ private struct EditSongToolbarContent: ToolbarContent {
             }
         } else {
             ToolbarItem(placement: .navigation) {
+                songsButton
+            }
+
+            ToolbarItem(placement: .navigation) {
                 ClickTrackEditorButton(
                     song: song,
                     viewModel: viewModel,
@@ -2051,10 +2055,6 @@ private struct EditSongToolbarContent: ToolbarContent {
 
             ToolbarItem(placement: .principal) {
                 transportStrip(at: audioEngine.currentTime)
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                songsButton
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -2148,25 +2148,26 @@ private struct EditSongToolbarContent: ToolbarContent {
         Button {
             showingChangeKey = true
         } label: {
-            Label(changeKeyButtonTitle, systemImage: "key")
-                .labelStyle(.titleAndIcon)
+            if let changeKeyButtonTitle {
+                Label(changeKeyButtonTitle, systemImage: "key")
+                    .labelStyle(.titleAndIcon)
+            } else {
+                Label("Change Key", systemImage: "key")
+                    .labelStyle(.iconOnly)
+            }
         }
         .appEditorToolbarPill()
         .disabled(song.sortedTracks.isEmpty)
     }
 
-    private var changeKeyButtonTitle: String {
+    private var changeKeyButtonTitle: String? {
         switch song.transposeSemitones {
         case 0:
-            return "Change Key"
-        case 1:
-            return "Key +1"
-        case -1:
-            return "Key -1"
+            return nil
         case let value where value > 0:
-            return "Key +\(value)"
+            return "+\(value)"
         default:
-            return "Key \(song.transposeSemitones)"
+            return "\(song.transposeSemitones)"
         }
     }
 
@@ -2174,8 +2175,9 @@ private struct EditSongToolbarContent: ToolbarContent {
         Button {
             showingArrangementEditor = true
         } label: {
-            Label("Arrangement", systemImage: "list.bullet.rectangle")
-                .labelStyle(.titleAndIcon)
+            Image(systemName: "list.bullet.rectangle")
+                .font(.body.weight(.medium))
+                .foregroundStyle(.secondary)
         }
         .appEditorToolbarPill()
         .popover(isPresented: $showingArrangementEditor, arrowEdge: .bottom) {
@@ -2294,6 +2296,7 @@ private struct EditTransportBar: View {
 
     private var leadingControls: some View {
         HStack(spacing: 8) {
+            songsButton
             ClickTrackEditorButton(
                 song: song,
                 viewModel: viewModel,
@@ -2308,7 +2311,6 @@ private struct EditTransportBar: View {
         HStack(spacing: 8) {
             changeKeyButton
             DynamicCuesButton(isEnabled: song.dynamicCuesEnabled, onToggle: onToggleDynamicCues)
-            songsButton
             if !markers.isEmpty {
                 arrangementEditorButton
             }
@@ -2348,25 +2350,26 @@ private struct EditTransportBar: View {
         Button {
             showingChangeKey = true
         } label: {
-            Label(changeKeyButtonTitle, systemImage: "key")
-                .labelStyle(.titleAndIcon)
+            if let changeKeyButtonTitle {
+                Label(changeKeyButtonTitle, systemImage: "key")
+                    .labelStyle(.titleAndIcon)
+            } else {
+                Label("Change Key", systemImage: "key")
+                    .labelStyle(.iconOnly)
+            }
         }
         .appEditorToolbarPill()
         .disabled(song.sortedTracks.isEmpty)
     }
 
-    private var changeKeyButtonTitle: String {
+    private var changeKeyButtonTitle: String? {
         switch song.transposeSemitones {
         case 0:
-            return "Change Key"
-        case 1:
-            return "Key +1"
-        case -1:
-            return "Key -1"
+            return nil
         case let value where value > 0:
-            return "Key +\(value)"
+            return "+\(value)"
         default:
-            return "Key \(song.transposeSemitones)"
+            return "\(song.transposeSemitones)"
         }
     }
 
@@ -3576,12 +3579,12 @@ private struct DynamicCuesButton: View {
 
     var body: some View {
         Button(action: onToggle) {
-            Label("Dynamic Cues", systemImage: isEnabled ? "speaker.wave.2.fill" : "speaker.wave.2")
+            Image(systemName: isEnabled ? "speaker.wave.2.fill" : "speaker.wave.2")
                 .labelStyle(.titleAndIcon)
+                .font(.body.weight(.medium))
         }
         .appEditorToolbarPill()
         .tint(isEnabled ? AppColors.accent : nil)
-        .help(isEnabled ? "Dynamic cues on — section names are spoken one measure early" : "Dynamic cues off")
     }
 }
 
