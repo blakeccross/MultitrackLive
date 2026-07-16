@@ -3547,8 +3547,7 @@ private struct ClickTrackEditorButton: View {
             editStartSnapshot = captureSnapshot()
             showingEditor = true
         } label: {
-            Label("Click", systemImage: "metronome")
-                .labelStyle(.titleAndIcon)
+            Image(systemName: "metronome")
         }
         .appEditorToolbarPill()
         .tint(ClickTrackFileGenerator.hasClickTrack(in: song) ? AppColors.accent : nil)
