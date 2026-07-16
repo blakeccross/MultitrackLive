@@ -485,50 +485,6 @@ final class PlaybackCoordinator {
         audioEngine.stop()
         clockEngine.stop()
 
-        if song.isClickOnly {
-            do {
-                let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
-                let tempoChanges = projectState.tempoChanges
-                let timeSignatureChanges = projectState.timeSignatureChanges
-                let routing = routingProvider?()
-                try audioEngine.loadClickOnlySong(
-                    trackID: song.clickTrackID,
-                    settings: Self.clickOnlySettings(for: song),
-                    subdivision: song.clickSubdivision,
-                    isEnabled: song.clickTrackEnabled,
-                    tempoChanges: tempoChanges,
-                    timeSignatureChanges: timeSignatureChanges,
-                    routing: routing
-                )
-                applySongEngineState(for: song)
-                applyGroupMixFromProvider()
-                currentWaveformSnapshot = nil
-                loadedSongID = song.id
-                isLoaded = true
-                loadError = nil
-
-                if let preservedTime {
-                    audioEngine.seek(to: preservedTime)
-                }
-
-                // Keep the shared UI clock timeline aligned with this song.
-                syncClockEngine(for: song, preservedTime: preservedTime)
-                if autoPlay {
-                    audioEngine.play()
-                    if clockEngine !== audioEngine {
-                        clockEngine.play()
-                    }
-                }
-                configureOverlapSchedulingIfNeeded()
-            } catch {
-                loadedSongID = nil
-                currentWaveformSnapshot = nil
-                isLoaded = false
-                loadError = error.localizedDescription
-            }
-            return
-        }
-
         let preparationResult: Result<[AudioEngineManager.PreparedTrackPayload], Error> =
             await Task.detached(priority: .userInitiated) {
                 do {
@@ -543,21 +499,8 @@ final class PlaybackCoordinator {
         guard generation == loadGeneration, !Task.isCancelled else { return }
 
         switch preparationResult {
-        case .success(var prepared):
+        case .success(let prepared):
             do {
-                let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
-                let tempoChanges = projectState.tempoChanges
-                let timeSignatureChanges = projectState.timeSignatureChanges
-                if !SongBakeStore.hasValidBake(for: song) {
-                    try SongTrackLoader.appendClickTrackIfNeeded(
-                        to: &prepared,
-                        song: song,
-                        sourceDurationForTrack: { Self.trackSourceDuration(for: $0, in: song) },
-                        tempoChanges: tempoChanges,
-                        timeSignatureChanges: timeSignatureChanges
-                    )
-                }
-
                 let routing = routingProvider?()
                 try audioEngine.loadPreparedTracks(prepared, routing: routing)
                 applySongEngineState(for: song)
@@ -673,7 +616,7 @@ final class PlaybackCoordinator {
     }
 
     static func makeWaveformSnapshot(for song: Song) -> LiveSongWaveformSnapshot? {
-        guard !song.isClickOnly, !song.sortedTracks.isEmpty else { return nil }
+        guard !song.sortedTracks.isEmpty else { return nil }
 
         let trackSources: [(url: URL, duration: TimeInterval)]
         if SongBakeStore.hasValidBake(for: song),
@@ -737,20 +680,6 @@ final class PlaybackCoordinator {
             ?? rulerSections
     }
 
-    private static func clickOnlySettings(for song: Song) -> AudioEngineManager.TrackSettings {
-        AudioEngineManager.TrackSettings(
-            volume: Float(song.clickTrackVolume),
-            isMuted: false,
-            isSolo: false,
-            trimStart: 0,
-            trimEnd: nil,
-            pitchCents: 0,
-            excludeFromTranspose: true,
-            ignoresSolo: true,
-            bypassesArrangementMapping: true
-        )
-    }
-
     private static func trackSourceDuration(for trackID: UUID, in song: Song) -> TimeInterval {
         guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
               let url = FileStore.trackURL(for: song, track: track) else { return 1 }
@@ -777,9 +706,7 @@ final class PlaybackCoordinator {
               let config = overlapConfigAfterCurrentSong,
               config.isValid,
               let incoming = nextSong,
-              let outgoing = currentSong,
-              !outgoing.isClickOnly,
-              !incoming.isClickOnly else {
+              currentSong != nil else {
             return
         }
 
@@ -807,18 +734,7 @@ final class PlaybackCoordinator {
             let result: Result<[AudioEngineManager.PreparedTrackPayload], Error> =
                 await Task.detached(priority: .utility) {
                     do {
-                        var prepared = try SongTrackLoader.playbackPayloads(for: incoming)
-                        let projectState = SongProjectBridge.projectStateOrDefaults(for: incoming)
-                        if !SongBakeStore.hasValidBake(for: incoming) {
-                            try SongTrackLoader.appendClickTrackIfNeeded(
-                                to: &prepared,
-                                song: incoming,
-                                sourceDurationForTrack: { Self.trackSourceDuration(for: $0, in: incoming) },
-                                tempoChanges: projectState.tempoChanges,
-                                timeSignatureChanges: projectState.timeSignatureChanges
-                            )
-                        }
-                        return .success(prepared)
+                        return .success(try SongTrackLoader.playbackPayloads(for: incoming))
                     } catch {
                         return .failure(error)
                     }

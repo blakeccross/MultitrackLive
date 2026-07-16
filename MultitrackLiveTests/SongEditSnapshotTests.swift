@@ -16,8 +16,6 @@ final class SongEditSnapshotTests: XCTestCase {
         let song = Song(name: "Undo Test")
         song.bpm = 128
         song.transposeSemitones = 2
-        song.clickTrackEnabled = true
-        song.clickTrackVolume = 0.75
 
         let track = AudioTrack(displayName: "Kick", relativeFilePath: "kick.wav", sortOrder: 0)
         track.volume = 0.5
@@ -52,7 +50,6 @@ final class SongEditSnapshotTests: XCTestCase {
 
         song.bpm = 90
         song.transposeSemitones = -1
-        song.clickTrackEnabled = false
         track.volume = 1.0
         track.isMuted = false
         markers = []

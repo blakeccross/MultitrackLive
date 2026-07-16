@@ -51,7 +51,6 @@ struct EditView: View {
     @State private var showingTimeSignatureMarkerEditor = false
     @State private var editingTimeSignatureMarkerID: UUID?
     @State private var sectionPendingRename: ArrangementDisplaySection?
-    @State private var renameSectionName = ""
     @State private var trackPendingRename: AudioTrack?
     @State private var renameTrackName = ""
     @State private var clipSelection: TimelineClipSelection?
@@ -95,9 +94,6 @@ struct EditView: View {
         }
         persistProjectState()
         viewModel.syncTempoMap(normalized, timeSignatureChanges: normalizedTimeSignatureChanges)
-        if song.clickTrackEnabled {
-            viewModel.reloadSongForClickTrackChanges()
-        }
     }
 
     private func persistTimeSignatureChanges() {
@@ -113,9 +109,6 @@ struct EditView: View {
         }
         persistProjectState()
         viewModel.syncTempoMap(normalizedTempoChanges, timeSignatureChanges: normalized)
-        if song.clickTrackEnabled {
-            viewModel.reloadSongForClickTrackChanges()
-        }
     }
 
     private func persistProjectState() {
@@ -212,12 +205,6 @@ struct EditView: View {
             Task {
                 await viewModel.applyKeyChange(context: modelContext, highQuality: false)
             }
-        }
-
-        if snapshot.songMetadata.clickTrackEnabled {
-            viewModel.reloadSongForClickTrackChanges()
-        } else {
-            viewModel.updateClickTrackMix(context: modelContext)
         }
 
         if trackIDsChanged {
@@ -327,16 +314,8 @@ struct EditView: View {
             .max() ?? finiteEngineDuration
     }
 
-    /// Engine duration usable for sizing the editor timeline. Ignores the open-ended
-    /// click-only sentinel so a stale click-only duration can't inflate the timeline
-    /// to a year-long width and freeze layout before the song finishes reloading.
     private var finiteEngineDuration: TimeInterval {
-        let engine = AudioEngineManager.shared
-        guard !engine.isClickOnlyPlayback,
-              engine.duration < AudioEngineManager.openEndedTimelineDuration else {
-            return 0
-        }
-        return engine.duration
+        AudioEngineManager.shared.duration
     }
 
     private var sourceDurationForTrack: (UUID) -> TimeInterval {
@@ -440,9 +419,6 @@ struct EditView: View {
     }
 
     private var timelineDuration: TimeInterval {
-        if song.isClickOnly {
-            return max(max(audioEngine.currentTime + 120, 240), 1)
-        }
         let hasTrackSections = cachedTrackSections.values.contains { !$0.isEmpty }
         if !displaySections.isEmpty || hasTrackSections {
             return SongArrangementStore.effectiveTimelineDuration(
@@ -467,7 +443,7 @@ struct EditView: View {
     }
 
     private var hasTimelineContent: Bool {
-        song.isClickOnly || !song.sortedTracks.isEmpty || !displaySections.isEmpty || !song.midiTracks.isEmpty
+        !song.sortedTracks.isEmpty || !displaySections.isEmpty || !song.midiTracks.isEmpty
     }
 
     private var midiTracks: [MIDITrack] {
@@ -654,16 +630,9 @@ struct EditView: View {
                 }
             }
         }
-        .alert("Rename Section", isPresented: Binding(
-            get: { sectionPendingRename != nil },
-            set: { if !$0 { sectionPendingRename = nil } }
-        )) {
-            TextField("Section name", text: $renameSectionName)
-            Button("Rename") {
-                applySectionRename()
-            }
-            Button("Cancel", role: .cancel) {
-                sectionPendingRename = nil
+        .sheet(item: $sectionPendingRename) { section in
+            RenameSectionSheet(currentName: section.name) { newName in
+                applySectionRename(newName)
             }
         }
         .alert("Rename Track", isPresented: Binding(
@@ -1232,8 +1201,6 @@ struct EditView: View {
     }
 
     private func addSection(at timelineTime: TimeInterval) {
-        guard !song.isClickOnly else { return }
-
         performUndoableChange("Add Section") {
             let snappedTime = MeasureTiming.snapToNearestBeat(
                 max(0, timelineTime),
@@ -1267,19 +1234,17 @@ struct EditView: View {
 
             if let section = displaySections.first(where: { $0.markerID == newMarker.id }) {
                 sectionPendingRename = section
-                renameSectionName = newMarker.name
             }
         }
     }
 
     private func beginRenameSection(_ section: ArrangementDisplaySection) {
         sectionPendingRename = section
-        renameSectionName = section.name
     }
 
-    private func applySectionRename() {
+    private func applySectionRename(_ newName: String) {
         guard let section = sectionPendingRename else { return }
-        let trimmed = renameSectionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               let index = arrangementMarkers.firstIndex(where: { $0.id == section.markerID }) else {
             sectionPendingRename = nil
@@ -1404,70 +1369,8 @@ struct EditView: View {
         )
     }
 
-    @ViewBuilder
     private var dawTimeline: some View {
-        if song.isClickOnly {
-            clickOnlyTimeline
-        } else {
-            stemTimeline
-        }
-    }
-
-    private var clickOnlyTimeline: some View {
-        GeometryReader { geometry in
-            HStack(alignment: .top, spacing: 0) {
-                ScrollView(.horizontal, showsIndicators: true) {
-                    TimelinePlayheadLayer(
-                        duration: timelineDuration,
-                        contentWidth: timelineContentWidth,
-                        displayWidth: timelineDisplayWidth,
-                        height: geometry.size.height
-                    ) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            timelineRulerStack
-                                .frame(width: timelineDisplayWidth, height: TimelineLayout.rulerTotalHeight)
-
-                            Rectangle()
-                                .fill(Color.dawTimelineBackground)
-                                .frame(
-                                    width: timelineDisplayWidth,
-                                    height: max(0, geometry.size.height - TimelineLayout.rulerTotalHeight)
-                                )
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .onGeometryChange(for: CGFloat.self) { proxy in
-                    proxy.size.width
-                } action: { width in
-                    timelineViewportWidth = width
-                }
-                .simultaneousGesture(timelinePinchGesture)
-                .onTapGesture {
-                    isTimelineFocused = true
-                }
-
-                clickOnlyTrackHeaderColumn(height: geometry.size.height)
-            }
-        }
-        .frame(maxHeight: .infinity)
-    }
-
-    private func clickOnlyTrackHeaderColumn(height: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            trackHeaderRulerCorner
-
-            HStack(spacing: 8) {
-                Image(systemName: "cursorarrow.click")
-                    .foregroundStyle(.secondary)
-                Text("Click")
-                    .font(.subheadline)
-            }
-            .frame(width: TimelineLayout.trackHeaderWidth, height: max(0, height - TimelineLayout.rulerTotalHeight), alignment: .topLeading)
-            .padding(.top, 8)
-            .padding(.horizontal, 8)
-        }
-        .frame(width: TimelineLayout.trackHeaderWidth)
+        stemTimeline
     }
 
     private var stemTimeline: some View {
@@ -2211,7 +2114,7 @@ private struct EditSongToolbarContent: ToolbarContent {
                 .labelStyle(.titleAndIcon)
         }
         .appEditorToolbarPill()
-        .disabled(song.isClickOnly || song.sortedTracks.isEmpty)
+        .disabled(song.sortedTracks.isEmpty)
     }
 
     private var changeKeyButtonTitle: String {
@@ -2409,7 +2312,7 @@ private struct EditTransportBar: View {
                 .labelStyle(.titleAndIcon)
         }
         .appEditorToolbarPill()
-        .disabled(song.isClickOnly || song.sortedTracks.isEmpty)
+        .disabled(song.sortedTracks.isEmpty)
     }
 
     private var changeKeyButtonTitle: String {
@@ -3628,6 +3531,7 @@ private struct TimelineTempoRulerView: View {
 }
 
 private struct ClickTrackEditorButton: View {
+    @Environment(\.modelContext) private var modelContext
     @Bindable var song: Song
     let viewModel: SongEditorViewModel
     let captureSnapshot: () -> SongEditSnapshot
@@ -3635,43 +3539,80 @@ private struct ClickTrackEditorButton: View {
 
     @State private var showingEditor = false
     @State private var editStartSnapshot: SongEditSnapshot?
+    @State private var isGenerating = false
+    @State private var generateError: String?
 
     var body: some View {
         Button {
             editStartSnapshot = captureSnapshot()
             showingEditor = true
         } label: {
-            Label("Click", systemImage: "cursorarrow.click")
+            Label("Click", systemImage: "metronome")
                 .labelStyle(.titleAndIcon)
         }
         .appEditorToolbarPill()
-        .tint(song.clickTrackEnabled ? AppColors.accent : nil)
+        .tint(ClickTrackFileGenerator.hasClickTrack(in: song) ? AppColors.accent : nil)
         .popover(isPresented: $showingEditor, arrowEdge: .bottom) {
-            ClickTrackEditorMenu(song: song, viewModel: viewModel)
+            ClickTrackEditorMenu(
+                song: song,
+                viewModel: viewModel,
+                isGenerating: $isGenerating,
+                generateError: $generateError,
+                onGenerate: generateClick
+            )
         }
         .onChange(of: showingEditor) { _, isShowing in
             guard !isShowing, let before = editStartSnapshot else { return }
             let after = captureSnapshot()
             if before != after {
-                registerUndo("Edit Click Track", before, after)
+                registerUndo("Generate Click Track", before, after)
             }
             editStartSnapshot = nil
+            generateError = nil
         }
+    }
+
+    private func generateClick() {
+        isGenerating = true
+        generateError = nil
+        do {
+            _ = try ClickTrackFileGenerator.generateAndAttach(
+                to: song,
+                context: modelContext,
+                sourceDurationForTrack: { trackID in
+                    if let track = song.sortedTracks.first(where: { $0.id == trackID }) {
+                        return viewModel.fileDuration(for: track)
+                    }
+                    return 1
+                }
+            )
+            viewModel.reloadSongAfterMediaChange()
+            showingEditor = false
+        } catch {
+            generateError = error.localizedDescription
+        }
+        isGenerating = false
     }
 }
 
 private struct ClickTrackEditorMenu: View {
-    @Environment(\.modelContext) private var modelContext
-
     @Bindable var song: Song
     let viewModel: SongEditorViewModel
+    @Binding var isGenerating: Bool
+    @Binding var generateError: String?
+    let onGenerate: () -> Void
 
-    @State private var volume: Double
-
-    init(song: Song, viewModel: SongEditorViewModel) {
-        self.song = song
-        self.viewModel = viewModel
-        _volume = State(initialValue: song.clickTrackVolume)
+    private var canGenerate: Bool {
+        let duration = ClickTrackFileGenerator.timelineDuration(
+            for: song,
+            sourceDurationForTrack: { trackID in
+                if let track = song.sortedTracks.first(where: { $0.id == trackID }) {
+                    return viewModel.fileDuration(for: track)
+                }
+                return 1
+            }
+        )
+        return duration > 0 && !isGenerating
     }
 
     var body: some View {
@@ -3679,59 +3620,130 @@ private struct ClickTrackEditorMenu: View {
             Text("Click Track")
                 .font(.headline)
 
-            Toggle("Enabled", isOn: $song.clickTrackEnabled)
-                .onChange(of: song.clickTrackEnabled) { _, _ in
-                    try? modelContext.save()
-                    viewModel.reloadSongForClickTrackChanges()
-                }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Speed")
-                    .font(.subheadline)
-
-                Picker("Speed", selection: Binding(
-                    get: { song.clickSubdivision },
-                    set: { newValue in
-                        song.clickSubdivision = newValue
-                        try? modelContext.save()
-                        viewModel.reloadSongForClickTrackChanges()
-                    }
-                )) {
-                    ForEach(ClickTrackSubdivision.allCases) { subdivision in
-                        Text(subdivision.displayName).tag(subdivision)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .disabled(!song.clickTrackEnabled)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Volume")
-                    .font(.subheadline)
-
-                Slider(value: $volume, in: 0...1, step: 0.01) {
-                    Text("Volume")
-                } minimumValueLabel: {
-                    Image(systemName: "speaker.fill")
-                } maximumValueLabel: {
-                    Image(systemName: "speaker.wave.3.fill")
-                }
-                .disabled(!song.clickTrackEnabled)
-                .onChange(of: volume) { _, newValue in
-                    song.clickTrackVolume = newValue
-                    viewModel.updateClickTrackMix(context: modelContext)
+            Button {
+                onGenerate()
+            } label: {
+                if isGenerating {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text(ClickTrackFileGenerator.hasClickTrack(in: song) ? "Regenerate Click" : "Generate Click")
                 }
             }
+            .buttonStyle(.borderedProminent)
+            .disabled(!canGenerate)
 
-            Text("Plays clicks aligned to the song tempo map.")
+            if let generateError {
+                Text(generateError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            Text("Creates an audio track with clicks aligned to the song tempo map.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .padding()
         .frame(minWidth: 280)
-        .onChange(of: song.clickTrackVolume) { _, newValue in
-            volume = newValue
+    }
+}
+
+struct RenameSectionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let currentName: String
+    let onRename: (String) -> Void
+
+    @State private var customName: String = ""
+    @FocusState private var customFieldFocused: Bool
+
+    /// Common song section labels grouped for quick selection.
+    private static let presetGroups: [(title: String, options: [String])] = [
+        ("Song Structure", [
+            "Intro", "Verse", "Verse 1", "Verse 2", "Verse 3",
+            "Pre-Chorus", "Chorus", "Post-Chorus", "Bridge",
+            "Refrain", "Hook", "Outro", "Ending",
+        ]),
+        ("Instrumental", [
+            "Instrumental", "Interlude", "Solo", "Breakdown",
+            "Build", "Drop", "Break", "Turnaround", "Vamp", "Tag",
+        ]),
+    ]
+
+    private let columns = [GridItem(.adaptive(minimum: 96), spacing: AppSpacing.xs)]
+
+    private var trimmedCustomName: String {
+        customName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        AppSheetContainer {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppSpacing.lg) {
+                        ForEach(Self.presetGroups, id: \.title) { group in
+                            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                                Text(group.title)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(AppColors.textSecondary)
+
+                                LazyVGrid(columns: columns, alignment: .leading, spacing: AppSpacing.xs) {
+                                    ForEach(group.options, id: \.self) { option in
+                                        AppChip(title: option, isSelected: option == currentName) {
+                                            commit(option)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                            Text("Custom Name")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(AppColors.textSecondary)
+
+                            HStack(spacing: AppSpacing.sm) {
+                                TextField("Section name", text: $customName)
+                                    .textFieldStyle(.roundedBorder)
+                                    .focused($customFieldFocused)
+                                    .onSubmit {
+                                        if !trimmedCustomName.isEmpty {
+                                            commit(trimmedCustomName)
+                                        }
+                                    }
+
+                                AppSecondaryButton(title: "Use", isEnabled: !trimmedCustomName.isEmpty) {
+                                    commit(trimmedCustomName)
+                                }
+                            }
+                        }
+                    }
+                    .padding(AppSpacing.md)
+                }
+                .frame(minWidth: 380, minHeight: 360)
+                .navigationTitle("Rename Section")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            dismiss()
+                        }
+                    }
+                }
+                .onAppear {
+                    customName = currentName
+                }
+            }
         }
+    }
+
+    private func commit(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        onRename(trimmed)
+        dismiss()
     }
 }
 

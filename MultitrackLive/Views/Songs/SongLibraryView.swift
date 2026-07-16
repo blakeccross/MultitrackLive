@@ -2,14 +2,6 @@ import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
-private enum SongLibraryFilter: String, CaseIterable, Identifiable {
-    case all = "All"
-    case multitrack = "Multitrack"
-    case clickTracks = "Click"
-
-    var id: String { rawValue }
-}
-
 private enum SongLibrarySortOrder: String, CaseIterable, Identifiable {
     case newest = "Newest"
     case name = "Name"
@@ -28,15 +20,9 @@ struct SongLibraryPanel: View {
     var onAddToSetlist: (Song) -> Void
 
     @State private var searchText = ""
-    @State private var activeFilter: SongLibraryFilter = .all
     @State private var sortOrder: SongLibrarySortOrder = .newest
     @State private var showingNewSongAlert = false
-    @State private var showingNewClickTrackSheet = false
     @State private var newSongName = ""
-    @State private var newClickTrackBPM: Double = TempoChange.defaultBPM
-    @State private var newClickTrackSubdivision: ClickTrackSubdivision = .quarter
-    @State private var newClickTrackNumerator: Int = TimeSignatureChange.defaultNumerator
-    @State private var newClickTrackDenominator: Int = TimeSignatureChange.defaultDenominator
     @State private var songPendingRename: Song?
     @State private var renameSongName = ""
     @State private var songPendingDelete: Song?
@@ -45,20 +31,12 @@ struct SongLibraryPanel: View {
     @State private var showingProjectImporter = false
     @State private var consolidateSummary: String?
 
-    private var hasActiveFilters: Bool {
-        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || activeFilter != .all
+    private var hasActiveSearch: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var filteredSongs: [Song] {
         var result = songs
-        switch activeFilter {
-        case .multitrack:
-            result = result.filter { !$0.isClickOnly }
-        case .clickTracks:
-            result = result.filter { $0.isClickOnly }
-        case .all:
-            break
-        }
 
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !query.isEmpty {
@@ -79,7 +57,6 @@ struct SongLibraryPanel: View {
         VStack(spacing: 0) {
             headerBar
             searchBar
-            filterChips
             songList
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -92,19 +69,6 @@ struct SongLibraryPanel: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Enter a name, then import your stem files or choose a song folder.")
-        }
-        .sheet(isPresented: $showingNewClickTrackSheet) {
-            NewClickTrackSheet(
-                name: $newSongName,
-                bpm: $newClickTrackBPM,
-                subdivision: $newClickTrackSubdivision,
-                numerator: $newClickTrackNumerator,
-                denominator: $newClickTrackDenominator,
-                onCreate: createClickTrack,
-                onCancel: {
-                    showingNewClickTrackSheet = false
-                }
-            )
         }
         .alert("Could Not Create Song", isPresented: Binding(
             get: { createSongError != nil },
@@ -207,13 +171,6 @@ struct SongLibraryPanel: View {
             }
 
             Button {
-                resetNewClickTrackForm()
-                showingNewClickTrackSheet = true
-            } label: {
-                Label("New Click Track", systemImage: "cursorarrow.click")
-            }
-
-            Button {
                 onRequestFolderImport()
             } label: {
                 Label("Import from Folder", systemImage: "folder")
@@ -237,10 +194,9 @@ struct SongLibraryPanel: View {
         HStack(spacing: AppSpacing.xs) {
             AppSearchField(text: $searchText)
 
-            if hasActiveFilters {
+            if hasActiveSearch {
                 Button("Clear") {
                     searchText = ""
-                    activeFilter = .all
                 }
                 .font(.subheadline)
                 .foregroundStyle(AppColors.textSecondary)
@@ -261,23 +217,6 @@ struct SongLibraryPanel: View {
             .accessibilityLabel("Sort songs")
         }
         .padding(.horizontal, AppSpacing.sm)
-        .padding(.bottom, AppSpacing.xs)
-    }
-
-    private var filterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: AppSpacing.xs) {
-                ForEach(SongLibraryFilter.allCases) { filter in
-                    AppChip(
-                        title: filter.rawValue,
-                        isSelected: activeFilter == filter
-                    ) {
-                        activeFilter = filter
-                    }
-                }
-            }
-            .padding(.horizontal, AppSpacing.sm)
-        }
         .padding(.bottom, AppSpacing.xs)
     }
 
@@ -330,12 +269,10 @@ struct SongLibraryPanel: View {
 
     @ViewBuilder
     private func songContextMenu(for song: Song) -> some View {
-        if !song.isClickOnly {
-            Button {
-                onEdit(song)
-            } label: {
-                Label("Edit Song", systemImage: "pencil")
-            }
+        Button {
+            onEdit(song)
+        } label: {
+            Label("Edit Song", systemImage: "pencil")
         }
         Button("Rename") {
             songPendingRename = song
@@ -352,42 +289,6 @@ struct SongLibraryPanel: View {
         Divider()
         Button("Remove", role: .destructive) {
             songPendingDelete = song
-        }
-    }
-
-    private func resetNewClickTrackForm() {
-        newSongName = ""
-        newClickTrackBPM = TempoChange.defaultBPM
-        newClickTrackSubdivision = .quarter
-        newClickTrackNumerator = TimeSignatureChange.defaultNumerator
-        newClickTrackDenominator = TimeSignatureChange.defaultDenominator
-    }
-
-    private func createClickTrack() {
-        let trimmed = newSongName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard TempoChange.validBPMRange.contains(newClickTrackBPM) else { return }
-        guard (1...32).contains(newClickTrackNumerator),
-              TimeSignatureChange.validDenominators.contains(newClickTrackDenominator) else { return }
-
-        let song = Song(name: trimmed)
-        song.isClickOnly = true
-        song.clickTrackEnabled = true
-        song.bpm = newClickTrackBPM
-        song.timeSignatureNumerator = newClickTrackNumerator
-        song.timeSignatureDenominator = newClickTrackDenominator
-        song.clickTrackSubdivision = newClickTrackSubdivision.rawValue
-        modelContext.insert(song)
-
-        do {
-            try modelContext.save()
-            try SongProjectBridge.syncProjectFile(for: song, context: modelContext)
-            showingNewClickTrackSheet = false
-            resetNewClickTrackForm()
-        } catch {
-            modelContext.delete(song)
-            FileStore.deleteProjectFile(for: song)
-            createSongError = error.localizedDescription
         }
     }
 
@@ -432,10 +333,6 @@ struct SongLibraryPanel: View {
         copy.timeSignatureDenominator = source.timeSignatureDenominator
         copy.transposeSemitones = source.transposeSemitones
         copy.transposeHighQuality = source.transposeHighQuality
-        copy.isClickOnly = source.isClickOnly
-        copy.clickTrackEnabled = source.clickTrackEnabled
-        copy.clickTrackVolume = source.clickTrackVolume
-        copy.clickTrackSubdivision = source.clickTrackSubdivision
         modelContext.insert(copy)
 
         var trackIDMap: [UUID: UUID] = [:]
@@ -587,109 +484,17 @@ struct SongLibraryPanel: View {
     }
 }
 
-private struct NewClickTrackSheet: View {
-    @Binding var name: String
-    @Binding var bpm: Double
-    @Binding var subdivision: ClickTrackSubdivision
-    @Binding var numerator: Int
-    @Binding var denominator: Int
-
-    let onCreate: () -> Void
-    let onCancel: () -> Void
-
-    private var canCreate: Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && TempoChange.validBPMRange.contains(bpm)
-            && (1...32).contains(numerator)
-            && TimeSignatureChange.validDenominators.contains(denominator)
-    }
-
-    var body: some View {
-        AppSheetContainer {
-            NavigationStack {
-                Form {
-                    TextField("Name:", text: $name)
-
-                    LabeledContent("Tempo:") {
-                        Stepper(value: $bpm, in: TempoChange.validBPMRange, step: 1) {
-                            Text("\(Int(bpm.rounded())) BPM")
-                                .monospacedDigit()
-                                .foregroundStyle(AppColors.textPrimary)
-                        }
-                    }
-
-                    LabeledContent("Meter:") {
-                        HStack(spacing: AppSpacing.xs) {
-                            Picker("Beats:", selection: $numerator) {
-                                ForEach(1...32, id: \.self) { value in
-                                    Text("\(value)").tag(value)
-                                }
-                            }
-                            .labelsHidden()
-                            .frame(width: 72)
-
-                            Text("/")
-                                .foregroundStyle(AppColors.textSecondary)
-
-                            Picker("Beat value:", selection: $denominator) {
-                                ForEach(TimeSignatureChange.validDenominators.filter { $0 != 1 }, id: \.self) { value in
-                                    Text("\(value)").tag(value)
-                                }
-                            }
-                            .labelsHidden()
-                            .frame(width: 72)
-                        }
-                    }
-
-                    Picker("Subdivision:", selection: $subdivision) {
-                        ForEach(ClickTrackSubdivision.allCases) { option in
-                            Text(option.displayName).tag(option)
-                        }
-                    }
-                }
-                .formStyle(.grouped)
-                .scrollContentBackground(.hidden)
-                .navigationTitle("New Click Track")
-                #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-                #endif
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel", action: onCancel)
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Create", action: onCreate)
-                            .foregroundStyle(canCreate ? AppColors.accent : AppColors.textTertiary)
-                            .disabled(!canCreate)
-                    }
-                }
-            }
-        }
-        #if os(macOS)
-        .frame(width: 420)
-        #endif
-    }
-}
-
 private struct SongLibraryRow: View {
     let song: Song
     let onSelect: () -> Void
     let onAddToSetlist: () -> Void
 
     private var subtitle: String {
-        if song.isClickOnly {
-            return song.clickTrackSummary
-        }
         let trackText = song.tracks.isEmpty ? "No tracks" : "\(song.tracks.count) tracks"
         if let bpm = song.bpm {
             return "\(Int(bpm.rounded())) bpm — \(trackText)"
         }
         return trackText
-    }
-
-    private var iconName: String {
-        song.isClickOnly ? "cursorarrow.click" : "waveform"
     }
 
     var body: some View {
@@ -699,7 +504,7 @@ private struct SongLibraryRow: View {
                     .fill(AppColors.surface)
                     .frame(width: 36, height: 36)
                     .overlay {
-                        Image(systemName: iconName)
+                        Image(systemName: "waveform")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(AppColors.textSecondary)
                     }
@@ -717,7 +522,6 @@ private struct SongLibraryRow: View {
             }
             .contentShape(Rectangle())
             .onTapGesture {
-                guard !song.isClickOnly else { return }
                 onSelect()
             }
 

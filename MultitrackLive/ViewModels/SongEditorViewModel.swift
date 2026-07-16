@@ -65,37 +65,9 @@ final class SongEditorViewModel {
         }
     }
 
-    func reloadSongForClickTrackChanges() {
+    /// Reloads stems after media changes such as generating a click track.
+    func reloadSongAfterMediaChange() {
         reloadSong()
-    }
-
-    func updateClickTrackMix(context: ModelContext) {
-        guard song.clickTrackEnabled || song.isClickOnly, isLoaded else { return }
-        if song.isClickOnly {
-            audioEngine.updateTrackSettings(id: song.clickTrackID, settings: clickTrackSettings())
-            audioEngine.updateClickOnlyPlayback(
-                subdivision: song.clickSubdivision,
-                isEnabled: song.clickTrackEnabled
-            )
-        } else {
-            audioEngine.updateTrackSettings(id: song.clickTrackID, settings: clickTrackSettings())
-            audioEngine.applyAllMixSettings()
-        }
-        try? context.save()
-    }
-
-    private func clickTrackSettings() -> AudioEngineManager.TrackSettings {
-        AudioEngineManager.TrackSettings(
-            volume: Float(song.clickTrackVolume),
-            isMuted: false,
-            isSolo: false,
-            trimStart: 0,
-            trimEnd: nil,
-            pitchCents: 0,
-            excludeFromTranspose: true,
-            ignoresSolo: true,
-            bypassesArrangementMapping: true
-        )
     }
 
     @MainActor
@@ -127,31 +99,6 @@ final class SongEditorViewModel {
                 settings: AudioEngineManager.TrackSettings(track: track),
                 groupID: track.group?.id
             )
-        }
-
-        if song.isClickOnly {
-            audioEngine.stop()
-            let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
-            let tempoChanges = projectState.tempoChanges
-            let timeSignatureChanges = projectState.timeSignatureChanges
-
-            do {
-                try audioEngine.loadClickOnlySong(
-                    trackID: song.clickTrackID,
-                    settings: clickTrackSettings(),
-                    subdivision: song.clickSubdivision,
-                    isEnabled: song.clickTrackEnabled,
-                    tempoChanges: tempoChanges,
-                    timeSignatureChanges: timeSignatureChanges
-                )
-                isLoaded = true
-                loadError = nil
-                syncTempoMap(tempoChanges, timeSignatureChanges: timeSignatureChanges)
-            } catch {
-                isLoaded = false
-                loadError = error.localizedDescription
-            }
-            return
         }
 
         guard !trackInputs.isEmpty else {
@@ -209,7 +156,7 @@ final class SongEditorViewModel {
         guard generation == reloadGeneration, !Task.isCancelled else { return }
 
         switch preparationResult {
-        case .success(var prepared):
+        case .success(let prepared):
             trackDurations = [:]
             for payload in prepared {
                 trackDurations[payload.id] = Double(payload.buffer.frameCount) / payload.buffer.sampleRate
@@ -220,23 +167,6 @@ final class SongEditorViewModel {
             let timeSignatureChanges = projectState.timeSignatureChanges
 
             do {
-                try SongTrackLoader.appendClickTrackIfNeeded(
-                    to: &prepared,
-                    song: song,
-                    sourceDurationForTrack: { [self] trackID in
-                        if let cached = trackDurations[trackID] {
-                            return cached
-                        }
-                        guard let track = song.sortedTracks.first(where: { $0.id == trackID }) else { return 1 }
-                        return fileDuration(for: track)
-                    },
-                    tempoChanges: tempoChanges,
-                    timeSignatureChanges: timeSignatureChanges
-                )
-                if let clickPayload = prepared.first(where: { $0.id == song.clickTrackID }) {
-                    trackDurations[clickPayload.id] = Double(clickPayload.buffer.frameCount) / clickPayload.buffer.sampleRate
-                }
-
                 try audioEngine.loadPreparedTracks(prepared)
                 isLoaded = true
                 loadError = nil

@@ -620,49 +620,6 @@ struct SetlistWaveformHeaderMarker: View {
     }
 }
 
-struct LiveSetlistClickTrackLane: View {
-    let song: Song
-
-    @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
-
-    private var laneHeight: CGFloat {
-        LiveSetlistWaveformMetrics.laneHeight(for: waveformHeight)
-    }
-
-    private var projectState: SongProjectBridge.ProjectState {
-        SongProjectBridge.projectStateOrDefaults(for: song)
-    }
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
-            .fill(AppColors.surface)
-            .overlay {
-                VStack(spacing: AppSpacing.xs) {
-                    Image(systemName: "cursorarrow.click")
-                        .font(.title3)
-                        .foregroundStyle(AppColors.textTertiary)
-                    Text(song.name)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppColors.textPrimary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                    Text(
-                        String(
-                            format: "%.0f BPM • %d/%d",
-                            projectState.tempoChanges.referenceBPM,
-                            projectState.timeSignatureChanges.referenceNumerator,
-                            projectState.timeSignatureChanges.referenceDenominator
-                        )
-                    )
-                    .font(.caption)
-                    .foregroundStyle(AppColors.textSecondary)
-                }
-                .padding(.horizontal, AppSpacing.sm)
-            }
-            .frame(width: 180, height: laneHeight)
-    }
-}
-
 struct LiveSetlistWaveformScrollView: View {
     let timelineItems: [LiveSetlistTimelineItem]
     let currentPlaybackIndex: Int
@@ -830,9 +787,6 @@ struct LiveSetlistWaveformScrollView: View {
 
         if let snapshot = waveformSnapshotForSong(song) {
             waveformLane(snapshot: snapshot, isCurrent: isCurrent)
-        } else if song.isClickOnly {
-            LiveSetlistClickTrackLane(song: song)
-                .opacity(isCurrent ? 1 : 0.72)
         } else {
             LiveSetlistWaveformLanePlaceholder(isCurrent: isCurrent)
                 .task(id: song.id) {

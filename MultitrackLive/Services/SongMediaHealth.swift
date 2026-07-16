@@ -39,7 +39,6 @@ enum SongMediaHealth {
     }
 
     static func missingAudioTracks(in song: Song) -> [AudioTrack] {
-        guard !song.isClickOnly else { return [] }
         // Touch the relationship so SwiftData faults are filled before filtering.
         let tracks = Array(song.sortedTracks)
         return tracks.filter { FileStore.trackURL(for: song, track: $0) == nil }

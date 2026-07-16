@@ -15,7 +15,6 @@ enum SongBakeFingerprint {
 
     parts.append("song|\(song.id.uuidString)")
     parts.append("transpose|\(song.transposeSemitones)|\(song.transposeHighQuality)")
-    parts.append("click|\(song.clickTrackEnabled)|\(song.clickTrackVolume)|\(song.clickSubdivision.rawValue)")
 
   parts.append("tempo|\(fingerprint(tempoChanges: projectState.tempoChanges))")
   parts.append("meter|\(fingerprint(timeSignatures: projectState.timeSignatureChanges))")

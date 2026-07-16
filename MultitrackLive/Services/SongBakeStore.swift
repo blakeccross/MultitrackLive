@@ -70,7 +70,7 @@ enum SongBakeStore {
   }
 
   static func needsBake(for song: Song) -> Bool {
-    guard !song.isClickOnly, song.sortedTracks.count >= SongBakeFingerprint.performanceTrackThreshold else {
+    guard song.sortedTracks.count >= SongBakeFingerprint.performanceTrackThreshold else {
       return false
     }
     return status(for: song) != .current
@@ -93,13 +93,6 @@ enum SongBakeStore {
     bytes.5 ^= groupBytes.5
     bytes.6 ^= groupBytes.6
     bytes.7 = 0xBA
-    bytes.8 = (bytes.8 & 0x3F) | 0x80
-    return UUID(uuid: bytes)
-  }
-
-  static func bakedClickTrackID(songID: UUID) -> UUID {
-    var bytes = songID.uuid
-    bytes.7 = 0xCB
     bytes.8 = (bytes.8 & 0x3F) | 0x80
     return UUID(uuid: bytes)
   }
@@ -154,13 +147,6 @@ enum SongBakeStore {
   private static func bakedFilesExist(for song: Song, manifest: SongBakeManifest) -> Bool {
     for stem in manifest.groupStems {
       guard let url = bakedStemURL(for: song, relativePath: stem.relativePath),
-            FileManager.default.fileExists(atPath: url.path) else {
-        return false
-      }
-    }
-
-    if let clickStem = manifest.clickStem {
-      guard let url = bakedStemURL(for: song, relativePath: clickStem.relativePath),
             FileManager.default.fileExists(atPath: url.path) else {
         return false
       }

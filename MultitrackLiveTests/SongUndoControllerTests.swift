@@ -27,10 +27,7 @@ final class SongUndoControllerTests: XCTestCase {
                 timeSignatureNumerator: 4,
                 timeSignatureDenominator: 4,
                 transposeSemitones: 0,
-                transposeHighQuality: false,
-                clickTrackEnabled: false,
-                clickTrackVolume: 1.0,
-                clickTrackSubdivision: ClickTrackSubdivision.quarter.rawValue
+                transposeHighQuality: false
             ),
             tracks: []
         )
@@ -65,20 +62,24 @@ final class SongUndoControllerTests: XCTestCase {
         let controller = SongUndoController()
         var current = makeSnapshot()
 
+        let first = makeSnapshot(markers: 1)
         controller.registerChange(
             actionName: "First",
             before: current,
-            after: makeSnapshot(markers: 1),
+            after: first,
             apply: { current = $0 }
         )
+        current = first
         controller.undo()
 
+        let second = makeSnapshot(markers: 2)
         controller.registerChange(
             actionName: "Second",
             before: current,
-            after: makeSnapshot(markers: 2),
+            after: second,
             apply: { current = $0 }
         )
+        current = second
 
         XCTAssertFalse(controller.canRedo)
         XCTAssertEqual(current.markers.count, 2)

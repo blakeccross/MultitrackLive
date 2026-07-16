@@ -7,10 +7,9 @@ struct SongBakeManifest: Codable, Hashable, Sendable {
     var bakedAt: Date
     var fingerprint: String
     var groupStems: [BakedGroupStem]
-    var clickStem: BakedClickStem?
 
     var isEmpty: Bool {
-        groupStems.isEmpty && clickStem == nil
+        groupStems.isEmpty
     }
 }
 
@@ -25,10 +24,4 @@ struct BakedGroupStem: Codable, Hashable, Sendable, Identifiable {
     var trackIDs: [UUID]
 
     var id: UUID { playbackTrackID }
-}
-
-struct BakedClickStem: Codable, Hashable, Sendable {
-    var playbackTrackID: UUID
-    var relativePath: String
-    var duration: TimeInterval
 }

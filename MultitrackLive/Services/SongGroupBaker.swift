@@ -138,7 +138,7 @@ enum SongGroupBaker {
         throw BakeError.missingProjectFile
       }
 
-      try writeCAF(buffer: rendered, to: outputURL)
+      try StemAudioWriter.writeCAF(buffer: rendered, to: outputURL)
 
       groupStems.append(
         BakedGroupStem(
@@ -151,40 +151,10 @@ enum SongGroupBaker {
       )
     }
 
-    var clickStem: BakedClickStem?
-    if song.clickTrackEnabled, plan.timelineDuration > 0 {
-      onProgress?(
-        Progress(
-          phase: "Click track",
-          completedGroups: totalGroups,
-          totalGroups: totalGroups
-        )
-      )
-
-      let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
-      if let clickBuffer = try? ClickTrackGenerator.generate(
-        duration: plan.timelineDuration,
-        tempoChanges: projectState.tempoChanges,
-        timeSignatureChanges: projectState.timeSignatureChanges,
-        subdivision: song.clickSubdivision
-      ) {
-        let relativePath = "Baked/click.caf"
-        if let outputURL = SongBakeStore.bakedStemURL(for: song, relativePath: relativePath) {
-          try writeCAF(buffer: clickBuffer, to: outputURL)
-          clickStem = BakedClickStem(
-            playbackTrackID: SongBakeStore.bakedClickTrackID(songID: song.id),
-            relativePath: relativePath,
-            duration: plan.timelineDuration
-          )
-        }
-      }
-    }
-
     let manifest = SongBakeManifest(
       bakedAt: Date(),
       fingerprint: plan.fingerprint,
-      groupStems: groupStems,
-      clickStem: clickStem
+      groupStems: groupStems
     )
 
     try SongBakeStore.saveManifest(manifest, for: song)
@@ -273,41 +243,6 @@ enum SongGroupBaker {
     }.value
   }
 
-  private static func writeCAF(buffer: DecodedStemBuffer, to url: URL) throws {
-    try FileManager.default.createDirectory(
-      at: url.deletingLastPathComponent(),
-      withIntermediateDirectories: true
-    )
-
-    let format = buffer.audioFormat
-    let file = try AVAudioFile(forWriting: url, settings: format.settings)
-
-    let chunkFrames: AVAudioFrameCount = 8_192
-    guard let pcmBuffer = AVAudioPCMBuffer(
-      pcmFormat: format,
-      frameCapacity: chunkFrames
-    ), let floatChannels = pcmBuffer.floatChannelData else {
-      throw BakeError.renderFailed("Could not create output buffer.")
-    }
-
-    var frameOffset = 0
-    while frameOffset < buffer.frameCount {
-      let framesToWrite = min(Int(chunkFrames), buffer.frameCount - frameOffset)
-      pcmBuffer.frameLength = AVAudioFrameCount(framesToWrite)
-
-      for channel in 0..<min(buffer.channelCount, Int(format.channelCount)) {
-        let source = buffer.channelPointer(channel).advanced(by: frameOffset)
-        floatChannels[channel].update(from: source, count: framesToWrite)
-      }
-
-      if buffer.channelCount == 1, format.channelCount >= 2 {
-        floatChannels[1].update(from: floatChannels[0], count: framesToWrite)
-      }
-
-      try file.write(from: pcmBuffer)
-      frameOffset += framesToWrite
-    }
-  }
 }
 
 enum GroupStemOfflineRenderer {

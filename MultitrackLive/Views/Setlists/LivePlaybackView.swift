@@ -333,7 +333,6 @@ struct LivePlaybackView: View {
     private func songLibraryPanel() -> some View {
         SongLibraryPanel(
             onEdit: { song in
-                guard !song.isClickOnly else { return }
                 songToEditID = song.id
             },
             onDismiss: {
@@ -358,7 +357,6 @@ struct LivePlaybackView: View {
     }
 
     private func presentSongEditor(for song: Song) {
-        guard !song.isClickOnly else { return }
         #if os(iOS)
         showingSongLibrary = true
         #endif
@@ -939,7 +937,6 @@ struct LivePlaybackView: View {
             } label: {
                 Label("Edit", systemImage: "pencil")
             }
-            .disabled(song.isClickOnly)
 
             if songHasMissingMedia(song) {
                 Button {
@@ -1155,9 +1152,6 @@ private struct SetlistPlaybackRow: View {
     }
 
     private var subtitle: String? {
-        if song.isClickOnly {
-            return song.clickTrackSummary
-        }
         if let bpm = song.bpm {
             return String(format: "%.0f BPM", bpm.rounded())
         }

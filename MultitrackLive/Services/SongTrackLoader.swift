@@ -203,7 +203,7 @@ enum SongTrackLoader {
         }
 
         var payloads: [AudioEngineManager.PreparedTrackPayload] = []
-        payloads.reserveCapacity(manifest.groupStems.count + (manifest.clickStem == nil ? 0 : 1))
+        payloads.reserveCapacity(manifest.groupStems.count)
 
         for stem in manifest.groupStems {
             guard let url = SongBakeStore.bakedStemURL(for: song, relativePath: stem.relativePath) else {
@@ -229,31 +229,6 @@ enum SongTrackLoader {
                     buffer: buffer,
                     settings: settings,
                     groupID: stem.groupID
-                )
-            )
-        }
-
-        if let clickStem = manifest.clickStem,
-           song.clickTrackEnabled,
-           let url = SongBakeStore.bakedStemURL(for: song, relativePath: clickStem.relativePath) {
-            let buffer = try StreamingStemBuffer(url: url)
-            let settings = AudioEngineManager.TrackSettings(
-                volume: Float(song.clickTrackVolume),
-                isMuted: false,
-                isSolo: false,
-                trimStart: 0,
-                trimEnd: clickStem.duration,
-                pitchCents: 0,
-                excludeFromTranspose: true,
-                ignoresSolo: true,
-                bypassesArrangementMapping: true
-            )
-            payloads.append(
-                AudioEngineManager.PreparedTrackPayload(
-                    id: clickStem.playbackTrackID,
-                    buffer: buffer,
-                    settings: settings,
-                    groupID: nil
                 )
             )
         }
@@ -315,61 +290,5 @@ enum SongTrackLoader {
             rulerSections: layout.rulerSections,
             trackSections: layout.trackSections
         )
-    }
-
-    static func clickTrackPayload(
-        for song: Song,
-        duration: TimeInterval,
-        tempoChanges: [TempoChange],
-        timeSignatureChanges: [TimeSignatureChange]
-    ) throws -> AudioEngineManager.PreparedTrackPayload? {
-        guard song.clickTrackEnabled else { return nil }
-
-        let buffer = try ClickTrackGenerator.generate(
-            duration: duration,
-            tempoChanges: tempoChanges,
-            timeSignatureChanges: timeSignatureChanges,
-            subdivision: song.clickSubdivision
-        )
-
-        let settings = AudioEngineManager.TrackSettings(
-            volume: Float(song.clickTrackVolume),
-            isMuted: false,
-            isSolo: false,
-            trimStart: 0,
-            trimEnd: duration,
-            pitchCents: 0,
-            excludeFromTranspose: true,
-            ignoresSolo: true,
-            bypassesArrangementMapping: true
-        )
-
-        return try AudioEngineManager.prepareTrackPayload(
-            id: song.clickTrackID,
-            decodedBuffer: buffer,
-            settings: settings,
-            groupID: nil,
-            bakePitchShift: false
-        )
-    }
-
-    static func appendClickTrackIfNeeded(
-        to prepared: inout [AudioEngineManager.PreparedTrackPayload],
-        song: Song,
-        sourceDurationForTrack: @escaping (UUID) -> TimeInterval,
-        tempoChanges: [TempoChange],
-        timeSignatureChanges: [TimeSignatureChange]
-    ) throws {
-        guard song.clickTrackEnabled else { return }
-
-        let duration = timelineDuration(for: song, sourceDurationForTrack: sourceDurationForTrack)
-        if let clickPayload = try clickTrackPayload(
-            for: song,
-            duration: duration,
-            tempoChanges: tempoChanges,
-            timeSignatureChanges: timeSignatureChanges
-        ) {
-            prepared.append(clickPayload)
-        }
     }
 }

@@ -24,9 +24,6 @@ struct SongMetadataSnapshot: Equatable, Hashable {
     var timeSignatureDenominator: Int?
     var transposeSemitones: Int
     var transposeHighQuality: Bool
-    var clickTrackEnabled: Bool
-    var clickTrackVolume: Double
-    var clickTrackSubdivision: String
 }
 
 struct SongEditSnapshot: Equatable {
@@ -72,10 +69,7 @@ struct SongEditSnapshot: Equatable {
                 timeSignatureNumerator: song.timeSignatureNumerator,
                 timeSignatureDenominator: song.timeSignatureDenominator,
                 transposeSemitones: song.transposeSemitones,
-                transposeHighQuality: song.transposeHighQuality,
-                clickTrackEnabled: song.clickTrackEnabled,
-                clickTrackVolume: song.clickTrackVolume,
-                clickTrackSubdivision: song.clickTrackSubdivision
+                transposeHighQuality: song.transposeHighQuality
             ),
             tracks: song.sortedTracks.map { track in
                 TrackEditSnapshot(
@@ -104,9 +98,6 @@ struct SongEditSnapshot: Equatable {
         song.timeSignatureDenominator = songMetadata.timeSignatureDenominator
         song.transposeSemitones = songMetadata.transposeSemitones
         song.transposeHighQuality = songMetadata.transposeHighQuality
-        song.clickTrackEnabled = songMetadata.clickTrackEnabled
-        song.clickTrackVolume = songMetadata.clickTrackVolume
-        song.clickTrackSubdivision = songMetadata.clickTrackSubdivision
     }
 
     func applyTracks(to song: Song, context: ModelContext) {

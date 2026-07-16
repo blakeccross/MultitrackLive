@@ -58,8 +58,8 @@ final class Setlist {
     }
 
     func canConfigureOverlap(after entry: SetlistEntry) -> Bool {
-        guard let outgoing = entry.song, !outgoing.isClickOnly,
-              let incoming = nextSong(after: entry), !incoming.isClickOnly else {
+        guard entry.song != nil,
+              nextSong(after: entry) != nil else {
             return false
         }
         return true
