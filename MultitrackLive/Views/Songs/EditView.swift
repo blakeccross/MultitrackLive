@@ -3711,19 +3711,6 @@ struct RenameSectionSheet: View {
     @State private var customName: String = ""
     @FocusState private var customFieldFocused: Bool
 
-    /// Common song section labels grouped for quick selection.
-    private static let presetGroups: [(title: String, options: [String])] = [
-        ("Song Structure", [
-            "Intro", "Verse", "Verse 1", "Verse 2", "Verse 3",
-            "Pre-Chorus", "Chorus", "Post-Chorus", "Bridge",
-            "Refrain", "Hook", "Outro", "Ending",
-        ]),
-        ("Instrumental", [
-            "Instrumental", "Interlude", "Solo", "Breakdown",
-            "Build", "Drop", "Break", "Turnaround", "Vamp", "Tag",
-        ]),
-    ]
-
     private let columns = [GridItem(.adaptive(minimum: 96), spacing: AppSpacing.xs)]
 
     private var trimmedCustomName: String {
@@ -3735,7 +3722,7 @@ struct RenameSectionSheet: View {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppSpacing.lg) {
-                        ForEach(Self.presetGroups, id: \.title) { group in
+                        ForEach(SongSectionPresets.groups, id: \.title) { group in
                             VStack(alignment: .leading, spacing: AppSpacing.sm) {
                                 Text(group.title)
                                     .font(.caption.weight(.semibold))

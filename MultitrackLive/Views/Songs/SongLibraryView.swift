@@ -1,6 +1,9 @@
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#endif
 
 private enum SongLibrarySortOrder: String, CaseIterable, Identifiable {
     case newest = "Newest"
@@ -15,7 +18,7 @@ struct SongLibraryPanel: View {
 
     var onEdit: (Song) -> Void
     var onDismiss: () -> Void
-    var onRequestFolderImport: () -> Void
+    var onFolderSelected: (URL) -> Void
     var onRequestTrackImport: (Song) -> Void
     var onAddToSetlist: (Song) -> Void
 
@@ -29,6 +32,9 @@ struct SongLibraryPanel: View {
     @State private var createSongError: String?
     @State private var songActionError: String?
     @State private var showingProjectImporter = false
+    #if !os(macOS)
+    @State private var showingFolderImporter = false
+    #endif
     @State private var consolidateSummary: String?
 
     private var hasActiveSearch: Bool {
@@ -127,6 +133,15 @@ struct SongLibraryPanel: View {
         ) { result in
             handleOpenProject(result)
         }
+        #if !os(macOS)
+        .fileImporter(
+            isPresented: $showingFolderImporter,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            handleFolderSelection(result)
+        }
+        #endif
         .alert("Media Consolidated", isPresented: Binding(
             get: { consolidateSummary != nil },
             set: { if !$0 { consolidateSummary = nil } }
@@ -171,7 +186,7 @@ struct SongLibraryPanel: View {
             }
 
             Button {
-                onRequestFolderImport()
+                presentFolderImporter()
             } label: {
                 Label("Import from Folder", systemImage: "folder")
             }
@@ -436,6 +451,26 @@ struct SongLibraryPanel: View {
         }
     }
 
+    private func presentFolderImporter() {
+        #if os(macOS)
+        // SwiftUI `.fileImporter` often fails to present from a Menu. Use NSOpenPanel after
+        // the menu finishes dismissing so Finder reliably appears.
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.canCreateDirectories = false
+            panel.prompt = "Import"
+            panel.message = "Choose a song folder with stems (and an optional Ableton Live Set)."
+            guard panel.runModal() == .OK, let folderURL = panel.url else { return }
+            onFolderSelected(folderURL)
+        }
+        #else
+        showingFolderImporter = true
+        #endif
+    }
+
     private func handleOpenProject(_ result: Result<[URL], Error>) {
         switch result {
         case .failure(let error):
@@ -449,6 +484,18 @@ struct SongLibraryPanel: View {
             }
         }
     }
+
+    #if !os(macOS)
+    private func handleFolderSelection(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            songActionError = error.localizedDescription
+        case .success(let urls):
+            guard let folderURL = urls.first else { return }
+            onFolderSelected(folderURL)
+        }
+    }
+    #endif
 
     private func removeSong(_ song: Song) {
         let songID = song.id
@@ -550,7 +597,7 @@ private struct SongLibraryRow: View {
     SongLibraryPanel(
         onEdit: { _ in },
         onDismiss: {},
-        onRequestFolderImport: {},
+        onFolderSelected: { _ in },
         onRequestTrackImport: { _ in },
         onAddToSetlist: { _ in }
     )

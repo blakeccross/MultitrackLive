@@ -54,7 +54,6 @@ struct SongDetailView: View {
     @State private var undoController = SongUndoController()
     @State private var selectedSongID: UUID?
     @State private var showingSongLibrary = false
-    @State private var showingSongFolderImporter = false
     @State private var songPendingTrackImport: Song?
     @State private var songImportFeedback: SongImportFeedback?
 
@@ -168,13 +167,6 @@ struct SongDetailView: View {
                 .presentationDetents([.large])
             }
             #endif
-            .fileImporter(
-                isPresented: $showingSongFolderImporter,
-                allowedContentTypes: [.folder],
-                allowsMultipleSelection: false
-            ) { result in
-                handleSongFolderImport(result)
-            }
             .sheet(item: $songPendingTrackImport) { song in
                 TrackImportView(song: song) { error in
                     songImportFeedback = .failure(error)
@@ -408,11 +400,8 @@ struct SongDetailView: View {
             onDismiss: {
                 showingSongLibrary = false
             },
-            onRequestFolderImport: {
-                #if os(iOS)
-                showingSongLibrary = false
-                #endif
-                showingSongFolderImporter = true
+            onFolderSelected: { folderURL in
+                importSong(from: folderURL)
             },
             onRequestTrackImport: { song in
                 #if os(iOS)
@@ -424,21 +413,15 @@ struct SongDetailView: View {
         )
     }
 
-    private func handleSongFolderImport(_ result: Result<[URL], Error>) {
-        switch result {
-        case .failure(let error):
+    private func importSong(from folderURL: URL) {
+        do {
+            let importResult = try SongFolderImporter.importFromFolder(
+                at: folderURL,
+                context: modelContext
+            )
+            songImportFeedback = .success(SongFolderImporter.summaryMessage(for: importResult))
+        } catch {
             songImportFeedback = .failure(error.localizedDescription)
-        case .success(let urls):
-            guard let folderURL = urls.first else { return }
-            do {
-                let importResult = try SongFolderImporter.importFromFolder(
-                    at: folderURL,
-                    context: modelContext
-                )
-                songImportFeedback = .success(SongFolderImporter.summaryMessage(for: importResult))
-            } catch {
-                songImportFeedback = .failure(error.localizedDescription)
-            }
         }
     }
 

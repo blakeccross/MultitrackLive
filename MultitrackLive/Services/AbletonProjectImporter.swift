@@ -170,7 +170,7 @@ enum AbletonProjectImporter {
     static func makeMarkers(from result: ImportResult) -> [ArrangementMarker] {
         let imported = result.sections.enumerated().map { index, section in
             ArrangementMarker(
-                name: section.name,
+                name: SongSectionNameNormalizer.canonicalize(section.name),
                 startSeconds: section.startSeconds,
                 sortOrder: index
             )
