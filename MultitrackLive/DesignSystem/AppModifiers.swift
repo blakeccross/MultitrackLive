@@ -42,6 +42,16 @@ extension View {
     func appLinkPointer() -> some View {
         modifier(AppLinkPointerModifier())
     }
+
+    /// Locks the window toolbar to icon-only and removes the native
+    /// "Icon and Text" / "Icon Only" / "Text Only" right-click options (macOS 15+).
+    func appLockToolbarDisplayMode() -> some View {
+        #if os(macOS)
+        background(MacToolbarDisplayModeLock())
+        #else
+        self
+        #endif
+    }
 }
 
 private func backgroundColor(for level: AppBackgroundLevel) -> Color {
@@ -93,3 +103,40 @@ private struct AppPressableModifier: ViewModifier {
             )
     }
 }
+
+#if os(macOS)
+private struct MacToolbarDisplayModeLock: NSViewRepresentable {
+    func makeNSView(context: Context) -> ToolbarDisplayModeLockView {
+        ToolbarDisplayModeLockView()
+    }
+
+    func updateNSView(_ nsView: ToolbarDisplayModeLockView, context: Context) {
+        nsView.lockToolbarDisplayMode()
+    }
+}
+
+private final class ToolbarDisplayModeLockView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        lockToolbarDisplayMode()
+        // SwiftUI often installs the NSToolbar after the first attach.
+        DispatchQueue.main.async { [weak self] in
+            self?.lockToolbarDisplayMode()
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        lockToolbarDisplayMode()
+    }
+
+    func lockToolbarDisplayMode() {
+        guard let toolbar = window?.toolbar else { return }
+        toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = false
+        if #available(macOS 15.0, *) {
+            toolbar.allowsDisplayModeCustomization = false
+        }
+    }
+}
+#endif

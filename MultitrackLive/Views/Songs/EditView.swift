@@ -725,6 +725,7 @@ struct EditView: View {
         }
         .toolbarBackground(AppColors.backgroundPrimary, for: .windowToolbar)
         .modifier(EditViewMacToolbarBackgroundVisibilityModifier())
+        .appLockToolbarDisplayMode()
 #endif
     }
 

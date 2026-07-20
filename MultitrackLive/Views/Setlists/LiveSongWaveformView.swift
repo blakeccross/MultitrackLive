@@ -761,10 +761,6 @@ struct SetlistWaveformHeaderMarker: View {
 
     @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
 
-    private var laneHeight: CGFloat {
-        LiveSetlistWaveformMetrics.laneHeight(for: waveformHeight)
-    }
-
     var body: some View {
         RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
             .fill(AppColors.backgroundPrimary)
@@ -776,9 +772,9 @@ struct SetlistWaveformHeaderMarker: View {
                     .multilineTextAlignment(.center)
                     .rotationEffect(.degrees(-90))
                     .fixedSize()
-                    .frame(width: laneHeight - AppSpacing.md)
+                    .frame(width: waveformHeight - AppSpacing.md)
             }
-            .frame(width: 40, height: laneHeight)
+            .frame(width: 40, height: waveformHeight)
     }
 }
 
@@ -819,7 +815,7 @@ struct LiveSetlistWaveformScrollView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: true) {
-                HStack(alignment: .top, spacing: laneSpacing) {
+                HStack(alignment: .center, spacing: laneSpacing) {
                     ForEach(timelineItems) { item in
                         timelineItemView(item)
                     }
@@ -874,7 +870,7 @@ struct LiveSetlistWaveformScrollView: View {
 
         case .song(let songID, let playbackIndex, let transitionAfter):
             if let song = songForID(songID) {
-                HStack(alignment: .top, spacing: laneSpacing) {
+                HStack(alignment: .center, spacing: laneSpacing) {
                     songLane(for: song, playbackIndex: playbackIndex)
                         .id(item.id)
 
@@ -887,17 +883,13 @@ struct LiveSetlistWaveformScrollView: View {
     }
 
     private func transitionBadge(_ transition: SetlistTransition, playbackIndex: Int) -> some View {
-        VStack {
-            Spacer()
-            SetlistTransitionBadge(
-                transition: transition,
-                onTap: transition == .overlap
-                    ? { onOverlapBadgeTapped?(playbackIndex) }
-                    : nil
-            )
-            Spacer()
-        }
-        .frame(height: laneHeight)
+        SetlistTransitionBadge(
+            transition: transition,
+            onTap: transition == .overlap
+                ? { onOverlapBadgeTapped?(playbackIndex) }
+                : nil
+        )
+        .frame(height: waveformHeight)
     }
 
     private var horizontalPinchGesture: some Gesture {
@@ -929,11 +921,7 @@ struct LiveSetlistWaveformScrollView: View {
     }
 
     private func laneContentWidth(for snapshot: LiveSongWaveformSnapshot) -> CGFloat {
-        let fitWidth = max(
-            viewportWidth,
-            TimelineLayout.contentWidth(for: snapshot.timelineDuration, zoom: 1)
-        )
-        return fitWidth * horizontalZoom
+        TimelineLayout.contentWidth(for: snapshot.timelineDuration, zoom: horizontalZoom)
     }
 
     private func scrollToCurrent(_ proxy: ScrollViewProxy) {
@@ -992,14 +980,10 @@ private struct LiveSetlistWaveformLanePlaceholder: View {
 
     @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
 
-    private var laneHeight: CGFloat {
-        LiveSetlistWaveformMetrics.laneHeight(for: waveformHeight)
-    }
-
     var body: some View {
         RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
             .fill(AppColors.backgroundPrimary)
-            .frame(width: 180, height: laneHeight)
+            .frame(width: 180, height: waveformHeight)
             .opacity(isCurrent ? 1 : 0.72)
             .overlay {
                 ProgressView()

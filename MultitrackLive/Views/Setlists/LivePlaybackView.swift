@@ -190,6 +190,7 @@ struct LivePlaybackView: View {
         #if os(macOS)
         .toolbarBackground(AppColors.backgroundPrimary, for: .windowToolbar)
         .modifier(LivePlaybackMacToolbarBackgroundVisibilityModifier())
+        .appLockToolbarDisplayMode()
         #endif
         .appBackground(.primary)
         .sheet(isPresented: $showingManageOutputs) {

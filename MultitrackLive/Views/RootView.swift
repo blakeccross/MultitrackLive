@@ -9,6 +9,7 @@ struct RootView: View {
             LivePlaybackView()
         }
         .appBackground(.primary)
+        .appLockToolbarDisplayMode()
         .onAppear {
             TrackGroupStore.ensureDefaults(in: modelContext)
             OutputRoutingStore.ensureConfig(in: modelContext)
