@@ -186,7 +186,7 @@ struct LivePlaybackView: View {
             playbackToolbar(for: setlist)
         }
         #if os(macOS)
-        .toolbarBackground(AppColors.surfaceElevated, for: .windowToolbar)
+        .toolbarBackground(AppColors.backgroundPrimary, for: .windowToolbar)
         .modifier(LivePlaybackMacToolbarBackgroundVisibilityModifier())
         #endif
         .appBackground(.primary)
@@ -696,7 +696,7 @@ struct LivePlaybackView: View {
             if setlistHasSongs {
                 currentSongSection
                     .padding(AppSpacing.md)
-                    .background(AppColors.backgroundSecondary)
+                    .background(AppColors.backgroundPrimary)
 
                 Rectangle()
                     .fill(AppColors.separator)
@@ -782,7 +782,7 @@ struct LivePlaybackView: View {
 
         var body: some View {
             RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
-                .fill(AppColors.backgroundSecondary)
+                .fill(AppColors.backgroundPrimary)
                 .overlay {
                     if let message {
                         ProgressView(message)
@@ -1229,10 +1229,6 @@ private struct SetlistPlaybackRow: View {
         .padding(.horizontal, AppSpacing.sm)
         .padding(.vertical, AppSpacing.xs)
         .frame(maxWidth: .infinity, minHeight: isCurrent ? 60 : AppSpacing.rowMinHeight, alignment: .leading)
-        .background(
-            isCurrent ? AppColors.surfaceElevated : Color.clear,
-            in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
-        )
         .opacity(isFinished ? 0.55 : 1)
     }
 }
@@ -1289,7 +1285,7 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             .sharedBackgroundVisibility(.hidden)
 
             ToolbarItem(placement: .primaryAction) {
-                overflowMenu
+                manageOutputsButton
             }
             .sharedBackgroundVisibility(.hidden)
         } else {
@@ -1310,7 +1306,7 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                overflowMenu
+                manageOutputsButton
             }
         }
         #else
@@ -1331,7 +1327,11 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         }
 
         ToolbarItem(placement: .topBarTrailing) {
-            overflowMenu
+            manageOutputsButton
+        }
+
+        ToolbarItem(placement: .topBarTrailing) {
+            EditButton()
         }
         #endif
     }
@@ -1351,38 +1351,50 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     }
 
     private var songsButton: some View {
-        Button {
+        AppIconButton(
+            systemImage: "music.note.list",
+            size: toolbarIconSize,
+            isActive: showingSongLibrary,
+            activeBackgroundColor: toolbarActiveGreen,
+            accessibilityLabel: "Songs"
+        ) {
             showingSongLibrary.toggle()
-        } label: {
-            Label("Songs", systemImage: "music.note.list")
         }
-        .tint(showingSongLibrary ? AppColors.accent : AppColors.textSecondary)
+        .help("Songs")
     }
 
-    private var overflowMenu: some View {
-        Menu {
-            #if !os(macOS)
-            EditButton()
-            #endif
-            Button {
-                showingManageOutputs = true
-            } label: {
-                Label("Manage Outputs", systemImage: "speaker.wave.2")
-            }
-        } label: {
-            Label("More", systemImage: "ellipsis.circle")
+    private var manageOutputsButton: some View {
+        AppIconButton(
+            systemImage: "gearshape",
+            size: toolbarIconSize,
+            isActive: showingManageOutputs,
+            activeBackgroundColor: toolbarActiveGreen,
+            accessibilityLabel: "Manage Outputs"
+        ) {
+            showingManageOutputs = true
         }
-        .tint(AppColors.textSecondary)
+        .help("Manage Outputs")
     }
 
     private var mixerButton: some View {
-        Button {
+        AppIconButton(
+            systemImage: "slider.vertical.3",
+            size: toolbarIconSize,
+            isActive: mixerDetent == .visible,
+            activeBackgroundColor: toolbarActiveGreen,
+            accessibilityLabel: "Group Mixer"
+        ) {
             toggleMixerDrawer()
-        } label: {
-            Label("Mixer", systemImage: "slider.vertical.3")
         }
-        .foregroundStyle(mixerDetent == .visible ? AppColors.accent : AppColors.textSecondary)
         .help("Group Mixer")
+    }
+
+    private var toolbarIconSize: CGFloat {
+        max(infoPanelHeight, 44)
+    }
+
+    private var toolbarActiveGreen: Color {
+        Color(red: 0.49, green: 0.75, blue: 0.48)
     }
 
     private func toggleMixerDrawer() {

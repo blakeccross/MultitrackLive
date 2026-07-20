@@ -311,8 +311,8 @@ struct LiveSongWaveformView: View {
                                     .font(.system(size: 8, weight: .bold))
                                     .foregroundStyle(palette.accent)
                             }
-                            Text(section.name)
-                                .font(.system(size: 9, weight: .bold))
+                            Text(section.name.uppercased())
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
                                 .foregroundStyle(palette.accent)
                                 .lineLimit(1)
                         }
@@ -605,7 +605,7 @@ struct SetlistWaveformHeaderMarker: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
-            .fill(AppColors.backgroundSecondary)
+            .fill(AppColors.backgroundPrimary)
             .overlay {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
@@ -834,7 +834,7 @@ private struct LiveSetlistWaveformLanePlaceholder: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
-            .fill(AppColors.backgroundSecondary)
+            .fill(AppColors.backgroundPrimary)
             .frame(width: 180, height: laneHeight)
             .opacity(isCurrent ? 1 : 0.72)
             .overlay {

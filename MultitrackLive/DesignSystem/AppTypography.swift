@@ -18,7 +18,7 @@ enum AppTypography {
     }
 
     static func monoValue() -> Font {
-        .title2.monospacedDigit().weight(.medium)
+        .title2.monospaced().weight(.medium)
     }
 }
 

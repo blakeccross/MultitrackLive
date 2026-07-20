@@ -22,9 +22,11 @@ struct SharedTransportStrip: View {
     var onTapMeter: (() -> Void)? = nil
     var onReadoutHeightChange: ((CGFloat) -> Void)? = nil
 
+    private static let transportActiveGreen = Color(red: 0.49, green: 0.75, blue: 0.48)
+
     var body: some View {
         HStack(alignment: .center, spacing: AppSpacing.sm) {
-            HStack(spacing: AppSpacing.sm) {
+            HStack(spacing: AppSpacing.xs) {
                 AppIconButton(
                     systemImage: "stop.fill",
                     size: buttonSize,
@@ -39,8 +41,8 @@ struct SharedTransportStrip: View {
                     size: buttonSize,
                     isActive: isPlaying,
                     isEnabled: isLoaded,
-                    cornerRadius: buttonSize * 0.25,
-                    activeBackgroundColor: Color(red: 0.22, green: 0.82, blue: 0.36),
+                    cornerRadius: buttonSize * 0.14,
+                    activeBackgroundColor: Self.transportActiveGreen,
                     accessibilityLabel: isPlaying ? "Pause" : "Play"
                 ) {
                     if isPlaying {
@@ -55,7 +57,7 @@ struct SharedTransportStrip: View {
                     size: buttonSize,
                     isActive: isLooping,
                     isEnabled: isLoaded && canLoop,
-                    cornerRadius: buttonSize * 0.25,
+                    cornerRadius: buttonSize * 0.14,
                     activeBackgroundColor: AppColors.accent,
                     accessibilityLabel: isLooping ? "End Loop" : "Loop Section"
                 ) {

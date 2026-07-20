@@ -412,7 +412,7 @@ struct WaveformLaneView: View {
         clipChrome(
                 clipID: section.id,
                 slotID: section.slotID,
-                title: section.name,
+                title: track.displayName,
                 colorIndex: trackColorIndex,
                 clipWidth: clipWidth,
                 timelineStart: bounds.start,

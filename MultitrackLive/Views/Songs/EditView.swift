@@ -723,7 +723,7 @@ struct EditView: View {
                 }
             )
         }
-        .toolbarBackground(AppColors.surfaceElevated, for: .windowToolbar)
+        .toolbarBackground(AppColors.backgroundPrimary, for: .windowToolbar)
         .modifier(EditViewMacToolbarBackgroundVisibilityModifier())
 #endif
     }
@@ -3141,8 +3141,8 @@ private struct TimelineSectionMarkerSegmentView: View {
                         .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(sectionColor)
                 }
-                Text(section.name)
-                    .font(.system(size: 9, weight: .semibold))
+                Text(section.name.uppercased())
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .foregroundStyle(sectionColor)
