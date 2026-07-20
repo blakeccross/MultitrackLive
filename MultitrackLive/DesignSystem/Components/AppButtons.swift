@@ -66,19 +66,19 @@ struct AppIconButton: View {
         RoundedRectangle(cornerRadius: resolvedCornerRadius, style: .continuous)
     }
 
+    private static let defaultBackground = Color(red: 0.14, green: 0.15, blue: 0.16)
+    private static let defaultActiveBackground = Color(red: 0.24, green: 0.25, blue: 0.27)
+
     private var backgroundColor: Color {
-        if isActive, let activeBackgroundColor {
-            return activeBackgroundColor
+        if isActive {
+            return activeBackgroundColor ?? Self.defaultActiveBackground
         }
-        return Color(red: 0.24, green: 0.25, blue: 0.26)
+        return Self.defaultBackground
     }
 
     private var foregroundColor: Color {
         if isActive, let activeBackgroundColor {
             return activeBackgroundColor.darkened(sRGBBy: 0.42)
-        }
-        if isActive {
-            return AppColors.accent
         }
         return Color(red: 0.78, green: 0.80, blue: 0.82)
     }

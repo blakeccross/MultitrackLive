@@ -58,7 +58,6 @@ struct SharedTransportStrip: View {
                     isActive: isLooping,
                     isEnabled: isLoaded && canLoop,
                     cornerRadius: buttonSize * 0.14,
-                    activeBackgroundColor: AppColors.accent,
                     accessibilityLabel: isLooping ? "End Loop" : "Loop Section"
                 ) {
                     onToggleLoop()

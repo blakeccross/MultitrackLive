@@ -176,10 +176,12 @@ struct LivePlaybackView: View {
             playbackMainLayout
             #endif
         }
-        #if os(macOS)
-        .navigationTitle("")
-        #else
         .navigationTitle(setlistDisplayName(for: setlist))
+        #if os(macOS)
+        .toolbarTitleMenu {
+            setlistSwitcherMenuContent()
+        }
+        #else
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
@@ -370,7 +372,13 @@ struct LivePlaybackView: View {
     @ToolbarContentBuilder
     private func playbackToolbar(for setlist: Setlist) -> some ToolbarContent {
         LiveSetlistToolbarContent(
-            setlistSwitcher: { setlistSwitcherMenu(for: setlist) },
+            setlistSwitcher: {
+                #if os(macOS)
+                EmptyView()
+                #else
+                setlistSwitcherMenu(for: setlist)
+                #endif
+            },
             coordinator: coordinator,
             sectionLoop: sectionLoop,
             isLoaded: coordinator.isLoaded && !coordinator.isLoadingSong,
@@ -556,49 +564,55 @@ struct LivePlaybackView: View {
         return trimmed.isEmpty ? "Setlist" : trimmed
     }
 
-    private func setlistSwitcherMenu(for setlist: Setlist) -> some View {
-        Menu {
-            ForEach(allSetlists) { candidate in
-                Button {
-                    switchToSetlist(candidate)
-                } label: {
-                    if candidate.id == activeSetlistID {
-                        Label {
-                            Text("\(candidate.name) · \(candidate.entries.count) songs")
-                        } icon: {
-                            Image(systemName: "checkmark")
-                        }
-                    } else {
+    @ViewBuilder
+    private func setlistSwitcherMenuContent() -> some View {
+        ForEach(allSetlists) { candidate in
+            Button {
+                switchToSetlist(candidate)
+            } label: {
+                if candidate.id == activeSetlistID {
+                    Label {
                         Text("\(candidate.name) · \(candidate.entries.count) songs")
+                    } icon: {
+                        Image(systemName: "checkmark")
                     }
+                } else {
+                    Text("\(candidate.name) · \(candidate.entries.count) songs")
                 }
             }
+        }
 
-            Divider()
+        Divider()
 
-            Button {
-                createUntitledSetlist()
-            } label: {
-                Label("New Setlist", systemImage: "plus")
-            }
-
-            Button {
-                presentExportSetlistPackage()
-            } label: {
-                Label("Export Setlist Folder…", systemImage: "square.and.arrow.up")
-            }
-
-            Button {
-                showingSetlistPackageImporter = true
-            } label: {
-                Label("Open Setlist Folder…", systemImage: "square.and.arrow.down")
-            }
+        Button {
+            createUntitledSetlist()
         } label: {
-                Text(setlist.name)
-                    .fontWeight(.semibold)
+            Label("New Setlist", systemImage: "plus")
+        }
 
+        Button {
+            presentExportSetlistPackage()
+        } label: {
+            Label("Export Setlist Folder…", systemImage: "square.and.arrow.up")
+        }
+
+        Button {
+            showingSetlistPackageImporter = true
+        } label: {
+            Label("Open Setlist Folder…", systemImage: "square.and.arrow.down")
         }
     }
+
+    #if !os(macOS)
+    private func setlistSwitcherMenu(for setlist: Setlist) -> some View {
+        Menu {
+            setlistSwitcherMenuContent()
+        } label: {
+            Text(setlistDisplayName(for: setlist))
+                .fontWeight(.semibold)
+        }
+    }
+    #endif
 
     private func bootstrapSetlistIfNeeded() {
         guard !didBootstrap else { return }
@@ -1269,11 +1283,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             }
             .sharedBackgroundVisibility(.hidden)
 
-            ToolbarItem(placement: .navigation) {
-                setlistSwitcher
-            }
-            .sharedBackgroundVisibility(.hidden)
-
             ToolbarItem(placement: .principal) {
                 transportInfoBar
             }
@@ -1291,10 +1300,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         } else {
             ToolbarItem(placement: .navigation) {
                 songsButton
-            }
-
-            ToolbarItem(placement: .navigation) {
-                setlistSwitcher
             }
 
             ToolbarItem(placement: .principal) {
@@ -1355,7 +1360,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             systemImage: "music.note.list",
             size: toolbarIconSize,
             isActive: showingSongLibrary,
-            activeBackgroundColor: toolbarActiveGreen,
             accessibilityLabel: "Songs"
         ) {
             showingSongLibrary.toggle()
@@ -1368,7 +1372,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             systemImage: "gearshape",
             size: toolbarIconSize,
             isActive: showingManageOutputs,
-            activeBackgroundColor: toolbarActiveGreen,
             accessibilityLabel: "Manage Outputs"
         ) {
             showingManageOutputs = true
@@ -1381,7 +1384,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             systemImage: "slider.vertical.3",
             size: toolbarIconSize,
             isActive: mixerDetent == .visible,
-            activeBackgroundColor: toolbarActiveGreen,
             accessibilityLabel: "Group Mixer"
         ) {
             toggleMixerDrawer()
@@ -1391,10 +1393,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
 
     private var toolbarIconSize: CGFloat {
         max(infoPanelHeight, 44)
-    }
-
-    private var toolbarActiveGreen: Color {
-        Color(red: 0.49, green: 0.75, blue: 0.48)
     }
 
     private func toggleMixerDrawer() {

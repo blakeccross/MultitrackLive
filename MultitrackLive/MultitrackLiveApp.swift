@@ -40,7 +40,7 @@ struct MultitrackLiveApp: App {
             height: AppWindowMetrics.defaultHeight
         )
         .windowResizability(.contentMinSize)
-        .windowToolbarStyle(.unified)
+        .windowToolbarStyle(.expanded)
         .commands {
             FileMenuCommands()
             SongMenuCommands()
