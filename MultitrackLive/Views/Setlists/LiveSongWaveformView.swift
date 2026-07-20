@@ -226,6 +226,8 @@ struct LiveSongWaveformView: View {
 
             measureGrid(contentWidth: contentWidth)
 
+            sectionMarkers(contentWidth: contentWidth)
+
             if isInteractive {
                 sectionTapTargets(contentWidth: contentWidth)
             }
@@ -298,7 +300,6 @@ struct LiveSongWaveformView: View {
                     let segmentWidth = max(0, endX - startX)
                     let palette = ArrangementSectionPalette.colors(for: index)
                     let isCued = cuedSectionID == section.id
-                    let isLoopSection = loopSlotIDs.contains(section.id)
 
                     ZStack(alignment: .topLeading) {
                         Rectangle()
@@ -308,24 +309,6 @@ struct LiveSongWaveformView: View {
                             for: section,
                             segmentWidth: segmentWidth
                         )
-
-                        HStack(spacing: 3) {
-                            if isLoopSection {
-                                Image(systemName: "repeat")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundStyle(palette.accent)
-                            }
-                            Text(section.name.uppercased())
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .foregroundStyle(palette.accent)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(AppColors.surfaceElevated.opacity(0.92))
-                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
-                        .padding(.leading, 4)
-                        .padding(.top, 4)
                     }
                     .frame(width: segmentWidth, height: waveformHeight)
                     .overlay {
@@ -364,6 +347,50 @@ struct LiveSongWaveformView: View {
                     )
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func sectionMarkers(contentWidth: CGFloat) -> some View {
+        if usesArrangementLayout {
+            ZStack(alignment: .leading) {
+                ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+                    let startX = TimelineLayout.xPosition(
+                        for: section.timelineStartSeconds,
+                        duration: safeTimelineDuration,
+                        contentWidth: contentWidth
+                    )
+                    let endX = TimelineLayout.xPosition(
+                        for: section.timelineEndSeconds,
+                        duration: safeTimelineDuration,
+                        contentWidth: contentWidth
+                    )
+                    let segmentWidth = max(0, endX - startX)
+                    let palette = ArrangementSectionPalette.colors(for: index)
+                    let isLoopSection = loopSlotIDs.contains(section.id)
+
+                    HStack(spacing: 3) {
+                        if isLoopSection {
+                            Image(systemName: "repeat")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(palette.accent)
+                        }
+                        Text(section.name.uppercased())
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(palette.accent)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(AppColors.surfaceElevated.opacity(0.92))
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                    .padding(.leading, 4)
+                    .padding(.top, 4)
+                    .frame(width: segmentWidth, height: waveformHeight, alignment: .topLeading)
+                    .offset(x: startX)
+                }
+            }
+            .allowsHitTesting(false)
         }
     }
 
