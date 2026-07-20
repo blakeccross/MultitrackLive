@@ -174,6 +174,8 @@ struct LiveSongWaveformView: View {
     let sections: [ArrangementDisplaySection]
     let peakSections: [ArrangementDisplaySection]
     let loopSlotIDs: Set<UUID>
+    let tempoChanges: [TempoChange]
+    let timeSignatureChanges: [TimeSignatureChange]
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
     var showsPlayhead = true
@@ -221,6 +223,8 @@ struct LiveSongWaveformView: View {
     var body: some View {
         ZStack(alignment: .leading) {
             sectionBackgrounds(contentWidth: contentWidth)
+
+            measureGrid(contentWidth: contentWidth)
 
             if isInteractive {
                 sectionTapTargets(contentWidth: contentWidth)
@@ -487,6 +491,137 @@ struct LiveSongWaveformView: View {
         let span = max(0.0001, timelineEnd - timelineStart)
         let fraction = (time - timelineStart) / span
         return min(max(0, CGFloat(fraction)), 1) * segmentWidth
+    }
+
+    private func measureGrid(contentWidth: CGFloat) -> some View {
+        Canvas { context, size in
+            guard size.width > 0, size.height > 0, !tempoChanges.isEmpty else { return }
+
+            let measureBoundaries = MeasureTiming.visibleMeasureBoundaries(
+                duration: safeTimelineDuration,
+                tempoChanges: tempoChanges,
+                contentWidth: contentWidth,
+                timeSignatureChanges: timeSignatureChanges
+            )
+
+            let beatLineColor = Color.white.opacity(0.22)
+            let measureLineColor = Color.white.opacity(0.65)
+
+            if shouldShowBeatLines(contentWidth: contentWidth) {
+                for time in beatBoundaries() {
+                    strokeGridLine(
+                        at: time,
+                        contentWidth: contentWidth,
+                        size: size,
+                        color: beatLineColor,
+                        in: context
+                    )
+                }
+            }
+
+            for time in measureBoundaries {
+                strokeGridLine(
+                    at: time,
+                    contentWidth: contentWidth,
+                    size: size,
+                    color: measureLineColor,
+                    in: context
+                )
+            }
+        }
+        .frame(width: contentWidth, height: waveformHeight)
+        .allowsHitTesting(false)
+    }
+
+    private func shouldShowBeatLines(contentWidth: CGFloat) -> Bool {
+        let bpm = MeasureTiming.bpmForMeasure(1, tempoChanges: tempoChanges)
+        let signature = MeasureTiming.numeratorDenominatorForMeasure(1, changes: timeSignatureChanges)
+        let beatsInMeasure = MeasureTiming.beatsPerMeasure(
+            numerator: signature.numerator,
+            denominator: signature.denominator
+        )
+        guard beatsInMeasure > 0 else { return false }
+
+        let beatDuration = MeasureTiming.measureDuration(
+            bpm: bpm,
+            numerator: signature.numerator,
+            denominator: signature.denominator
+        ) / beatsInMeasure
+        let pixelsPerBeat = CGFloat(beatDuration) * contentWidth / CGFloat(safeTimelineDuration)
+        return pixelsPerBeat >= 8
+    }
+
+    private func beatBoundaries() -> [TimeInterval] {
+        var times: [TimeInterval] = []
+        var measure = 1
+
+        while measure < 1_000_000 {
+            let measureStart = MeasureTiming.timeAtStartOfMeasure(
+                measure,
+                tempoChanges: tempoChanges,
+                timeSignatureChanges: timeSignatureChanges
+            )
+            guard measureStart < safeTimelineDuration - 0.0001 else { break }
+
+            let bpm = MeasureTiming.bpmForMeasure(measure, tempoChanges: tempoChanges)
+            let signature = MeasureTiming.numeratorDenominatorForMeasure(
+                measure,
+                changes: timeSignatureChanges
+            )
+            let beatsInMeasure = MeasureTiming.beatsPerMeasure(
+                numerator: signature.numerator,
+                denominator: signature.denominator
+            )
+            let measureDuration = MeasureTiming.measureDuration(
+                bpm: bpm,
+                numerator: signature.numerator,
+                denominator: signature.denominator
+            )
+            guard beatsInMeasure > 0, measureDuration > 0 else {
+                measure += 1
+                continue
+            }
+
+            let beatDuration = measureDuration / beatsInMeasure
+            let beatCount = max(0, Int(beatsInMeasure.rounded(.down)))
+            for beatIndex in 1..<beatCount {
+                let time = measureStart + TimeInterval(beatIndex) * beatDuration
+                guard time < safeTimelineDuration - 0.0001 else { break }
+                times.append(time)
+            }
+
+            measure += 1
+        }
+
+        return times
+    }
+
+    private static let gridLineVerticalInset: CGFloat = 8
+    private static let gridLineWidth: CGFloat = 1
+
+    private func strokeGridLine(
+        at time: TimeInterval,
+        contentWidth: CGFloat,
+        size: CGSize,
+        color: Color,
+        in context: GraphicsContext
+    ) {
+        let x = TimelineLayout.xPosition(
+            for: time,
+            duration: safeTimelineDuration,
+            contentWidth: contentWidth
+        )
+        guard x >= 0, x <= size.width else { return }
+
+        let inset = min(Self.gridLineVerticalInset, size.height / 2)
+        let height = max(0, size.height - inset * 2)
+        let rect = CGRect(
+            x: (x - Self.gridLineWidth / 2).rounded(),
+            y: inset,
+            width: Self.gridLineWidth,
+            height: height
+        )
+        context.fill(Path(rect), with: .color(color))
     }
 
     @ViewBuilder
@@ -810,6 +945,8 @@ struct LiveSetlistWaveformScrollView: View {
             sections: snapshot.sections,
             peakSections: snapshot.peakSections,
             loopSlotIDs: snapshot.loopSlotIDs,
+            tempoChanges: snapshot.tempoChanges,
+            timeSignatureChanges: snapshot.timeSignatureChanges,
             cuedSectionID: isCurrent ? cuedSectionID : nil,
             cueFlashPhase: isCurrent ? cueFlashPhase : false,
             showsPlayhead: isCurrent,

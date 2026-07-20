@@ -14,6 +14,8 @@ struct LiveSongWaveformSnapshot: Identifiable {
     /// Playback clip layout used to map timeline time to source audio for the waveform.
     let peakSections: [ArrangementDisplaySection]
     let loopSlotIDs: Set<UUID>
+    let tempoChanges: [TempoChange]
+    let timeSignatureChanges: [TimeSignatureChange]
 
     var id: UUID { songID }
 
@@ -666,7 +668,9 @@ final class PlaybackCoordinator {
             timelineDuration: timelineDuration,
             sections: playbackLayout.rulerSections,
             peakSections: peakSections,
-            loopSlotIDs: arrangement.loopSlotIDs
+            loopSlotIDs: arrangement.loopSlotIDs,
+            tempoChanges: projectState.tempoChanges,
+            timeSignatureChanges: projectState.timeSignatureChanges
         )
     }
 
