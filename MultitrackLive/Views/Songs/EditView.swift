@@ -2148,27 +2148,11 @@ private struct EditSongToolbarContent: ToolbarContent {
         Button {
             showingChangeKey = true
         } label: {
-            if let changeKeyButtonTitle {
-                Label(changeKeyButtonTitle, systemImage: "key")
-                    .labelStyle(.titleAndIcon)
-            } else {
-                Label("Change Key", systemImage: "key")
-                    .labelStyle(.iconOnly)
-            }
+            Label("Change Key", systemImage: "key")
+                .labelStyle(.iconOnly)
         }
         .appEditorToolbarPill()
         .disabled(song.sortedTracks.isEmpty)
-    }
-
-    private var changeKeyButtonTitle: String? {
-        switch song.transposeSemitones {
-        case 0:
-            return nil
-        case let value where value > 0:
-            return "+\(value)"
-        default:
-            return "\(song.transposeSemitones)"
-        }
     }
 
     private var arrangementEditorButton: some View {
@@ -2350,27 +2334,11 @@ private struct EditTransportBar: View {
         Button {
             showingChangeKey = true
         } label: {
-            if let changeKeyButtonTitle {
-                Label(changeKeyButtonTitle, systemImage: "key")
-                    .labelStyle(.titleAndIcon)
-            } else {
-                Label("Change Key", systemImage: "key")
-                    .labelStyle(.iconOnly)
-            }
+            Label("Change Key", systemImage: "key")
+                .labelStyle(.iconOnly)
         }
         .appEditorToolbarPill()
         .disabled(song.sortedTracks.isEmpty)
-    }
-
-    private var changeKeyButtonTitle: String? {
-        switch song.transposeSemitones {
-        case 0:
-            return nil
-        case let value where value > 0:
-            return "+\(value)"
-        default:
-            return "\(song.transposeSemitones)"
-        }
     }
 
     private var timeSignatureEditorButton: some View {
