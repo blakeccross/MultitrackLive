@@ -1357,43 +1357,36 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     }
 
     private var songsButton: some View {
-        AppIconButton(
-            systemImage: "music.note.list",
-            size: toolbarIconSize,
-            isActive: showingSongLibrary,
-            accessibilityLabel: "Songs"
-        ) {
+        Button {
             showingSongLibrary.toggle()
+        } label: {
+            Label("Songs", systemImage: "music.note.list")
+                .labelStyle(.iconOnly)
         }
+        .tint(showingSongLibrary ? AppColors.accent : nil)
         .help("Songs")
     }
 
     private var manageOutputsButton: some View {
-        AppIconButton(
-            systemImage: "gearshape",
-            size: toolbarIconSize,
-            isActive: showingManageOutputs,
-            accessibilityLabel: "Manage Outputs"
-        ) {
+        Button {
             showingManageOutputs = true
+        } label: {
+            Label("Manage Outputs", systemImage: "gearshape")
+                .labelStyle(.iconOnly)
         }
+        .tint(showingManageOutputs ? AppColors.accent : nil)
         .help("Manage Outputs")
     }
 
     private var mixerButton: some View {
-        AppIconButton(
-            systemImage: "slider.vertical.3",
-            size: toolbarIconSize,
-            isActive: mixerDetent == .visible,
-            accessibilityLabel: "Group Mixer"
-        ) {
+        Button {
             toggleMixerDrawer()
+        } label: {
+            Label("Group Mixer", systemImage: "slider.vertical.3")
+                .labelStyle(.iconOnly)
         }
+        .tint(mixerDetent == .visible ? AppColors.accent : nil)
         .help("Group Mixer")
-    }
-
-    private var toolbarIconSize: CGFloat {
-        max(infoPanelHeight, 44)
     }
 
     private func toggleMixerDrawer() {
