@@ -15,6 +15,7 @@ enum AppColors {
     static let textSecondary = Color("TextSecondary")
     static let textTertiary = Color("TextTertiary")
 
+    /// Muted performance blue — reserved for current/active state.
     static let accent = Color.accentColor
     static let separator = Color("Separator")
 

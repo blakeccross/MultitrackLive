@@ -25,6 +25,7 @@ struct SongLibraryPanel: View {
     @State private var searchText = ""
     @State private var sortOrder: SongLibrarySortOrder = .newest
     @State private var showingNewSongAlert = false
+    @State private var showingAddSongOptions = false
     @State private var newSongName = ""
     @State private var songPendingRename: Song?
     @State private var renameSongName = ""
@@ -158,17 +159,42 @@ struct SongLibraryPanel: View {
                 .appLargeTitle()
 
             HStack {
-                AppIconButton(
-                    systemImage: "chevron.left",
-                    size: 40,
-                    accessibilityLabel: "Close songs library"
-                ) {
+                Button {
                     onDismiss()
+                } label: {
+                    headerIcon("chevron.left")
                 }
+                .buttonStyle(.plain)
+                .appLinkPointer()
+                .accessibilityLabel("Close songs library")
 
                 Spacer()
 
-                addSongMenu
+                Button {
+                    showingAddSongOptions = true
+                } label: {
+                    headerIcon("plus")
+                }
+                .buttonStyle(.plain)
+                .appLinkPointer()
+                .accessibilityLabel("Add song")
+                .confirmationDialog(
+                    "Add Song",
+                    isPresented: $showingAddSongOptions,
+                    titleVisibility: .visible
+                ) {
+                    Button("New Song") {
+                        newSongName = ""
+                        showingNewSongAlert = true
+                    }
+                    Button("Import from Folder") {
+                        presentFolderImporter()
+                    }
+                    Button("Open Project File…") {
+                        showingProjectImporter = true
+                    }
+                    Button("Cancel", role: .cancel) {}
+                }
             }
         }
         .padding(.horizontal, AppSpacing.sm)
@@ -176,33 +202,12 @@ struct SongLibraryPanel: View {
         .padding(.bottom, AppSpacing.xs)
     }
 
-    private var addSongMenu: some View {
-        Menu {
-            Button {
-                newSongName = ""
-                showingNewSongAlert = true
-            } label: {
-                Label("New Song", systemImage: "plus")
-            }
-
-            Button {
-                presentFolderImporter()
-            } label: {
-                Label("Import from Folder", systemImage: "folder")
-            }
-
-            Button {
-                showingProjectImporter = true
-            } label: {
-                Label("Open Project File…", systemImage: "doc")
-            }
-        } label: {
-            Image(systemName: "plus.circle")
-                .foregroundStyle(AppColors.accent)
-                .font(.title3)
-        }
-        .menuStyle(.borderlessButton)
-        .accessibilityLabel("Add song")
+    private func headerIcon(_ systemImage: String) -> some View {
+        Image(systemName: systemImage)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(AppColors.accent)
+            .frame(width: 32, height: 32)
+            .contentShape(Rectangle())
     }
 
     private var searchBar: some View {
@@ -575,13 +580,17 @@ private struct SongLibraryRow: View {
 
             Spacer(minLength: 0)
 
-            AppIconButton(
-                systemImage: "plus.circle",
-                size: 36,
-                accessibilityLabel: "Add to setlist"
-            ) {
+            Button {
                 onAddToSetlist()
+            } label: {
+                Image(systemName: "plus")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .appLinkPointer()
+            .accessibilityLabel("Add to setlist")
         }
         .padding(.horizontal, AppSpacing.sm)
         .padding(.vertical, AppSpacing.xs)

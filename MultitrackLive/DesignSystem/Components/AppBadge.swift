@@ -14,15 +14,21 @@ struct AppBadge: View {
         HStack(spacing: AppSpacing.xxs) {
             if let systemImage {
                 Image(systemName: systemImage)
-                    .font(.caption2)
+                    .font(.caption2.weight(.semibold))
             }
             Text(title)
                 .font(.caption2.weight(.semibold))
         }
         .foregroundStyle(foregroundColor)
         .padding(.horizontal, AppSpacing.xs)
-        .padding(.vertical, AppSpacing.xxs)
+        .padding(.vertical, 5)
         .background(backgroundColor, in: Capsule())
+        .overlay {
+            if style == .neutral {
+                Capsule()
+                    .stroke(AppColors.separator, lineWidth: 1)
+            }
+        }
     }
 
     private var foregroundColor: Color {
@@ -34,7 +40,7 @@ struct AppBadge: View {
 
     private var backgroundColor: Color {
         switch style {
-        case .accent: AppColors.accent
+        case .accent: AppColors.accent.opacity(0.92)
         case .neutral: AppColors.surfaceElevated
         }
     }

@@ -33,11 +33,11 @@ enum SetlistTransition: String, CaseIterable, Identifiable {
     var badgeColor: Color {
         switch self {
         case .continue:
-            return AppColors.accent
+            return AppColors.textSecondary
         case .stop:
             return AppColors.muteActive
         case .overlap:
-            return Color.cyan
+            return Color(red: 0.45, green: 0.70, blue: 0.78)
         }
     }
 

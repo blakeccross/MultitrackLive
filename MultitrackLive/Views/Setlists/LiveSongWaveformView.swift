@@ -4,14 +4,18 @@ import AppKit
 #endif
 
 enum ArrangementSectionPalette {
+    /// Muted section fills — informative without competing with playback chrome.
     private static let pairs: [(background: Color, accent: Color)] = [
-        (Color(red: 0.22, green: 0.26, blue: 0.32), Color(red: 0.42, green: 0.52, blue: 0.68)),
-        (Color(red: 0.28, green: 0.26, blue: 0.18), Color(red: 0.62, green: 0.52, blue: 0.22)),
-        (Color(red: 0.30, green: 0.22, blue: 0.16), Color(red: 0.68, green: 0.42, blue: 0.22)),
-        (Color(red: 0.28, green: 0.18, blue: 0.22), Color(red: 0.62, green: 0.32, blue: 0.42)),
-        (Color(red: 0.16, green: 0.26, blue: 0.26), Color(red: 0.28, green: 0.52, blue: 0.48)),
-        (Color(red: 0.22, green: 0.18, blue: 0.30), Color(red: 0.48, green: 0.36, blue: 0.68)),
+        (Color(red: 0.16, green: 0.19, blue: 0.23), Color(red: 0.52, green: 0.60, blue: 0.70)),
+        (Color(red: 0.20, green: 0.19, blue: 0.14), Color(red: 0.62, green: 0.56, blue: 0.38)),
+        (Color(red: 0.22, green: 0.17, blue: 0.13), Color(red: 0.66, green: 0.48, blue: 0.34)),
+        (Color(red: 0.20, green: 0.14, blue: 0.16), Color(red: 0.62, green: 0.42, blue: 0.48)),
+        (Color(red: 0.13, green: 0.19, blue: 0.19), Color(red: 0.40, green: 0.58, blue: 0.54)),
+        (Color(red: 0.16, green: 0.14, blue: 0.21), Color(red: 0.54, green: 0.48, blue: 0.66)),
     ]
+
+    static let backgroundFillOpacity: Double = 0.22
+    static let backgroundCueFillOpacity: Double = 0.40
 
     static func colors(for index: Int) -> (background: Color, accent: Color) {
         pairs[index % pairs.count]
@@ -31,6 +35,9 @@ enum LiveSetlistWaveformMetrics {
     static let defaultHorizontalZoomStorageValue = Double(defaultHorizontalZoom)
     static let minimumHorizontalZoom: CGFloat = 1
     static let maximumHorizontalZoom: CGFloat = 3
+
+    /// Layout-space scroll target for Ableton-style playhead follow.
+    static let followPlayheadScrollID = "live-follow-playhead"
 
     static func clampedWaveformHeight(_ height: CGFloat) -> CGFloat {
         min(maximumWaveformHeight, max(minimumWaveformHeight, height))
@@ -107,19 +114,32 @@ private struct LiveSetlistWaveformResizeHandle: View {
 
     @State private var dragStartHeight: CGFloat?
 
-    private static let hitAreaHeight: CGFloat = 20
+    private static let hitAreaHeight: CGFloat = 24
     private static let adjustmentStep: CGFloat = 8
 
     var body: some View {
         ZStack {
-            Color.clear
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(AppColors.separator)
+                    .frame(height: 1)
 
-            Capsule()
-                .fill(AppColors.textTertiary.opacity(0.5))
-                .frame(width: 44, height: 4)
+                Spacer(minLength: 0)
+
+                Capsule()
+                    .fill(AppColors.textSecondary.opacity(0.55))
+                    .frame(width: 52, height: 5)
+
+                Spacer(minLength: 0)
+
+                Rectangle()
+                    .fill(AppColors.separator.opacity(0.65))
+                    .frame(height: 0.5)
+            }
         }
         .frame(maxWidth: .infinity)
         .frame(height: Self.hitAreaHeight)
+        .background(AppColors.backgroundSecondary)
         .contentShape(Rectangle())
         .highPriorityGesture(
             DragGesture(minimumDistance: 1, coordinateSpace: .global)
@@ -303,7 +323,13 @@ struct LiveSongWaveformView: View {
 
                     ZStack(alignment: .topLeading) {
                         Rectangle()
-                            .fill(palette.background.opacity(isCued && cueFlashPhase ? 0.55 : 0.35))
+                            .fill(
+                                palette.background.opacity(
+                                    isCued && cueFlashPhase
+                                        ? ArrangementSectionPalette.backgroundCueFillOpacity
+                                        : ArrangementSectionPalette.backgroundFillOpacity
+                                )
+                            )
 
                         sectionWaveform(
                             for: section,
@@ -376,7 +402,7 @@ struct LiveSongWaveformView: View {
                                 .foregroundStyle(palette.accent)
                         }
                         Text(section.name.uppercased())
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundStyle(palette.accent)
                             .lineLimit(1)
                     }
@@ -726,12 +752,26 @@ struct LiveSongWaveformView: View {
             duration: safeTimelineDuration,
             contentWidth: contentWidth
         )
+        let clampedX = max(0, min(x, contentWidth))
 
-        Rectangle()
-            .fill(Color.white.opacity(0.92))
-            .frame(width: 2, height: waveformHeight)
-            .shadow(color: .black.opacity(0.35), radius: 1, x: 0, y: 0)
-            .offset(x: x - 1)
+        ZStack(alignment: .leading) {
+            // Layout-space target (not `.offset`) so ScrollViewReader can center on the playhead.
+            HStack(spacing: 0) {
+                Color.clear.frame(width: clampedX)
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .id(LiveSetlistWaveformMetrics.followPlayheadScrollID)
+                Spacer(minLength: 0)
+            }
+            .frame(width: contentWidth, height: 1, alignment: .leading)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.92))
+                .frame(width: 2, height: waveformHeight)
+                .shadow(color: .black.opacity(0.35), radius: 1, x: 0, y: 0)
+                .offset(x: clampedX - 1)
+        }
+        .frame(width: contentWidth, height: waveformHeight, alignment: .leading)
     }
 
     private func refreshDisplayPeaks(contentWidth: CGFloat) {
@@ -786,6 +826,7 @@ struct LiveSetlistWaveformScrollView: View {
     let ensureWaveformSnapshot: (Song) -> Void
     let playheadTimeProvider: () -> TimeInterval
     let isPlayingProvider: () -> Bool
+    @Binding var isFollowing: Bool
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
     let onSeek: (TimeInterval) -> Void
@@ -825,12 +866,39 @@ struct LiveSetlistWaveformScrollView: View {
                 .frame(minWidth: viewportWidth, alignment: .leading)
             }
             .defaultScrollAnchor(.leading)
-            .scrollTargetBehavior(.viewAligned)
+            .modifier(LiveSetlistFollowScrollTargetBehavior(isFollowing: isFollowing))
+            .modifier(LiveSetlistFollowUserScrollDetector(
+                isFollowing: $isFollowing,
+                isPlayingProvider: isPlayingProvider
+            ))
             .onAppear {
-                scrollToCurrent(proxy)
+                if isFollowing {
+                    scrollToFollowPlayhead(proxy, requirePlaying: false, deferred: true)
+                } else {
+                    scrollToCurrent(proxy)
+                }
             }
             .onChange(of: currentPlaybackIndex) { _, _ in
-                scrollToCurrent(proxy)
+                if isFollowing {
+                    scrollToFollowPlayhead(proxy, requirePlaying: false, deferred: true)
+                } else {
+                    scrollToCurrent(proxy)
+                }
+            }
+            .onChange(of: isFollowing) { _, following in
+                if following {
+                    scrollToFollowPlayhead(proxy, requirePlaying: false, deferred: true)
+                }
+            }
+            .background {
+                if isFollowing {
+                    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+                        LiveSetlistFollowScrollDriver(date: context.date) {
+                            guard isPlayingProvider() else { return }
+                            scrollToFollowPlayhead(proxy, requirePlaying: true)
+                        }
+                    }
+                }
             }
         }
         .simultaneousGesture(horizontalPinchGesture)
@@ -927,7 +995,40 @@ struct LiveSetlistWaveformScrollView: View {
     private func scrollToCurrent(_ proxy: ScrollViewProxy) {
         Task { @MainActor in
             await Task.yield()
-            proxy.scrollTo(currentSongScrollID, anchor: .leading)
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                proxy.scrollTo(currentSongScrollID, anchor: .leading)
+            }
+        }
+    }
+
+    private func scrollToFollowPlayhead(
+        _ proxy: ScrollViewProxy,
+        requirePlaying: Bool,
+        deferred: Bool = false
+    ) {
+        let perform = {
+            guard self.isFollowing else { return }
+            if requirePlaying, !self.isPlayingProvider() { return }
+
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                proxy.scrollTo(
+                    LiveSetlistWaveformMetrics.followPlayheadScrollID,
+                    anchor: .center
+                )
+            }
+        }
+
+        if deferred {
+            Task { @MainActor in
+                await Task.yield()
+                perform()
+            }
+        } else {
+            perform()
         }
     }
 
@@ -989,6 +1090,61 @@ private struct LiveSetlistWaveformLanePlaceholder: View {
                 ProgressView()
                     .controlSize(.small)
             }
+    }
+}
+
+private struct LiveSetlistFollowScrollTargetBehavior: ViewModifier {
+    let isFollowing: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isFollowing {
+            content
+        } else {
+            content.scrollTargetBehavior(.viewAligned)
+        }
+    }
+}
+
+private struct LiveSetlistFollowScrollDriver: View {
+    let date: Date
+    let action: () -> Void
+
+    var body: some View {
+        Color.clear
+            .onAppear(perform: action)
+            .onChange(of: date) { _, _ in
+                action()
+            }
+    }
+}
+
+private struct LiveSetlistFollowUserScrollDetector: ViewModifier {
+    @Binding var isFollowing: Bool
+    let isPlayingProvider: () -> Bool
+
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, iOS 18.0, *) {
+            content
+                .onScrollPhaseChange { _, newPhase in
+                    guard isFollowing, isPlayingProvider() else { return }
+                    switch newPhase {
+                    case .interacting, .decelerating:
+                        isFollowing = false
+                    default:
+                        break
+                    }
+                }
+        } else {
+            content
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 6)
+                        .onChanged { _ in
+                            guard isFollowing, isPlayingProvider() else { return }
+                            isFollowing = false
+                        }
+                )
+        }
     }
 }
 

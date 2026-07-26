@@ -64,6 +64,7 @@ struct LivePlaybackView: View {
     @State private var songPendingTrackImport: Song?
     @State private var songImportFeedback: SongImportFeedback?
     @State private var infoPanelHeight: CGFloat = 0
+    @State private var isWaveformFollowing = true
     @State private var mixerDetent: LiveGroupMixerDetent = .hidden
     @State private var headerPendingEdit: SetlistEntry?
     @State private var editHeaderTitle = ""
@@ -391,7 +392,8 @@ struct LivePlaybackView: View {
             showingSongLibrary: $showingSongLibrary,
             showingManageOutputs: $showingManageOutputs,
             mixerDetent: $mixerDetent,
-            infoPanelHeight: $infoPanelHeight
+            infoPanelHeight: $infoPanelHeight,
+            isWaveformFollowing: $isWaveformFollowing
         )
     }
 
@@ -710,12 +712,7 @@ struct LivePlaybackView: View {
         VStack(spacing: 0) {
             if setlistHasSongs {
                 currentSongSection
-                    .padding(AppSpacing.md)
                     .background(AppColors.backgroundPrimary)
-
-                Rectangle()
-                    .fill(AppColors.separator)
-                    .frame(height: 0.5)
             }
 
             setlistSection
@@ -724,14 +721,17 @@ struct LivePlaybackView: View {
     }
 
     private var currentSongSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
             if let loadError = coordinator.loadError {
                 Text(loadError)
                     .font(.caption)
                     .foregroundStyle(.red)
+                    .padding(AppSpacing.md)
             } else {
                 LiveSetlistWaveformResizablePanel {
                     waveformContent
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.top, AppSpacing.md)
                 }
             }
         }
@@ -748,6 +748,7 @@ struct LivePlaybackView: View {
                 ensureWaveformSnapshot: { coordinator.ensureWaveformSnapshot(for: $0) },
                 playheadTimeProvider: { coordinator.currentTime },
                 isPlayingProvider: { coordinator.isPlaying },
+                isFollowing: $isWaveformFollowing,
                 cuedSectionID: cuedSectionID,
                 cueFlashPhase: cueFlashPhase,
                 onSeek: coordinator.seek,
@@ -844,6 +845,46 @@ struct LivePlaybackView: View {
     }
 
     private var setlistList: some View {
+        VStack(spacing: 0) {
+            setlistSummaryBar
+            setlistEntryList
+        }
+        .frame(maxWidth: 720, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm)
+    }
+
+    private var setlistSummaryBar: some View {
+        HStack(spacing: AppSpacing.xs) {
+            Spacer(minLength: 0)
+
+            if let totalSetlistDurationText {
+                Label(totalSetlistDurationText, systemImage: "clock")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(AppColors.textTertiary)
+                    .accessibilityLabel("Total setlist length \(totalSetlistDurationText)")
+            }
+        }
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.bottom, AppSpacing.xs)
+    }
+
+    private var totalSetlistDurationText: String? {
+        let total = coordinator.totalTimelineDuration
+        guard total >= 1 else { return nil }
+
+        let totalMinutes = max(1, Int((total / 60).rounded()))
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+
+        if hours == 0 {
+            return "\(minutes) min"
+        }
+        return minutes == 0 ? "\(hours) hr" : "\(hours) hr \(minutes) min"
+    }
+
+    private var setlistEntryList: some View {
         GeometryReader { geometry in
             List {
                 Section {
@@ -875,9 +916,7 @@ struct LivePlaybackView: View {
                 addHeaderContextMenu
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, AppSpacing.md)
-        .padding(.vertical, AppSpacing.sm)
+        .frame(maxHeight: .infinity)
     }
 
     private func setlistHeaderRow(entry: SetlistEntry) -> some View {
@@ -924,9 +963,13 @@ struct LivePlaybackView: View {
         .focusEffectDisabled()
         #endif
         .appLinkPointer()
-        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
         .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
+        .listRowBackground(
+            playbackIndex == coordinator.currentIndex
+                ? AppColors.accent.opacity(0.12)
+                : Color.clear
+        )
         .contextMenu {
             Button {
                 coordinator.goToSong(at: playbackIndex, autoPlay: coordinator.isAudiblePlaying)
@@ -1156,12 +1199,14 @@ private struct SetlistHeaderRow: View {
 
     var body: some View {
         Text(title)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(AppColors.textSecondary)
+            .font(.caption.weight(.semibold))
+            .tracking(0.6)
+            .textCase(.uppercase)
+            .foregroundStyle(AppColors.textTertiary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, AppSpacing.sm)
             .padding(.vertical, AppSpacing.xs)
-            .frame(minHeight: AppSpacing.rowMinHeight, alignment: .leading)
+            .frame(minHeight: 40, alignment: .leading)
     }
 }
 
@@ -1192,25 +1237,25 @@ private struct SetlistPlaybackRow: View {
     var body: some View {
         HStack(spacing: AppSpacing.sm) {
             Text("\(index + 1).")
-                .font(isCurrent ? .subheadline.monospacedDigit() : .caption.monospacedDigit())
-                .foregroundStyle(AppColors.textTertiary)
-                .frame(width: 24, alignment: .trailing)
+                .font(.subheadline.monospacedDigit().weight(isCurrent ? .semibold : .regular))
+                .foregroundStyle(isCurrent ? AppColors.textSecondary : AppColors.textTertiary)
+                .frame(width: 28, alignment: .trailing)
 
             if isCurrent {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(AppColors.accent)
-                    .frame(width: 3, height: isCurrent ? 34 : 28)
+                    .frame(width: 3, height: 28)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(song.name)
-                    .font(isCurrent ? .title2.weight(.semibold) : .body)
+                    .font(isCurrent ? .headline.weight(.semibold) : .body.weight(.medium))
                     .foregroundStyle(isFinished ? AppColors.textTertiary : AppColors.textPrimary)
                     .lineLimit(2)
 
                 if let subtitle {
                     Text(subtitle)
-                        .font(isCurrent ? .subheadline : .caption)
+                        .font(.caption)
                         .foregroundStyle(AppColors.textTertiary)
                         .lineLimit(1)
                 }
@@ -1220,7 +1265,7 @@ private struct SetlistPlaybackRow: View {
             if hasMissingMedia {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                    .font(isCurrent ? .body : .caption)
+                    .font(.caption)
                     .accessibilityLabel("Missing audio files")
                     .help("Missing audio files — use Relink Missing Files in the context menu")
             }
@@ -1242,8 +1287,8 @@ private struct SetlistPlaybackRow: View {
             }
         }
         .padding(.horizontal, AppSpacing.sm)
-        .padding(.vertical, AppSpacing.xs)
-        .frame(maxWidth: .infinity, minHeight: isCurrent ? 60 : AppSpacing.rowMinHeight, alignment: .leading)
+        .padding(.vertical, AppSpacing.sm)
+        .frame(maxWidth: .infinity, minHeight: isCurrent ? 64 : 56, alignment: .leading)
         .opacity(isFinished ? 0.55 : 1)
     }
 }
@@ -1255,7 +1300,7 @@ private struct PlayingBadge: View {
         AppBadge(
             title: isPlaying ? "Playing" : "Paused",
             systemImage: isPlaying ? "waveform" : "pause",
-            style: .accent
+            style: isPlaying ? .accent : .neutral
         )
     }
 }
@@ -1274,6 +1319,7 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @Binding var showingManageOutputs: Bool
     @Binding var mixerDetent: LiveGroupMixerDetent
     @Binding var infoPanelHeight: CGFloat
+    @Binding var isWaveformFollowing: Bool
 
     @ToolbarContentBuilder
     var body: some ToolbarContent {
@@ -1349,6 +1395,7 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             isLoaded: isLoaded,
             canLoop: canLoop,
             infoPanelHeight: $infoPanelHeight,
+            isWaveformFollowing: $isWaveformFollowing,
             onStop: onStop,
             onPlay: onPlay,
             onPause: onPause,

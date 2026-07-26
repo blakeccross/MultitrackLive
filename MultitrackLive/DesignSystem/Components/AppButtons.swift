@@ -89,41 +89,9 @@ struct AppIconButton: View {
                 .font(.system(size: size * 0.38, weight: .semibold))
                 .foregroundStyle(foregroundColor)
                 .frame(width: size, height: size)
-                .background {
-                    ZStack {
-                        buttonShape
-                            .fill(Color.black.opacity(0.65))
-                            .offset(y: 1)
-
-                        buttonShape
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        backgroundColor,
-                                        backgroundColor.darkened(sRGBBy: 0.86)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-
-                        buttonShape
-                            .strokeBorder(
-                                LinearGradient(
-                                    colors: [
-                                        Color.black.opacity(0.45),
-                                        Color.white.opacity(0.12)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1
-                            )
-                            .padding(0.5)
-
-                        buttonShape
-                            .stroke(Color.black.opacity(0.9), lineWidth: 1)
-                    }
+                .background(backgroundColor, in: buttonShape)
+                .overlay {
+                    buttonShape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
                 }
         }
         .buttonStyle(.plain)

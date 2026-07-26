@@ -6,6 +6,7 @@ struct LiveSetlistNowPlayingInfoView: View {
     let isLoaded: Bool
     let canLoop: Bool
     @Binding var infoPanelHeight: CGFloat
+    @Binding var isWaveformFollowing: Bool
     let onStop: () -> Void
     let onPlay: () -> Void
     let onPause: () -> Void
@@ -40,6 +41,10 @@ struct LiveSetlistNowPlayingInfoView: View {
             onToggleLoop: onToggleLoop,
             onReadoutHeightChange: { height in
                 infoPanelHeight = height
+            },
+            isFollowing: isWaveformFollowing,
+            onToggleFollow: {
+                isWaveformFollowing.toggle()
             }
         )
     }
