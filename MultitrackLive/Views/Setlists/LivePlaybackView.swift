@@ -731,7 +731,7 @@ struct LivePlaybackView: View {
                 LiveSetlistWaveformResizablePanel {
                     waveformContent
                         .padding(.horizontal, AppSpacing.md)
-                        .padding(.top, AppSpacing.md)
+                        .padding(.top, AppSpacing.xs)
                 }
             }
         }

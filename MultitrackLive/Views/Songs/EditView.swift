@@ -29,6 +29,7 @@ struct EditView: View {
     @Binding var timeSignatureChanges: [TimeSignatureChange]
     @Binding var midiEvents: [MIDIEvent]
     @Binding var showingSongLibrary: Bool
+    var onBack: () -> Void = {}
 
     @State private var showingMIDIDevicePicker = false
     @State private var showingMIDIDeviceEditor = false
@@ -691,6 +692,7 @@ struct EditView: View {
                 clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
                 showingSongLibrary: $showingSongLibrary,
+                onBack: onBack,
                 onClearMarkerCue: { clearMarkerCue() },
                 onToggleDynamicCues: toggleDynamicCues,
                 currentSectionAtTime: { time in
@@ -1988,6 +1990,7 @@ private struct EditSongToolbarContent: ToolbarContent {
     @Binding var clipRegions: [ClipRegion]
     @Binding var loopSlotIDs: Set<UUID>
     @Binding var showingSongLibrary: Bool
+    let onBack: () -> Void
     let onClearMarkerCue: () -> Void
     let onToggleDynamicCues: () -> Void
     let currentSectionAtTime: (TimeInterval) -> ArrangementDisplaySection?
@@ -2004,6 +2007,11 @@ private struct EditSongToolbarContent: ToolbarContent {
     @ToolbarContentBuilder
     var body: some ToolbarContent {
         if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .navigation) {
+                backButton
+            }
+            .sharedBackgroundVisibility(.hidden)
+
             ToolbarItem(placement: .navigation) {
                 songsButton
             }
@@ -2041,6 +2049,10 @@ private struct EditSongToolbarContent: ToolbarContent {
                 .sharedBackgroundVisibility(.hidden)
             }
         } else {
+            ToolbarItem(placement: .navigation) {
+                backButton
+            }
+
             ToolbarItem(placement: .navigation) {
                 songsButton
             }
@@ -2112,8 +2124,18 @@ private struct EditSongToolbarContent: ToolbarContent {
             showingSongLibrary.toggle()
         } label: {
             Label("Songs", systemImage: "music.note.list")
+                .labelStyle(.iconOnly)
         }
-        .tint(showingSongLibrary ? AppColors.accent : AppColors.textSecondary)
+        .tint(showingSongLibrary ? AppColors.accent : nil)
+        .help("Songs")
+    }
+
+    private var backButton: some View {
+        Button(action: onBack) {
+            Label("Back", systemImage: "chevron.backward")
+                .labelStyle(.iconOnly)
+        }
+        .help("Back")
     }
 
     private func displaySnapshot(at time: TimeInterval) -> TransportStatusSnapshot {
@@ -2152,19 +2174,18 @@ private struct EditSongToolbarContent: ToolbarContent {
             Label("Change Key", systemImage: "key")
                 .labelStyle(.iconOnly)
         }
-        .appEditorToolbarPill()
         .disabled(song.sortedTracks.isEmpty)
+        .help("Change Key")
     }
 
     private var arrangementEditorButton: some View {
         Button {
             showingArrangementEditor = true
         } label: {
-            Image(systemName: "list.bullet.rectangle")
-                .font(.body.weight(.medium))
-                .foregroundStyle(.secondary)
+            Label("Arrangement", systemImage: "list.bullet.rectangle")
+                .labelStyle(.iconOnly)
         }
-        .appEditorToolbarPill()
+        .help("Arrangement")
         .popover(isPresented: $showingArrangementEditor, arrowEdge: .bottom) {
             ArrangementEditorMenu(
                 slots: $arrangementSlots,
@@ -2338,8 +2359,8 @@ private struct EditTransportBar: View {
             Label("Change Key", systemImage: "key")
                 .labelStyle(.iconOnly)
         }
-        .appEditorToolbarPill()
         .disabled(song.sortedTracks.isEmpty)
+        .help("Change Key")
     }
 
     private var timeSignatureEditorButton: some View {
@@ -2368,9 +2389,9 @@ private struct EditTransportBar: View {
             showingArrangementEditor = true
         } label: {
             Label("Arrangement", systemImage: "list.bullet.rectangle")
-                .labelStyle(.titleAndIcon)
+                .labelStyle(.iconOnly)
         }
-        .appEditorToolbarPill()
+        .help("Arrangement")
         .popover(isPresented: $showingArrangementEditor, arrowEdge: .bottom) {
             ArrangementEditorMenu(
                 slots: $arrangementSlots,
@@ -2391,8 +2412,10 @@ private struct EditTransportBar: View {
             showingSongLibrary.toggle()
         } label: {
             Label("Songs", systemImage: "music.note.list")
+                .labelStyle(.iconOnly)
         }
-        .tint(showingSongLibrary ? AppColors.accent : AppColors.textSecondary)
+        .tint(showingSongLibrary ? AppColors.accent : nil)
+        .help("Songs")
     }
 
 }
@@ -3548,12 +3571,14 @@ private struct DynamicCuesButton: View {
 
     var body: some View {
         Button(action: onToggle) {
-            Image(systemName: isEnabled ? "speaker.wave.2.fill" : "speaker.wave.2")
-                .labelStyle(.titleAndIcon)
-                .font(.body.weight(.medium))
+            Label(
+                "Dynamic Cues",
+                systemImage: isEnabled ? "speaker.wave.2.fill" : "speaker.wave.2"
+            )
+            .labelStyle(.iconOnly)
         }
-        .appEditorToolbarPill()
         .tint(isEnabled ? AppColors.accent : nil)
+        .help("Dynamic Cues")
     }
 }
 
@@ -3574,10 +3599,11 @@ private struct ClickTrackEditorButton: View {
             editStartSnapshot = captureSnapshot()
             showingEditor = true
         } label: {
-            Image(systemName: "metronome")
+            Label("Click Track", systemImage: "metronome")
+                .labelStyle(.iconOnly)
         }
-        .appEditorToolbarPill()
         .tint(ClickTrackFileGenerator.hasClickTrack(in: song) ? AppColors.accent : nil)
+        .help("Click Track")
         .popover(isPresented: $showingEditor, arrowEdge: .bottom) {
             ClickTrackEditorMenu(
                 song: song,

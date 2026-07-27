@@ -98,9 +98,13 @@ struct SongDetailView: View {
                 Text(abletonImportSummary ?? "")
             }
             .onAppear(perform: handleAppear)
-            .navigationBarBackButtonHidden(shouldPromptToBake)
+            .navigationBarBackButtonHidden(true)
             .toolbar {
                 #if os(iOS)
+                ToolbarItem(placement: .topBarLeading) {
+                    backButton
+                }
+
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         undoController.undo()
@@ -121,13 +125,6 @@ struct SongDetailView: View {
                 #endif
 
                 if shouldPromptToBake {
-                    ToolbarItem(placement: .navigation) {
-                        Button {
-                            attemptDismiss()
-                        } label: {
-                            Label("Back", systemImage: "chevron.backward")
-                        }
-                    }
                     ToolbarItem(placement: .primaryAction) {
                         Button("Bake…") {
                             showingBakeSheet = true
@@ -189,6 +186,16 @@ struct SongDetailView: View {
             }
     }
 
+    private var backButton: some View {
+        Button {
+            attemptDismiss()
+        } label: {
+            Label("Back", systemImage: "chevron.backward")
+                .labelStyle(.iconOnly)
+        }
+        .help("Back")
+    }
+
     private var shouldPromptToBake: Bool {
         SongBakeStore.needsBake(for: activeSong)
     }
@@ -229,7 +236,8 @@ struct SongDetailView: View {
                         tempoChanges: $tempoChanges,
                         timeSignatureChanges: $timeSignatureChanges,
                         midiEvents: $midiEvents,
-                        showingSongLibrary: $showingSongLibrary
+                        showingSongLibrary: $showingSongLibrary,
+                        onBack: attemptDismiss
                     )
 
                     if viewModel.isReloadingSong {

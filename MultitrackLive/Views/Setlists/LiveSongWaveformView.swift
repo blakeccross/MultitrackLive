@@ -28,7 +28,7 @@ enum LiveSetlistWaveformMetrics {
     static let defaultWaveformHeightStorageValue = Double(defaultWaveformHeight)
     static let minimumWaveformHeight: CGFloat = 56
     static let maximumWaveformHeight: CGFloat = 200
-    static let laneVerticalPadding: CGFloat = 24
+    static let laneVerticalPadding: CGFloat = 0
 
     static let horizontalZoomAppStorageKey = "liveSetlistWaveformHorizontalZoom"
     static let defaultHorizontalZoom: CGFloat = 1
@@ -118,29 +118,12 @@ private struct LiveSetlistWaveformResizeHandle: View {
     private static let adjustmentStep: CGFloat = 8
 
     var body: some View {
-        ZStack {
-            VStack(spacing: 0) {
-                Rectangle()
-                    .fill(AppColors.separator)
-                    .frame(height: 1)
-
-                Spacer(minLength: 0)
-
-                Capsule()
-                    .fill(AppColors.textSecondary.opacity(0.55))
-                    .frame(width: 52, height: 5)
-
-                Spacer(minLength: 0)
-
-                Rectangle()
-                    .fill(AppColors.separator.opacity(0.65))
-                    .frame(height: 0.5)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: Self.hitAreaHeight)
-        .background(AppColors.backgroundSecondary)
-        .contentShape(Rectangle())
+        Capsule()
+            .fill(AppColors.textSecondary.opacity(0.55))
+            .frame(width: 52, height: 5)
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.hitAreaHeight)
+            .contentShape(Rectangle())
         .highPriorityGesture(
             DragGesture(minimumDistance: 1, coordinateSpace: .global)
                 .onChanged { value in

@@ -66,14 +66,13 @@ struct AppIconButton: View {
         RoundedRectangle(cornerRadius: resolvedCornerRadius, style: .continuous)
     }
 
-    private static let defaultBackground = Color(red: 0.14, green: 0.15, blue: 0.16)
     private static let defaultActiveBackground = Color(red: 0.24, green: 0.25, blue: 0.27)
 
     private var backgroundColor: Color {
         if isActive {
             return activeBackgroundColor ?? Self.defaultActiveBackground
         }
-        return Self.defaultBackground
+        return .clear
     }
 
     private var foregroundColor: Color {
@@ -90,9 +89,6 @@ struct AppIconButton: View {
                 .foregroundStyle(foregroundColor)
                 .frame(width: size, height: size)
                 .background(backgroundColor, in: buttonShape)
-                .overlay {
-                    buttonShape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-                }
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
