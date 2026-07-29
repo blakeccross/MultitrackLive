@@ -28,27 +28,27 @@ struct SharedTransportStrip: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: AppSpacing.sm) {
-            HStack(spacing: AppSpacing.xs) {
-                if let isFollowing, let onToggleFollow {
-                    Button(action: onToggleFollow) {
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: buttonSize * 0.38, weight: .semibold))
-                            .foregroundStyle(
-                                isFollowing
-                                    ? Color.white
-                                    : Color(red: 0.78, green: 0.80, blue: 0.82)
-                            )
-                            .frame(width: buttonSize, height: buttonSize)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!isLoaded)
-                    .opacity(isLoaded ? 1 : 0.4)
-                    .accessibilityLabel(
-                        isFollowing ? "Stop Following Playhead" : "Follow Playhead"
-                    )
+            if let isFollowing, let onToggleFollow {
+                Button(action: onToggleFollow) {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: buttonSize * 0.38, weight: .semibold))
+                        .foregroundStyle(
+                            isFollowing
+                                ? Color.white
+                                : Color(red: 0.78, green: 0.80, blue: 0.82)
+                        )
+                        .frame(width: buttonSize, height: buttonSize)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .disabled(!isLoaded)
+                .opacity(isLoaded ? 1 : 0.4)
+                .accessibilityLabel(
+                    isFollowing ? "Stop Following Playhead" : "Follow Playhead"
+                )
+            }
 
+            HStack(spacing: 0) {
                 AppIconButton(
                     systemImage: "stop.fill",
                     size: buttonSize,
@@ -84,6 +84,16 @@ struct SharedTransportStrip: View {
                 ) {
                     onToggleLoop()
                 }
+            }
+            .padding(.horizontal, 3)
+            .frame(height: buttonSize)
+            .background {
+                RoundedRectangle(cornerRadius: buttonSize * 0.16, style: .continuous)
+                    .fill(Color.black.opacity(0.30))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: buttonSize * 0.16, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.055), lineWidth: 0.5)
+                    }
             }
 
             TransportStatusReadout(
