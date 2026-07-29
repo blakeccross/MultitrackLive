@@ -817,24 +817,61 @@ struct LivePlaybackView: View {
     }
 
     private var setlistSection: some View {
-        Group {
-            if workingSetlist.sortedEntries.isEmpty {
-                AppEmptyState(
-                    title: "No Songs in Setlist",
-                    systemImage: "music.note.list",
-                    description: "Tap Add Song to build your setlist."
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(AppSpacing.md)
-                .contentShape(Rectangle())
-                .contextMenu {
-                    addHeaderContextMenu
+        VStack(spacing: 0) {
+            setlistAddMenu
+
+            Group {
+                if workingSetlist.sortedEntries.isEmpty {
+                    AppEmptyState(
+                        title: "No Songs in Setlist",
+                        systemImage: "music.note.list",
+                        description: "Use the add button to build your setlist."
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(AppSpacing.md)
+                    .contentShape(Rectangle())
+                    .contextMenu {
+                        addHeaderContextMenu
+                    }
+                } else {
+                    setlistList
                 }
-            } else {
-                setlistList
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var setlistAddMenu: some View {
+        HStack {
+            Spacer(minLength: 0)
+
+            Menu {
+                Button {
+                    addHeader()
+                } label: {
+                    Label("Header", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+
+                Button {
+                    showingSongLibrary = true
+                } label: {
+                    Label("Song", systemImage: "music.note")
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .menuIndicator(.hidden)
+            .accessibilityLabel("Add to setlist")
+            .help("Add to Setlist")
+        }
+        .frame(maxWidth: 720)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.top, AppSpacing.sm)
     }
 
     @ViewBuilder
@@ -848,8 +885,8 @@ struct LivePlaybackView: View {
 
     private var setlistList: some View {
         VStack(spacing: 0) {
-            setlistSummaryBar
             setlistEntryList
+            setlistSummaryBar
         }
         .frame(maxWidth: 720, maxHeight: .infinity)
         .frame(maxWidth: .infinity)
@@ -862,14 +899,14 @@ struct LivePlaybackView: View {
             Spacer(minLength: 0)
 
             if let totalSetlistDurationText {
-                Label(totalSetlistDurationText, systemImage: "clock")
+                Label("Total setlist length: \(totalSetlistDurationText) · \(workingSetlist.sortedEntries.count) songs", systemImage: "clock")
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(AppColors.textTertiary)
                     .accessibilityLabel("Total setlist length \(totalSetlistDurationText)")
             }
         }
         .padding(.horizontal, AppSpacing.sm)
-        .padding(.bottom, AppSpacing.xs)
+        .padding(.top, AppSpacing.xs)
     }
 
     private var totalSetlistDurationText: String? {
