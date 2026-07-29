@@ -29,15 +29,19 @@ final class SetlistViewModel {
     }
 
     func moveEntries(in setlist: Setlist, from source: IndexSet, to destination: Int, context: ModelContext) {
-        var sorted = setlist.sortedEntries
-        let movedEntries = source.map { sorted[$0] }
-        sorted.move(fromOffsets: source, toOffset: destination)
-        for (index, entry) in sorted.enumerated() {
-            entry.sortOrder = index
-        }
-        for entry in movedEntries where entry.transition == .overlap {
-            entry.transition = .continue
-        }
+        let movedEntries = applyMove(in: setlist, from: source, to: destination)
+        clearOverlapTransitions(for: movedEntries)
+        persistSetlist(setlist, context: context)
+    }
+
+    /// Reorders in memory only. Saving on every step of a drag would stall on disk writes,
+    /// so callers pair this with `commitEntryOrder` once the drag finishes.
+    func previewMoveEntries(in setlist: Setlist, from source: IndexSet, to destination: Int) {
+        applyMove(in: setlist, from: source, to: destination)
+    }
+
+    func commitEntryOrder(in setlist: Setlist, movedEntries: [SetlistEntry], context: ModelContext) {
+        clearOverlapTransitions(for: movedEntries)
         persistSetlist(setlist, context: context)
     }
 
@@ -56,6 +60,23 @@ final class SetlistViewModel {
         entry.overlapConfig = config
         entry.transition = .overlap
         persistSetlist(setlist, context: context)
+    }
+
+    @discardableResult
+    private func applyMove(in setlist: Setlist, from source: IndexSet, to destination: Int) -> [SetlistEntry] {
+        var sorted = setlist.sortedEntries
+        let movedEntries = source.map { sorted[$0] }
+        sorted.move(fromOffsets: source, toOffset: destination)
+        for (index, entry) in sorted.enumerated() {
+            entry.sortOrder = index
+        }
+        return movedEntries
+    }
+
+    private func clearOverlapTransitions(for entries: [SetlistEntry]) {
+        for entry in entries where entry.transition == .overlap {
+            entry.transition = .continue
+        }
     }
 
     private func insertEntry(_ entry: SetlistEntry, at index: Int, in setlist: Setlist, context: ModelContext) {

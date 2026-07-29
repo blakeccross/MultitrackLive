@@ -69,6 +69,8 @@ struct LivePlaybackView: View {
     @State private var headerPendingEdit: SetlistEntry?
     @State private var editHeaderTitle = ""
     @State private var overlapEditorContext: SetlistOverlapEditorContext?
+    @State private var draggedSetlistEntryID: PersistentIdentifier?
+    @State private var hasPendingSetlistReorder = false
     @State private var showingMissingMediaAlert = false
     @State private var missingMediaSheet: MissingMediaSheetContext?
     @State private var ignoredMissingMediaPromptForSetlistID: UUID?
@@ -895,10 +897,6 @@ struct LivePlaybackView: View {
                             setlistEntryRow(song: song, entry: entry)
                         }
                     }
-                    .onMove { source, destination in
-                        viewModel.moveEntries(in: workingSetlist, from: source, to: destination, context: modelContext)
-                        coordinator.syncSetlist(workingSetlist)
-                    }
                     .onDelete { indexSet in
                         let entries = workingSetlist.sortedEntries
                         for index in indexSet {
@@ -912,6 +910,7 @@ struct LivePlaybackView: View {
             .scrollContentBackground(.hidden)
             .frame(minHeight: geometry.size.height)
             .contentShape(Rectangle())
+            .onDrop(of: [.text], delegate: setlistDropDelegate(targetID: nil))
             .contextMenu {
                 addHeaderContextMenu
             }
@@ -920,11 +919,18 @@ struct LivePlaybackView: View {
     }
 
     private func setlistHeaderRow(entry: SetlistEntry) -> some View {
-        SetlistHeaderRow(title: entry.headerTitle ?? "")
+        let title = entry.headerTitle ?? ""
+
+        return HStack(spacing: 0) {
+            setlistReorderHandle(for: entry)
+            SetlistHeaderRow(title: title)
+        }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(isBeingDragged(entry) ? 0.3 : 1)
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppColors.backgroundSecondary)
+            .onDrop(of: [.text], delegate: setlistDropDelegate(targetID: entry.id))
             .contextMenu {
                 Button {
                     headerPendingEdit = entry
@@ -943,26 +949,31 @@ struct LivePlaybackView: View {
         let playbackIndex = workingSetlist.playbackIndex(for: entry) ?? 0
         let transition = workingSetlist.hasNextSong(after: entry) ? entry.transition : nil
 
-        return Button {
-            coordinator.goToSong(at: playbackIndex, autoPlay: coordinator.isAudiblePlaying)
-        } label: {
-            SetlistPlaybackRow(
-                song: song,
-                index: playbackIndex,
-                currentIndex: coordinator.currentIndex,
-                isPlaying: coordinator.isPlaying,
-                hasMissingMedia: songHasMissingMedia(song),
-                transition: transition,
-                onOverlapBadgeTap: transition == .overlap
-                    ? { presentOverlapEditor(for: entry) }
-                    : nil
-            )
+        return HStack(spacing: 0) {
+            setlistReorderHandle(for: entry)
+
+            Button {
+                coordinator.goToSong(at: playbackIndex, autoPlay: coordinator.isAudiblePlaying)
+            } label: {
+                SetlistPlaybackRow(
+                    song: song,
+                    index: playbackIndex,
+                    currentIndex: coordinator.currentIndex,
+                    isPlaying: coordinator.isPlaying,
+                    hasMissingMedia: songHasMissingMedia(song),
+                    transition: transition,
+                    onOverlapBadgeTap: transition == .overlap
+                        ? { presentOverlapEditor(for: entry) }
+                        : nil
+                )
+            }
+            .buttonStyle(.plain)
+            #if os(macOS)
+            .focusEffectDisabled()
+            #endif
+            .appLinkPointer()
         }
-        .buttonStyle(.plain)
-        #if os(macOS)
-        .focusEffectDisabled()
-        #endif
-        .appLinkPointer()
+        .opacity(isBeingDragged(entry) ? 0.3 : 1)
         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
         .listRowSeparator(.hidden)
         .listRowBackground(
@@ -970,6 +981,7 @@ struct LivePlaybackView: View {
                 ? AppColors.accent.opacity(0.12)
                 : Color.clear
         )
+        .onDrop(of: [.text], delegate: setlistDropDelegate(targetID: entry.id))
         .contextMenu {
             Button {
                 coordinator.goToSong(at: playbackIndex, autoPlay: coordinator.isAudiblePlaying)
@@ -1007,6 +1019,74 @@ struct LivePlaybackView: View {
                 removeFromSetlist(entry)
             }
         }
+    }
+
+    private func setlistReorderHandle(for entry: SetlistEntry) -> some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.body.weight(.semibold))
+            .foregroundStyle(AppColors.textTertiary)
+            .frame(width: 36)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .accessibilityLabel("Reorder \(entry.isHeader ? "header" : "song")")
+            .help("Drag to reorder")
+            .onDrag {
+                commitSetlistReorder()
+                draggedSetlistEntryID = entry.id
+                return NSItemProvider(object: "setlist-entry" as NSString)
+            } preview: {
+                // The list reorders in place, so the floating drag image would only be noise.
+                Color.clear.frame(width: 1, height: 1)
+            }
+    }
+
+    private func isBeingDragged(_ entry: SetlistEntry) -> Bool {
+        draggedSetlistEntryID == entry.id
+    }
+
+    private func setlistDropDelegate(targetID: PersistentIdentifier?) -> SetlistEntryDropDelegate {
+        SetlistEntryDropDelegate(
+            targetID: targetID,
+            draggedID: draggedSetlistEntryID,
+            onMove: previewSetlistMove,
+            onCommit: commitSetlistReorder
+        )
+    }
+
+    private func previewSetlistMove(_ draggedID: PersistentIdentifier, before targetID: PersistentIdentifier) {
+        let entries = workingSetlist.sortedEntries
+        guard let sourceIndex = entries.firstIndex(where: { $0.id == draggedID }),
+              let targetIndex = entries.firstIndex(where: { $0.id == targetID }),
+              sourceIndex != targetIndex else {
+            return
+        }
+
+        let destination = targetIndex > sourceIndex ? targetIndex + 1 : targetIndex
+        hasPendingSetlistReorder = true
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+            viewModel.previewMoveEntries(
+                in: workingSetlist,
+                from: IndexSet(integer: sourceIndex),
+                to: destination
+            )
+        }
+    }
+
+    private func commitSetlistReorder() {
+        let movedEntry = draggedSetlistEntryID.flatMap { id in
+            workingSetlist.sortedEntries.first { $0.id == id }
+        }
+        draggedSetlistEntryID = nil
+
+        guard hasPendingSetlistReorder else { return }
+        hasPendingSetlistReorder = false
+
+        viewModel.commitEntryOrder(
+            in: workingSetlist,
+            movedEntries: movedEntry.map { [$0] } ?? [],
+            context: modelContext
+        )
+        coordinator.syncSetlist(workingSetlist)
     }
 
     private func songHasMissingMedia(_ song: Song) -> Bool {
@@ -1191,6 +1271,33 @@ private struct LivePlaybackMonitorSupport: View {
             onLoop: onLoop,
             onLoopActivated: onLoopActivated
         )
+    }
+}
+
+/// Reorders live as the drag passes over a row. A nil `targetID` marks the list background,
+/// which only needs to commit whatever order the drag left behind.
+private struct SetlistEntryDropDelegate: DropDelegate {
+    let targetID: PersistentIdentifier?
+    let draggedID: PersistentIdentifier?
+    let onMove: (PersistentIdentifier, PersistentIdentifier) -> Void
+    let onCommit: () -> Void
+
+    func validateDrop(info: DropInfo) -> Bool {
+        draggedID != nil
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedID, let targetID, draggedID != targetID else { return }
+        onMove(draggedID, targetID)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        onCommit()
+        return true
     }
 }
 
