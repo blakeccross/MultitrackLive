@@ -24,9 +24,13 @@ struct TrackLaneHeaderView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(track.displayName)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(isSelected ? AppColors.textPrimary : AppColors.textSecondary)
+                .foregroundStyle(.white)
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(trackColors.body)
+                .clipShape(RoundedRectangle(cornerRadius: 3))
 
             groupPicker
 
