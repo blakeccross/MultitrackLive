@@ -29,6 +29,7 @@ struct EditView: View {
     @Binding var timeSignatureChanges: [TimeSignatureChange]
     @Binding var midiEvents: [MIDIEvent]
     @Binding var showingSongLibrary: Bool
+    @Binding var showingBakeSheet: Bool
     var onBack: () -> Void = {}
 
     @State private var showingMIDIDevicePicker = false
@@ -713,6 +714,7 @@ struct EditView: View {
                 clipRegions: $clipRegions,
                 loopSlotIDs: $loopSlotIDs,
                 showingSongLibrary: $showingSongLibrary,
+                showingBakeSheet: $showingBakeSheet,
                 onBack: onBack,
                 onClearMarkerCue: { clearMarkerCue() },
                 currentSectionAtTime: { time in
@@ -1376,6 +1378,7 @@ struct EditView: View {
             clipRegions: $clipRegions,
             loopSlotIDs: $loopSlotIDs,
             showingSongLibrary: $showingSongLibrary,
+            showingBakeSheet: $showingBakeSheet,
             onClearMarkerCue: { clearMarkerCue() },
             onPersistArrangement: {
                 performUndoableChange("Edit Arrangement") {
@@ -1998,6 +2001,7 @@ private struct EditSongToolbarContent: ToolbarContent {
     @Binding var clipRegions: [ClipRegion]
     @Binding var loopSlotIDs: Set<UUID>
     @Binding var showingSongLibrary: Bool
+    @Binding var showingBakeSheet: Bool
     let onBack: () -> Void
     let onClearMarkerCue: () -> Void
     let currentSectionAtTime: (TimeInterval) -> ArrangementDisplaySection?
@@ -2024,16 +2028,6 @@ private struct EditSongToolbarContent: ToolbarContent {
             }
             .sharedBackgroundVisibility(.hidden)
 
-            ToolbarItem(placement: .navigation) {
-                ClickTrackEditorButton(
-                    song: song,
-                    viewModel: viewModel,
-                    captureSnapshot: captureSnapshot,
-                    registerUndo: registerUndo
-                )
-            }
-            .sharedBackgroundVisibility(.hidden)
-
             ToolbarItem(placement: .principal) {
                 transportStrip(at: audioEngine.currentTime)
             }
@@ -2041,6 +2035,16 @@ private struct EditSongToolbarContent: ToolbarContent {
 
             ToolbarItem(placement: .primaryAction) {
                 changeKeyButton
+            }
+            .sharedBackgroundVisibility(.hidden)
+
+            ToolbarItem(placement: .primaryAction) {
+                ClickTrackEditorButton(
+                    song: song,
+                    viewModel: viewModel,
+                    captureSnapshot: captureSnapshot,
+                    registerUndo: registerUndo
+                )
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -2060,6 +2064,11 @@ private struct EditSongToolbarContent: ToolbarContent {
                 }
                 .sharedBackgroundVisibility(.hidden)
             }
+
+            ToolbarItem(placement: .primaryAction) {
+                moreMenu
+            }
+            .sharedBackgroundVisibility(.hidden)
         } else {
             ToolbarItem(placement: .navigation) {
                 backButton
@@ -2069,21 +2078,21 @@ private struct EditSongToolbarContent: ToolbarContent {
                 songsButton
             }
 
-            ToolbarItem(placement: .navigation) {
-                ClickTrackEditorButton(
-                    song: song,
-                    viewModel: viewModel,
-                    captureSnapshot: captureSnapshot,
-                    registerUndo: registerUndo
-                )
-            }
-
             ToolbarItem(placement: .principal) {
                 transportStrip(at: audioEngine.currentTime)
             }
 
             ToolbarItem(placement: .primaryAction) {
                 changeKeyButton
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                ClickTrackEditorButton(
+                    song: song,
+                    viewModel: viewModel,
+                    captureSnapshot: captureSnapshot,
+                    registerUndo: registerUndo
+                )
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -2099,6 +2108,10 @@ private struct EditSongToolbarContent: ToolbarContent {
                 ToolbarItem(placement: .primaryAction) {
                     arrangementEditorButton
                 }
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                moreMenu
             }
         }
     }
@@ -2215,6 +2228,19 @@ private struct EditSongToolbarContent: ToolbarContent {
             )
         }
     }
+
+    private var moreMenu: some View {
+        Menu {
+            Button("Bake Tracks") {
+                showingBakeSheet = true
+            }
+            .disabled(song.sortedTracks.isEmpty)
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
+                .labelStyle(.iconOnly)
+        }
+        .help("More")
+    }
 }
 #endif
 
@@ -2238,6 +2264,7 @@ private struct EditTransportBar: View {
     @Binding var clipRegions: [ClipRegion]
     @Binding var loopSlotIDs: Set<UUID>
     @Binding var showingSongLibrary: Bool
+    @Binding var showingBakeSheet: Bool
     let onClearMarkerCue: () -> Void
     let onPersistArrangement: () -> Void
     let onUndoableChange: UndoableChangeHandler
@@ -2315,12 +2342,6 @@ private struct EditTransportBar: View {
     private var leadingControls: some View {
         HStack(spacing: 8) {
             songsButton
-            ClickTrackEditorButton(
-                song: song,
-                viewModel: viewModel,
-                captureSnapshot: captureSnapshot,
-                registerUndo: registerUndo
-            )
         }
     }
 
@@ -2328,6 +2349,12 @@ private struct EditTransportBar: View {
     private var trailingControls: some View {
         HStack(spacing: 8) {
             changeKeyButton
+            ClickTrackEditorButton(
+                song: song,
+                viewModel: viewModel,
+                captureSnapshot: captureSnapshot,
+                registerUndo: registerUndo
+            )
             CueTrackEditorButton(
                 song: song,
                 viewModel: viewModel,
@@ -2337,6 +2364,7 @@ private struct EditTransportBar: View {
             if !markers.isEmpty {
                 arrangementEditorButton
             }
+            moreMenu
         }
     }
 
@@ -2422,6 +2450,19 @@ private struct EditTransportBar: View {
                 onUndoableChange: onUndoableChange
             )
         }
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            Button("Bake Tracks…") {
+                showingBakeSheet = true
+            }
+            .disabled(song.sortedTracks.isEmpty)
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
+                .labelStyle(.iconOnly)
+        }
+        .help("More")
     }
 
     private var songsButton: some View {
@@ -3651,7 +3692,7 @@ private struct CueTrackEditorButton: View {
             editStartSnapshot = captureSnapshot()
             showingEditor = true
         } label: {
-            Label("Cue Track", systemImage: "speaker.wave.2")
+            Label("Cue Track", systemImage: "person.wave.2")
                 .labelStyle(.iconOnly)
         }
         .tint(CueTrackFileGenerator.hasCueTrack(in: song) ? AppColors.accent : nil)
@@ -3983,6 +4024,7 @@ struct RenameSectionSheet: View {
             TimeSignatureChange(numerator: 4, denominator: 4, startMeasure: 1, sortOrder: 0)
         ]),
         midiEvents: .constant([]),
-        showingSongLibrary: .constant(false)
+        showingSongLibrary: .constant(false),
+        showingBakeSheet: .constant(false)
     )
 }

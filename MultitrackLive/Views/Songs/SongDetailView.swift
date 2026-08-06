@@ -123,14 +123,6 @@ struct SongDetailView: View {
                     .accessibilityLabel(undoController.redoActionName.map { "Redo \($0)" } ?? "Redo")
                 }
                 #endif
-
-                if shouldPromptToBake {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Bake…") {
-                            showingBakeSheet = true
-                        }
-                    }
-                }
             }
             .confirmationDialog(
                 "Bake for performance?",
@@ -196,10 +188,6 @@ struct SongDetailView: View {
         .help("Back")
     }
 
-    private var shouldPromptToBake: Bool {
-        SongBakeStore.needsBake(for: activeSong)
-    }
-
     private var bakePromptMessage: String {
         let trackCount = activeSong.sortedTracks.count
         return "This song has \(trackCount) tracks. Baking creates one stem per group for smoother live playback. You can still edit the original multitracks anytime."
@@ -237,6 +225,7 @@ struct SongDetailView: View {
                         timeSignatureChanges: $timeSignatureChanges,
                         midiEvents: $midiEvents,
                         showingSongLibrary: $showingSongLibrary,
+                        showingBakeSheet: $showingBakeSheet,
                         onBack: attemptDismiss
                     )
 
