@@ -715,7 +715,6 @@ struct EditView: View {
                 showingSongLibrary: $showingSongLibrary,
                 onBack: onBack,
                 onClearMarkerCue: { clearMarkerCue() },
-                onToggleDynamicCues: toggleDynamicCues,
                 currentSectionAtTime: { time in
                     displaySections.section(atTimeline: time)
                 },
@@ -1191,13 +1190,6 @@ struct EditView: View {
         sectionAnnouncer.prepare(names: displaySections.map(\.name))
     }
 
-    private func toggleDynamicCues() {
-        song.dynamicCuesEnabled.toggle()
-        try? modelContext.save()
-        persistProjectState()
-        prepareSectionAnnouncements()
-    }
-
     private func cueSection(_ section: ArrangementDisplaySection) {
         sectionLoop.endLoopIfActive()
 
@@ -1385,7 +1377,6 @@ struct EditView: View {
             loopSlotIDs: $loopSlotIDs,
             showingSongLibrary: $showingSongLibrary,
             onClearMarkerCue: { clearMarkerCue() },
-            onToggleDynamicCues: toggleDynamicCues,
             onPersistArrangement: {
                 performUndoableChange("Edit Arrangement") {
                     persistArrangement()
@@ -2009,7 +2000,6 @@ private struct EditSongToolbarContent: ToolbarContent {
     @Binding var showingSongLibrary: Bool
     let onBack: () -> Void
     let onClearMarkerCue: () -> Void
-    let onToggleDynamicCues: () -> Void
     let currentSectionAtTime: (TimeInterval) -> ArrangementDisplaySection?
     let onStopTransport: () -> Void
     let onToggleLoopAtTime: (TimeInterval) -> Void
@@ -2055,7 +2045,12 @@ private struct EditSongToolbarContent: ToolbarContent {
             .sharedBackgroundVisibility(.hidden)
 
             ToolbarItem(placement: .primaryAction) {
-                DynamicCuesButton(isEnabled: song.dynamicCuesEnabled, onToggle: onToggleDynamicCues)
+                CueTrackEditorButton(
+                    song: song,
+                    viewModel: viewModel,
+                    captureSnapshot: captureSnapshot,
+                    registerUndo: registerUndo
+                )
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -2092,7 +2087,12 @@ private struct EditSongToolbarContent: ToolbarContent {
             }
 
             ToolbarItem(placement: .primaryAction) {
-                DynamicCuesButton(isEnabled: song.dynamicCuesEnabled, onToggle: onToggleDynamicCues)
+                CueTrackEditorButton(
+                    song: song,
+                    viewModel: viewModel,
+                    captureSnapshot: captureSnapshot,
+                    registerUndo: registerUndo
+                )
             }
 
             if !markers.isEmpty {
@@ -2239,7 +2239,6 @@ private struct EditTransportBar: View {
     @Binding var loopSlotIDs: Set<UUID>
     @Binding var showingSongLibrary: Bool
     let onClearMarkerCue: () -> Void
-    let onToggleDynamicCues: () -> Void
     let onPersistArrangement: () -> Void
     let onUndoableChange: UndoableChangeHandler
     let captureSnapshot: () -> SongEditSnapshot
@@ -2329,7 +2328,12 @@ private struct EditTransportBar: View {
     private var trailingControls: some View {
         HStack(spacing: 8) {
             changeKeyButton
-            DynamicCuesButton(isEnabled: song.dynamicCuesEnabled, onToggle: onToggleDynamicCues)
+            CueTrackEditorButton(
+                song: song,
+                viewModel: viewModel,
+                captureSnapshot: captureSnapshot,
+                registerUndo: registerUndo
+            )
             if !markers.isEmpty {
                 arrangementEditorButton
             }
@@ -3630,20 +3634,131 @@ private struct TimelineTempoRulerView: View {
     }
 }
 
-private struct DynamicCuesButton: View {
-    let isEnabled: Bool
-    let onToggle: () -> Void
+private struct CueTrackEditorButton: View {
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var song: Song
+    let viewModel: SongEditorViewModel
+    let captureSnapshot: () -> SongEditSnapshot
+    let registerUndo: (_ actionName: String, _ before: SongEditSnapshot, _ after: SongEditSnapshot) -> Void
+
+    @State private var showingEditor = false
+    @State private var editStartSnapshot: SongEditSnapshot?
+    @State private var isGenerating = false
+    @State private var generateError: String?
 
     var body: some View {
-        Button(action: onToggle) {
-            Label(
-                "Dynamic Cues",
-                systemImage: isEnabled ? "speaker.wave.2.fill" : "speaker.wave.2"
-            )
-            .labelStyle(.iconOnly)
+        Button {
+            editStartSnapshot = captureSnapshot()
+            showingEditor = true
+        } label: {
+            Label("Cue Track", systemImage: "speaker.wave.2")
+                .labelStyle(.iconOnly)
         }
-        .tint(isEnabled ? AppColors.accent : nil)
-        .help("Dynamic Cues")
+        .tint(CueTrackFileGenerator.hasCueTrack(in: song) ? AppColors.accent : nil)
+        .help("Cue Track")
+        .popover(isPresented: $showingEditor, arrowEdge: .bottom) {
+            CueTrackEditorMenu(
+                song: song,
+                viewModel: viewModel,
+                isGenerating: $isGenerating,
+                generateError: $generateError,
+                onGenerate: generateCues
+            )
+        }
+        .onChange(of: showingEditor) { _, isShowing in
+            guard !isShowing, let before = editStartSnapshot else { return }
+            let after = captureSnapshot()
+            if before != after {
+                registerUndo("Generate Cue Track", before, after)
+            }
+            editStartSnapshot = nil
+            generateError = nil
+        }
+    }
+
+    private func generateCues() {
+        isGenerating = true
+        generateError = nil
+        Task { @MainActor in
+            do {
+                _ = try await CueTrackFileGenerator.generateAndAttach(
+                    to: song,
+                    context: modelContext,
+                    sourceDurationForTrack: { trackID in
+                        if let track = song.sortedTracks.first(where: { $0.id == trackID }) {
+                            return viewModel.fileDuration(for: track)
+                        }
+                        return 1
+                    }
+                )
+                viewModel.reloadSongAfterMediaChange()
+                showingEditor = false
+            } catch {
+                generateError = error.localizedDescription
+            }
+            isGenerating = false
+        }
+    }
+}
+
+private struct CueTrackEditorMenu: View {
+    @Bindable var song: Song
+    let viewModel: SongEditorViewModel
+    @Binding var isGenerating: Bool
+    @Binding var generateError: String?
+    let onGenerate: () -> Void
+
+    private var sourceDurationForTrack: (UUID) -> TimeInterval {
+        { trackID in
+            if let track = song.sortedTracks.first(where: { $0.id == trackID }) {
+                return viewModel.fileDuration(for: track)
+            }
+            return 1
+        }
+    }
+
+    private var canGenerate: Bool {
+        let duration = CueTrackFileGenerator.timelineDuration(
+            for: song,
+            sourceDurationForTrack: sourceDurationForTrack
+        )
+        let hasAnnouncements = !CueTrackFileGenerator.scheduledAnnouncements(
+            for: song,
+            sourceDurationForTrack: sourceDurationForTrack
+        ).isEmpty
+        return duration > 0 && hasAnnouncements && !isGenerating
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Cue Track")
+                .font(.headline)
+
+            Button {
+                onGenerate()
+            } label: {
+                if isGenerating {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text(CueTrackFileGenerator.hasCueTrack(in: song) ? "Regenerate Cues" : "Generate Cues")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!canGenerate)
+
+            if let generateError {
+                Text(generateError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            Text("Creates an audio track that speaks each section name one measure before it starts.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .frame(minWidth: 280)
     }
 }
 

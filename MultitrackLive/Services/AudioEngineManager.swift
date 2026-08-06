@@ -94,31 +94,13 @@ final class AudioEngineManager {
 
     /// Duration of one measure ending at `timelineSeconds`, using the active tempo/meter.
     func measureLeadDuration(endingAt timelineSeconds: TimeInterval) -> TimeInterval {
-        let safeTime = max(0, timelineSeconds)
         let tempos = tempoChanges.isEmpty
             ? [TempoChange(startMeasure: 1, bpm: referenceBPM > 0 ? referenceBPM : TempoChange.defaultBPM)]
             : tempoChanges
-        let signatures = timeSignatureChanges.isEmpty
-            ? [
-                TimeSignatureChange(
-                    numerator: MeasureTiming.defaultNumerator,
-                    denominator: MeasureTiming.defaultDenominator,
-                    startMeasure: 1
-                )
-            ]
-            : timeSignatureChanges
-
-        let measure = MeasureTiming.measureIndex(
-            at: max(0, safeTime - 0.0001),
+        return MeasureTiming.measureLeadDuration(
+            endingAt: timelineSeconds,
             tempoChanges: tempos,
-            timeSignatureChanges: signatures
-        )
-        let bpm = MeasureTiming.bpmForMeasure(measure, tempoChanges: tempos)
-        let signature = MeasureTiming.numeratorDenominatorForMeasure(measure, changes: signatures)
-        return MeasureTiming.measureDuration(
-            bpm: bpm,
-            numerator: signature.numerator,
-            denominator: signature.denominator
+            timeSignatureChanges: timeSignatureChanges
         )
     }
 

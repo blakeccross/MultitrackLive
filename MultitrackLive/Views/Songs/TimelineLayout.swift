@@ -205,6 +205,40 @@ enum MeasureTiming {
         return beatsPerMeasure(numerator: numerator, denominator: denominator) * 60.0 / bpm
     }
 
+    /// Duration of one measure ending at `timelineSeconds`, using the active tempo/meter.
+    static func measureLeadDuration(
+        endingAt timelineSeconds: TimeInterval,
+        tempoChanges: [TempoChange],
+        timeSignatureChanges: [TimeSignatureChange]
+    ) -> TimeInterval {
+        let safeTime = max(0, timelineSeconds)
+        let tempos = tempoChanges.isEmpty
+            ? [TempoChange(startMeasure: 1, bpm: TempoChange.defaultBPM)]
+            : tempoChanges
+        let signatures = timeSignatureChanges.isEmpty
+            ? [
+                TimeSignatureChange(
+                    numerator: defaultNumerator,
+                    denominator: defaultDenominator,
+                    startMeasure: 1
+                )
+            ]
+            : timeSignatureChanges
+
+        let measure = measureIndex(
+            at: max(0, safeTime - 0.0001),
+            tempoChanges: tempos,
+            timeSignatureChanges: signatures
+        )
+        let bpm = bpmForMeasure(measure, tempoChanges: tempos)
+        let signature = numeratorDenominatorForMeasure(measure, changes: signatures)
+        return measureDuration(
+            bpm: bpm,
+            numerator: signature.numerator,
+            denominator: signature.denominator
+        )
+    }
+
     static func bpmForMeasure(
         _ measure: Int,
         tempoChanges: [TempoChange]

@@ -228,6 +228,87 @@ final class DecodedStemBuffer: StemSampleSource, @unchecked Sendable {
         return sampleA + (sampleB - sampleA) * fraction
     }
 
+    /// Converts a PCM buffer to a mono engine-rate stem, downmixing and resampling as needed.
+    static func monoStem(
+        from buffer: AVAudioPCMBuffer,
+        targetSampleRate: Double = engineSampleRate
+    ) throws -> DecodedStemBuffer {
+        guard buffer.frameLength > 0 else { throw DecodedStemBufferError.emptyFile }
+
+        let sourceFormat = buffer.format
+        guard let monoFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: targetSampleRate,
+            channels: 1,
+            interleaved: false
+        ) else {
+            throw DecodedStemBufferError.unsupportedFormat
+        }
+
+        let converted: AVAudioPCMBuffer
+        if sourceFormat.sampleRate == monoFormat.sampleRate,
+           sourceFormat.channelCount == 1,
+           sourceFormat.commonFormat == .pcmFormatFloat32,
+           !sourceFormat.isInterleaved {
+            converted = buffer
+        } else {
+            guard let converter = AVAudioConverter(from: sourceFormat, to: monoFormat) else {
+                throw DecodedStemBufferError.conversionFailed
+            }
+            let ratio = monoFormat.sampleRate / sourceFormat.sampleRate
+            let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
+            guard let output = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: capacity) else {
+                throw DecodedStemBufferError.conversionFailed
+            }
+
+            var error: NSError?
+            var consumedInput = false
+            let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+                if consumedInput {
+                    outStatus.pointee = .noDataNow
+                    return nil
+                }
+                consumedInput = true
+                outStatus.pointee = .haveData
+                return buffer
+            }
+            converter.convert(to: output, error: &error, withInputFrom: inputBlock)
+            if error != nil {
+                throw DecodedStemBufferError.conversionFailed
+            }
+            converted = output
+        }
+
+        let frameCount = Int(converted.frameLength)
+        guard frameCount > 0, let source = converted.floatChannelData?[0] else {
+            throw DecodedStemBufferError.emptyFile
+        }
+
+        // If conversion kept multiple channels (shouldn't with monoFormat), downmix manually.
+        let channelCount = Int(converted.format.channelCount)
+        let pointer = UnsafeMutablePointer<Float>.allocate(capacity: frameCount)
+        if channelCount <= 1 {
+            pointer.initialize(from: source, count: frameCount)
+        } else {
+            pointer.initialize(repeating: 0, count: frameCount)
+            let scale = 1 / Float(channelCount)
+            for channel in 0..<channelCount {
+                guard let channelData = converted.floatChannelData?[channel] else { continue }
+                for frame in 0..<frameCount {
+                    pointer[frame] += channelData[frame] * scale
+                }
+            }
+        }
+
+        return DecodedStemBuffer(
+            sampleRate: targetSampleRate,
+            channelCount: 1,
+            frameCount: frameCount,
+            audioFormat: monoFormat,
+            channels: [pointer]
+        )
+    }
+
     static func silent(
         frameCount: Int,
         sampleRate: Double = engineSampleRate,
