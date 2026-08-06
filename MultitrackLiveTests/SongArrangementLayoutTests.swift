@@ -78,7 +78,7 @@ final class SongArrangementLayoutTests: XCTestCase {
         XCTAssertEqual(sections[1].sourceStartSeconds, 4, accuracy: 0.001)
     }
 
-    func testPackedRulerSectionsShowPerMarkerTrackLanes() {
+    func testIdentityArrangementKeepsContinuousTrackLanes() {
         let markers = [
             ArrangementMarker(name: "INTRO", startSeconds: 8, sortOrder: 0),
             ArrangementMarker(name: "V1", startSeconds: 16, sortOrder: 1),
@@ -86,13 +86,28 @@ final class SongArrangementLayoutTests: XCTestCase {
         let slots = SongArrangementStore.defaultSlots(from: markers)
         let trackID = UUID()
 
-        let rulerSections = SongArrangementStore.rulerDisplaySections(
-            slots: slots,
-            markers: markers,
-            clipTrims: [],
-            trackIDs: [trackID],
-            sourceDurationForTrack: { _ in 120 }
+        XCTAssertFalse(
+            SongArrangementStore.usesSectionedTrackLayout(
+                slots: slots,
+                markers: markers
+            )
         )
+
+        let layout = SongArrangementStore.buildLayoutSnapshot(
+            slots: slots,
+            clipTrims: [],
+            removedClips: [],
+            inputs: SongArrangementStore.makeLayoutInputs(
+                markers: markers,
+                trackIDs: [trackID],
+                sourceDurationForTrack: { _ in 120 }
+            )
+        )
+
+        XCTAssertEqual(layout.rulerSections.count, 2)
+        XCTAssertEqual(layout.rulerSections[0].timelineStartSeconds, 8, accuracy: 0.001)
+        XCTAssertEqual(layout.rulerSections[1].timelineStartSeconds, 16, accuracy: 0.001)
+        XCTAssertTrue(layout.trackSections[trackID]?.isEmpty ?? true)
 
         let trackSections = SongArrangementStore.trackDisplaySections(
             for: trackID,
@@ -103,7 +118,117 @@ final class SongArrangementLayoutTests: XCTestCase {
             trackIDs: [trackID],
             sourceDurationForTrack: { _ in 120 }
         )
-        XCTAssertFalse(trackSections.isEmpty)
+        XCTAssertTrue(trackSections.isEmpty)
+    }
+
+    func testRearrangedArrangementCutsOnlyMovedSection() {
+        let markers = [
+            ArrangementMarker(name: "A", startSeconds: 0, sortOrder: 0),
+            ArrangementMarker(name: "B", startSeconds: 10, sortOrder: 1),
+            ArrangementMarker(name: "C", startSeconds: 20, sortOrder: 2),
+            ArrangementMarker(name: "D", startSeconds: 30, sortOrder: 3),
+        ]
+        var slots = SongArrangementStore.defaultSlots(from: markers)
+        // Move D to the front: D | A B C
+        let moved = slots.removeLast()
+        slots.insert(moved, at: 0)
+        let trackID = UUID()
+
+        let trackSections = SongArrangementStore.trackDisplaySections(
+            for: trackID,
+            slots: slots,
+            markers: markers,
+            clipTrims: [],
+            removedClips: [],
+            trackIDs: [trackID],
+            sourceDurationForTrack: { _ in 40 }
+        )
+
+        XCTAssertEqual(trackSections.count, 2)
+        XCTAssertEqual(trackSections[0].sourceStartSeconds, 30, accuracy: 0.001)
+        XCTAssertEqual(trackSections[0].sourceEndSeconds, 40, accuracy: 0.001)
+        XCTAssertEqual(trackSections[0].timelineStartSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(trackSections[1].sourceStartSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(trackSections[1].sourceEndSeconds, 30, accuracy: 0.001)
+        XCTAssertEqual(trackSections[1].timelineStartSeconds, 10, accuracy: 0.001)
+    }
+
+    func testRemovedMiddleSectionCutsAroundGap() {
+        let markers = [
+            ArrangementMarker(name: "A", startSeconds: 0, sortOrder: 0),
+            ArrangementMarker(name: "B", startSeconds: 10, sortOrder: 1),
+            ArrangementMarker(name: "C", startSeconds: 20, sortOrder: 2),
+            ArrangementMarker(name: "D", startSeconds: 30, sortOrder: 3),
+        ]
+        var slots = SongArrangementStore.defaultSlots(from: markers)
+        slots.remove(at: 2) // remove C → A B D
+        let trackID = UUID()
+
+        let trackSections = SongArrangementStore.trackDisplaySections(
+            for: trackID,
+            slots: slots,
+            markers: markers,
+            clipTrims: [],
+            removedClips: [],
+            trackIDs: [trackID],
+            sourceDurationForTrack: { _ in 40 }
+        )
+
+        XCTAssertEqual(trackSections.count, 2)
+        XCTAssertEqual(trackSections[0].sourceStartSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(trackSections[0].sourceEndSeconds, 20, accuracy: 0.001)
+        XCTAssertEqual(trackSections[1].sourceStartSeconds, 30, accuracy: 0.001)
+        XCTAssertEqual(trackSections[1].sourceEndSeconds, 40, accuracy: 0.001)
+    }
+
+    func testDuplicatedSectionCreatesCutAtDuplicate() {
+        let markers = [
+            ArrangementMarker(name: "A", startSeconds: 0, sortOrder: 0),
+            ArrangementMarker(name: "B", startSeconds: 10, sortOrder: 1),
+            ArrangementMarker(name: "C", startSeconds: 20, sortOrder: 2),
+        ]
+        var slots = SongArrangementStore.defaultSlots(from: markers)
+        slots.insert(ArrangementSlot(markerID: markers[1].id), at: 2) // A B B' C
+        let trackID = UUID()
+
+        let trackSections = SongArrangementStore.trackDisplaySections(
+            for: trackID,
+            slots: slots,
+            markers: markers,
+            clipTrims: [],
+            removedClips: [],
+            trackIDs: [trackID],
+            sourceDurationForTrack: { _ in 30 }
+        )
+
+        XCTAssertEqual(trackSections.count, 2)
+        XCTAssertEqual(trackSections[0].sourceStartSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(trackSections[0].sourceEndSeconds, 20, accuracy: 0.001)
+        XCTAssertEqual(trackSections[1].sourceStartSeconds, 10, accuracy: 0.001)
+        XCTAssertEqual(trackSections[1].sourceEndSeconds, 30, accuracy: 0.001)
+    }
+
+    func testSwappedAdjacentSectionsStaySeparateClips() {
+        let markers = [
+            ArrangementMarker(name: "INTRO", startSeconds: 8, sortOrder: 0),
+            ArrangementMarker(name: "V1", startSeconds: 16, sortOrder: 1),
+        ]
+        var slots = SongArrangementStore.defaultSlots(from: markers)
+        slots.swapAt(0, 1)
+        let trackID = UUID()
+
+        let trackSections = SongArrangementStore.trackDisplaySections(
+            for: trackID,
+            slots: slots,
+            markers: markers,
+            clipTrims: [],
+            removedClips: [],
+            trackIDs: [trackID],
+            sourceDurationForTrack: { _ in 120 }
+        )
+        XCTAssertEqual(trackSections.count, 2)
+        XCTAssertEqual(trackSections[0].sourceStartSeconds, 16, accuracy: 0.001)
+        XCTAssertEqual(trackSections[1].sourceStartSeconds, 8, accuracy: 0.001)
     }
 
     func testPlaybackSectionsSilenceDeletedGapOnPackedLayout() {

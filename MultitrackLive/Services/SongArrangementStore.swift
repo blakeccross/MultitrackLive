@@ -31,6 +31,37 @@ enum SongArrangementStore {
         )
     }
 
+    /// True when slots match markers in source order with no arrangement-slot edits.
+    /// Identity arrangements keep continuous track clips; section markers still appear on the ruler.
+    /// After arrangement changes, tracks use a packed layout but only cut where source continuity
+    /// breaks (moved / duplicated / removed sections), not at every section boundary.
+    static func usesSectionedTrackLayout(
+        slots: [ArrangementSlot],
+        markers: [ArrangementMarker],
+        clipTrims: [ArrangementClipTrim] = [],
+        removedClips: [ArrangementRemovedClip] = [],
+        clipGaps: [ArrangementClipGap] = [],
+        clipRegions: [ClipRegion] = []
+    ) -> Bool {
+        guard isIdentitySlotSequence(slots, markers: markers) else { return true }
+
+        let slotIDs = Set(slots.map(\.id))
+        if clipTrims.contains(where: { slotIDs.contains($0.slotID) }) { return true }
+        if removedClips.contains(where: { slotIDs.contains($0.slotID) }) { return true }
+        if clipGaps.contains(where: { slotIDs.contains($0.slotID) }) { return true }
+        if clipRegions.contains(where: { slotIDs.contains($0.slotID) }) { return true }
+        return false
+    }
+
+    static func isIdentitySlotSequence(
+        _ slots: [ArrangementSlot],
+        markers: [ArrangementMarker]
+    ) -> Bool {
+        let sortedMarkers = markers.sortedByTime
+        guard slots.count == sortedMarkers.count else { return false }
+        return zip(slots, sortedMarkers).allSatisfy { $0.markerID == $1.id }
+    }
+
     static func buildLayoutSnapshot(
         slots: [ArrangementSlot],
         clipTrims: [ArrangementClipTrim],
@@ -39,24 +70,44 @@ enum SongArrangementStore {
         clipRegions: [ClipRegion] = [],
         inputs: ArrangementLayoutInputs
     ) -> ArrangementLayoutSnapshot {
-        let columns = arrangementColumns(slots: slots, inputs: inputs)
-        let rulerSections = rulerDisplaySections(columns: columns, inputs: inputs)
-        let trackSections = Dictionary(
-            uniqueKeysWithValues: inputs.trackIDs.map { trackID in
-                (
-                    trackID,
-                    trackDisplaySections(
-                        for: trackID,
-                        clipTrims: clipTrims,
-                        removedClips: removedClips,
-                        clipGaps: clipGaps,
-                        clipRegions: clipRegions,
-                        columns: columns,
-                        inputs: inputs
-                    )
-                )
-            }
+        let sectioned = usesSectionedTrackLayout(
+            slots: slots,
+            markers: inputs.sortedMarkers,
+            clipTrims: clipTrims,
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions
         )
+        let rulerSections: [ArrangementDisplaySection]
+        let trackSections: [UUID: [ArrangementDisplaySection]]
+
+        if sectioned {
+            let columns = arrangementColumns(slots: slots, inputs: inputs)
+            rulerSections = rulerDisplaySections(columns: columns, inputs: inputs)
+            trackSections = Dictionary(
+                uniqueKeysWithValues: inputs.trackIDs.map { trackID in
+                    (
+                        trackID,
+                        trackDisplaySections(
+                            for: trackID,
+                            clipTrims: clipTrims,
+                            removedClips: removedClips,
+                            clipGaps: clipGaps,
+                            clipRegions: clipRegions,
+                            columns: columns,
+                            inputs: inputs
+                        )
+                    )
+                }
+            )
+        } else {
+            // Keep section labels on the ruler at absolute source times; leave tracks uncut.
+            rulerSections = sourceAlignedRulerSections(slots: slots, inputs: inputs)
+            trackSections = Dictionary(
+                uniqueKeysWithValues: inputs.trackIDs.map { ($0, []) }
+            )
+        }
+
         return alignedLayoutSnapshot(
             rulerSections: rulerSections,
             trackSections: trackSections
@@ -106,24 +157,43 @@ enum SongArrangementStore {
         tracks: [(id: UUID, trimStart: TimeInterval, trimEnd: TimeInterval)],
         inputs: ArrangementLayoutInputs
     ) -> ArrangementLayoutSnapshot {
-        let columns = arrangementColumns(slots: slots, inputs: inputs)
-        let rulerSections = rulerDisplaySections(columns: columns, inputs: inputs)
-        let displaySectionsByTrack = Dictionary(
-            uniqueKeysWithValues: inputs.trackIDs.map { trackID in
-                (
-                    trackID,
-                    trackDisplaySections(
-                        for: trackID,
-                        clipTrims: clipTrims,
-                        removedClips: removedClips,
-                        clipGaps: clipGaps,
-                        clipRegions: clipRegions,
-                        columns: columns,
-                        inputs: inputs
-                    )
-                )
-            }
+        let sectioned = usesSectionedTrackLayout(
+            slots: slots,
+            markers: inputs.sortedMarkers,
+            clipTrims: clipTrims,
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions
         )
+        let rulerSections: [ArrangementDisplaySection]
+        let displaySectionsByTrack: [UUID: [ArrangementDisplaySection]]
+
+        if sectioned {
+            let columns = arrangementColumns(slots: slots, inputs: inputs)
+            rulerSections = rulerDisplaySections(columns: columns, inputs: inputs)
+            displaySectionsByTrack = Dictionary(
+                uniqueKeysWithValues: inputs.trackIDs.map { trackID in
+                    (
+                        trackID,
+                        trackDisplaySections(
+                            for: trackID,
+                            clipTrims: clipTrims,
+                            removedClips: removedClips,
+                            clipGaps: clipGaps,
+                            clipRegions: clipRegions,
+                            columns: columns,
+                            inputs: inputs
+                        )
+                    )
+                }
+            )
+        } else {
+            rulerSections = sourceAlignedRulerSections(slots: slots, inputs: inputs)
+            displaySectionsByTrack = Dictionary(
+                uniqueKeysWithValues: inputs.trackIDs.map { ($0, []) }
+            )
+        }
+
         let sectionsByTrack = Dictionary(
             uniqueKeysWithValues: tracks.map { track in
                 let sections = displaySectionsByTrack[track.id] ?? []
@@ -824,14 +894,13 @@ enum SongArrangementStore {
             trackIDs: trackIDs,
             sourceDurationForTrack: sourceDurationForTrack
         )
-        let columns = arrangementColumns(slots: slots, inputs: inputs)
         return trackDisplaySections(
             for: trackID,
+            slots: slots,
             clipTrims: clipTrims,
             removedClips: removedClips,
             clipGaps: clipGaps,
             clipRegions: clipRegions,
-            columns: columns,
             inputs: inputs
         )
     }
@@ -845,6 +914,17 @@ enum SongArrangementStore {
         clipRegions: [ClipRegion] = [],
         inputs: ArrangementLayoutInputs
     ) -> [ArrangementDisplaySection] {
+        guard usesSectionedTrackLayout(
+            slots: slots,
+            markers: inputs.sortedMarkers,
+            clipTrims: clipTrims,
+            removedClips: removedClips,
+            clipGaps: clipGaps,
+            clipRegions: clipRegions
+        ) else {
+            return []
+        }
+
         let columns = arrangementColumns(slots: slots, inputs: inputs)
         return trackDisplaySections(
             for: trackID,
@@ -963,7 +1043,45 @@ enum SongArrangementStore {
             }
         }
 
-        return sections
+        // Keep adjacent source-order sections as one clip; only cut at discontinuities
+        // created by rearrange / duplicate / remove.
+        return coalesceContiguousTrackSections(sections)
+    }
+
+    /// Joins neighboring clips that play contiguous source audio on a contiguous timeline.
+    /// A moved or duplicated section breaks source adjacency and remains its own cut.
+    static func coalesceContiguousTrackSections(
+        _ sections: [ArrangementDisplaySection]
+    ) -> [ArrangementDisplaySection] {
+        guard let first = sections.first else { return [] }
+
+        var coalesced: [ArrangementDisplaySection] = []
+        var current = first
+
+        for next in sections.dropFirst() {
+            let sourceAbuts = abs(current.sourceEndSeconds - next.sourceStartSeconds) <= 0.000_1
+            let timelineAbuts = abs(current.timelineEndSeconds - next.timelineStartSeconds) <= 0.000_1
+            if sourceAbuts, timelineAbuts {
+                current = ArrangementDisplaySection(
+                    id: current.id,
+                    slotID: current.slotID,
+                    markerID: current.markerID,
+                    name: current.name,
+                    sourceStartSeconds: current.sourceStartSeconds,
+                    sourceEndSeconds: next.sourceEndSeconds,
+                    timelineStartSeconds: current.timelineStartSeconds,
+                    timelineEndSeconds: next.timelineEndSeconds,
+                    columnStartSeconds: current.columnStartSeconds,
+                    columnEndSeconds: next.columnEndSeconds
+                )
+            } else {
+                coalesced.append(current)
+                current = next
+            }
+        }
+
+        coalesced.append(current)
+        return coalesced
     }
 
     static func rulerDisplaySections(
@@ -1011,6 +1129,43 @@ enum SongArrangementStore {
                     timelineEndSeconds: columnEnd,
                     columnStartSeconds: column.columnStart,
                     columnEndSeconds: columnEnd
+                )
+            )
+        }
+
+        return sections
+    }
+
+    /// Ruler sections placed at absolute source times for identity arrangements
+    /// (continuous tracks with section markers, no packing/cutting).
+    private static func sourceAlignedRulerSections(
+        slots: [ArrangementSlot],
+        inputs: ArrangementLayoutInputs
+    ) -> [ArrangementDisplaySection] {
+        let maxSourceDuration = inputs.trackIDs.map(inputs.sourceDurationForTrack).max() ?? 1
+        var sections: [ArrangementDisplaySection] = []
+
+        for slot in slots {
+            guard let marker = inputs.markersByID[slot.markerID] else { continue }
+            let bounds = markerSourceRange(
+                for: marker,
+                sortedMarkers: inputs.sortedMarkers,
+                sourceDuration: maxSourceDuration
+            )
+            guard bounds.end - bounds.start >= minimumClipDuration else { continue }
+
+            sections.append(
+                ArrangementDisplaySection(
+                    id: slot.id,
+                    slotID: slot.id,
+                    markerID: marker.id,
+                    name: marker.name,
+                    sourceStartSeconds: bounds.start,
+                    sourceEndSeconds: bounds.end,
+                    timelineStartSeconds: bounds.start,
+                    timelineEndSeconds: bounds.end,
+                    columnStartSeconds: bounds.start,
+                    columnEndSeconds: bounds.end
                 )
             )
         }
