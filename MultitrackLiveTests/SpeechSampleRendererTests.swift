@@ -27,6 +27,18 @@ final class SpeechSampleRendererTests: XCTestCase {
         XCTAssertNil(buffer)
     }
 
+    func testLoadsBuildDynamicCue() async {
+        let buffer = await SpeechSampleRenderer.renderMonoStem(for: "Build")
+        XCTAssertNotNil(buffer)
+        XCTAssertGreaterThan(buffer?.frameCount ?? 0, 0)
+    }
+
+    func testLoadsBreakDynamicCue() async {
+        let buffer = await SpeechSampleRenderer.renderMonoStem(for: "Break")
+        XCTAssertNotNil(buffer)
+        XCTAssertGreaterThan(buffer?.frameCount ?? 0, 0)
+    }
+
     func testAnnouncementBufferIsStereo() async {
         let buffer = await SpeechSampleRenderer.renderAnnouncementBuffer(for: "Verse")
         XCTAssertNotNil(buffer)

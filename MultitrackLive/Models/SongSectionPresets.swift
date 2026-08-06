@@ -8,12 +8,17 @@ enum SongSectionPresets {
             "Pre-Chorus", "Pre-Chorus 1", "Pre-Chorus 2", "Pre-Chorus 3", "Pre-Chorus 4",
             "Chorus", "Chorus 1", "Chorus 2", "Chorus 3", "Chorus 4",
             "Post-Chorus", "Bridge", "Bridge 1", "Bridge 2", "Bridge 3", "Bridge 4",
-            "Refrain", "Hook", "Outro", "Ending",
+            "Refrain", "Hook", "Outro", "Ending", "Big Ending",
         ]),
         ("Instrumental", [
             "Instrumental", "Interlude", "Solo", "Breakdown",
             "Build", "Drop", "Break", "Turnaround", "Vamp", "Tag",
             "Acapella", "Exhortation", "Rap",
+        ]),
+        ("Dynamic Cues", [
+            "Ad Lib", "All In", "Bass", "Drums", "Drums In", "Hits", "Hold",
+            "Key Change Down", "Key Change Up", "Keys", "Last Time",
+            "Slowly Build", "Softly", "Swell", "Worship Freely",
         ]),
     ]
 
