@@ -6,27 +6,94 @@ enum TrackGroupStore {
         "Drums",
         "Percussion",
         "Bass",
-        "Synth",
         "EG",
         "AG",
-        "BGV",
-        "LV",
         "Keys",
+        "Synth",
+        "LV",
+        "BGV",
+        "Strings",
         "Other",
+        "Click",
+        "Cues",
     ]
 
     static func ensureDefaults(in context: ModelContext) {
         let existing = (try? context.fetch(FetchDescriptor<TrackGroup>())) ?? []
-        guard existing.isEmpty else { return }
+        var groupsByLowercasedName: [String: TrackGroup] = [:]
+        for group in existing {
+            let key = group.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !key.isEmpty else { continue }
+            if groupsByLowercasedName[key] == nil {
+                groupsByLowercasedName[key] = group
+            }
+        }
+
+        var didChange = false
 
         for (index, name) in defaultNames.enumerated() {
-            context.insert(TrackGroup(name: name, sortOrder: index))
+            let key = name.lowercased()
+            let paletteKey = defaultPaletteKey(forGroupName: name)
+            let keywords = defaultKeywords(forGroupName: name)
+            if let existingGroup = groupsByLowercasedName[key] {
+                if existingGroup.sortOrder != index {
+                    existingGroup.sortOrder = index
+                    didChange = true
+                }
+                if existingGroup.name != name {
+                    existingGroup.name = name
+                    didChange = true
+                }
+                if existingGroup.paletteKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    existingGroup.paletteKey = paletteKey
+                    didChange = true
+                }
+            } else {
+                let group = TrackGroup(
+                    name: name,
+                    sortOrder: index,
+                    paletteKey: paletteKey,
+                    nameKeywords: keywords.joined(separator: ", ")
+                )
+                context.insert(group)
+                groupsByLowercasedName[key] = group
+                didChange = true
+            }
         }
-        try? context.save()
+
+        let defaultKeys = Set(defaultNames.map { $0.lowercased() })
+        let customGroups = existing
+            .filter {
+                let key = $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                return !key.isEmpty && !defaultKeys.contains(key)
+            }
+            .sorted { lhs, rhs in
+                if lhs.sortOrder != rhs.sortOrder {
+                    return lhs.sortOrder < rhs.sortOrder
+                }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+
+        var nextCustomOrder = defaultNames.count
+        for group in customGroups {
+            if group.sortOrder != nextCustomOrder {
+                group.sortOrder = nextCustomOrder
+                didChange = true
+            }
+            if group.paletteKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                group.paletteKey = "gray"
+                didChange = true
+            }
+            nextCustomOrder += 1
+        }
+
+        if didChange {
+            try? context.save()
+        }
     }
 
     static func sortedGroups(from context: ModelContext) -> [TrackGroup] {
-        var descriptor = FetchDescriptor<TrackGroup>(
+        let descriptor = FetchDescriptor<TrackGroup>(
             sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.name)]
         )
         return (try? context.fetch(descriptor)) ?? []
@@ -54,7 +121,11 @@ enum TrackGroupStore {
 
         let groups = sortedGroups(from: context)
         let nextSortOrder = (groups.map(\.sortOrder).max() ?? -1) + 1
-        let group = TrackGroup(name: trimmed, sortOrder: nextSortOrder)
+        let group = TrackGroup(
+            name: trimmed,
+            sortOrder: nextSortOrder,
+            paletteKey: "gray"
+        )
         context.insert(group)
         try? context.save()
         return group
@@ -104,14 +175,14 @@ enum TrackGroupStore {
             }
         }
 
-        let aliases = keywordAliases.sorted { $0.keyword.count > $1.keyword.count }
-        for alias in aliases {
-            guard matches(term: alias.keyword, in: normalized, tokens: tokens) else { continue }
-            if let group = groups.first(where: {
-                $0.name.caseInsensitiveCompare(alias.groupName) == .orderedSame
-            }) {
-                return group
-            }
+        let aliasEntries: [(keyword: String, group: TrackGroup)] = groups.flatMap { group in
+            group.keywordList.map { (keyword: $0, group: group) }
+        }
+        .sorted { $0.keyword.count > $1.keyword.count }
+
+        for entry in aliasEntries {
+            guard matches(term: entry.keyword, in: normalized, tokens: tokens) else { continue }
+            return entry.group
         }
 
         return nil
@@ -124,7 +195,9 @@ enum TrackGroupStore {
     ) -> Int {
         ensureDefaults(in: context)
         let groups = sortedGroups(from: context)
-        return autoAssignGroups(for: song.sortedTracks, groups: groups, in: context)
+        let assignedCount = autoAssignGroups(for: song.sortedTracks, groups: groups, in: context)
+        reorderTracksByGroup(in: song, context: context)
+        return assignedCount
     }
 
     @discardableResult
@@ -148,35 +221,83 @@ enum TrackGroupStore {
         return assignedCount
     }
 
-    private static let keywordAliases: [(keyword: String, groupName: String)] = [
-        // Percussion
-        ("cymbals", "Percussion"),
-        ("cymbal", "Percussion"),
-        ("crash", "Percussion"),
-        ("ride", "Percussion"),
-        ("shaker", "Percussion"),
-        ("tambourine", "Percussion"),
-        ("conga", "Percussion"),
-        ("bongo", "Percussion"),
-        ("maraca", "Percussion"),
-        ("cowbell", "Percussion"),
-        ("clap", "Percussion"),
-        ("hi-hat", "Percussion"),
-        ("hihat", "Percussion"),
-        // Keys
-        ("piano", "Keys"),
-        ("organ", "Keys"),
-        ("rhodes", "Keys"),
-        ("wurli", "Keys"),
-        ("keyboard", "Keys"),
-        // BGV
-        ("vocoder", "BGV"),
-        ("backing", "BGV"),
-        ("harmony", "BGV"),
-        ("choir", "BGV"),
-        // AG
-        ("acoustic", "AG"),
-    ]
+    static func reorderTracksByGroup(in song: Song, context: ModelContext) {
+        let tracks = song.sortedTracks
+        guard !tracks.isEmpty else { return }
+
+        let sorted = tracks.sorted { lhs, rhs in
+            let lhsOrder = lhs.group?.sortOrder ?? Int.max
+            let rhsOrder = rhs.group?.sortOrder ?? Int.max
+            if lhsOrder != rhsOrder {
+                return lhsOrder < rhsOrder
+            }
+            if lhs.sortOrder != rhs.sortOrder {
+                return lhs.sortOrder < rhs.sortOrder
+            }
+            return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+        }
+
+        var didChange = false
+        for (index, track) in sorted.enumerated() where track.sortOrder != index {
+            track.sortOrder = index
+            didChange = true
+        }
+
+        if didChange {
+            try? context.save()
+        }
+    }
+
+    static func defaultPaletteKey(forGroupName name: String) -> String {
+        switch name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "drums":
+            return "red"
+        case "percussion":
+            return "orange"
+        case "bass", "eg", "ag":
+            return "blue"
+        case "keys", "synth":
+            return "green"
+        case "lv", "bgv":
+            return "purple"
+        case "strings":
+            return "brown"
+        case "click":
+            return "darkGray"
+        case "cues":
+            return "white"
+        default:
+            return "gray"
+        }
+    }
+
+    static func defaultKeywords(forGroupName name: String) -> [String] {
+        switch name.lowercased() {
+        case "percussion":
+            return [
+                "cymbals", "cymbal", "crash", "ride", "shaker", "tambourine",
+                "conga", "bongo", "maraca", "perc", "percussion", "cowbell",
+                "clap", "hi-hat", "hihat",
+            ]
+        case "keys":
+            return ["piano", "organ", "rhodes", "wurli", "keyboard", "glockenspiel", "glock"]
+        case "bgv":
+            return [
+                "vocoder", "backing", "harmony", "choir",
+                "soprano", "alto", "tenor", "baritone", "mezzo",
+            ]
+        case "ag":
+            return ["acoustic"]
+        case "strings":
+            return ["strings", "violin", "viola", "cello", "cellos", "orchestra"]
+        case "click":
+            return ["click track", "click", "metronome"]
+        case "cues":
+            return ["cues", "cue"]
+        default:
+            return []
+        }
+    }
 
     private static func tokenize(_ name: String) -> [String] {
         name

@@ -233,12 +233,19 @@ final class SongEditorViewModel {
     }
 
     func updateGroup(for track: AudioTrack, context: ModelContext) {
+        TrackGroupStore.reorderTracksByGroup(in: song, context: context)
         try? context.save()
     }
 
     @discardableResult
     func autoAssignGroups(groups: [TrackGroup], context: ModelContext) -> Int {
-        TrackGroupStore.autoAssignGroups(for: song.sortedTracks, groups: groups, in: context)
+        let assignedCount = TrackGroupStore.autoAssignGroups(
+            for: song.sortedTracks,
+            groups: groups,
+            in: context
+        )
+        TrackGroupStore.reorderTracksByGroup(in: song, context: context)
+        return assignedCount
     }
 
     func previewTrim(for track: AudioTrack) {

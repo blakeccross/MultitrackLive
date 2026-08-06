@@ -68,52 +68,113 @@ extension Color {
     }
 }
 
-enum TrackClipPalette {
-    private enum Swatch {
-        // Row 1
-        static let orange = Color("TrackPaletteOrange")
-        static let amber = Color("TrackPaletteAmber")
-        static let gold = Color("TrackPaletteGold")
-        static let yellow = Color("TrackPaletteYellow")
-        static let lime = Color("TrackPaletteLime")
-        static let chartreuse = Color("TrackPaletteChartreuse")
+enum TrackGroupPalette {
+    enum Key: String, CaseIterable, Identifiable {
+        case red
+        case orange
+        case amber
+        case gold
+        case yellow
+        case green
+        case teal
+        case cyan
+        case sky
+        case blue
+        case indigo
+        case violet
+        case purple
+        case magenta
+        case pink
+        case brown
+        case gray
+        case darkGray
+        case white
 
-        // Row 2
-        static let green = Color("TrackPaletteGreen")
-        static let grass = Color("TrackPaletteGrass")
-        static let brightGreen = Color("TrackPaletteBrightGreen")
-        static let emerald = Color("TrackPaletteEmerald")
-        static let mint = Color("TrackPaletteMint")
-        static let teal = Color("TrackPaletteTeal")
+        var id: String { rawValue }
 
-        // Row 3
-        static let cyan = Color("TrackPaletteCyan")
-        static let sky = Color("TrackPaletteSky")
-        static let blue = Color("TrackPaletteBlue")
-        static let indigo = Color("TrackPaletteIndigo")
-        static let violet = Color("TrackPaletteViolet")
-        static let purple = Color("TrackPalettePurple")
+        var displayName: String {
+            switch self {
+            case .darkGray: return "Dark Gray"
+            default: return rawValue.capitalized
+            }
+        }
 
-        // Row 4
-        static let deepPurple = Color("TrackPaletteDeepPurple")
-        static let amethyst = Color("TrackPaletteAmethyst")
-        static let magenta = Color("TrackPaletteMagenta")
-        static let fuchsia = Color("TrackPaletteFuchsia")
-        static let hotPink = Color("TrackPaletteHotPink")
-        static let pink = Color("TrackPalettePink")
+        var color: Color {
+            switch self {
+            case .red: return Color("TrackPaletteRed")
+            case .orange: return Color("TrackPaletteOrange")
+            case .amber: return Color("TrackPaletteAmber")
+            case .gold: return Color("TrackPaletteGold")
+            case .yellow: return Color("TrackPaletteYellow")
+            case .green: return Color("TrackPaletteGreen")
+            case .teal: return Color("TrackPaletteTeal")
+            case .cyan: return Color("TrackPaletteCyan")
+            case .sky: return Color("TrackPaletteSky")
+            case .blue: return Color("TrackPaletteBlue")
+            case .indigo: return Color("TrackPaletteIndigo")
+            case .violet: return Color("TrackPaletteViolet")
+            case .purple: return Color("TrackPalettePurple")
+            case .magenta: return Color("TrackPaletteMagenta")
+            case .pink: return Color("TrackPalettePink")
+            case .brown: return Color("TrackPaletteBrown")
+            case .gray: return Color("TrackPaletteGray")
+            case .darkGray: return Color("TrackPaletteDarkGray")
+            case .white: return Color("TrackPaletteWhite")
+            }
+        }
     }
-
-    private static let bodies: [Color] = [
-        Swatch.orange, Swatch.amber, Swatch.gold, Swatch.yellow, Swatch.lime, Swatch.chartreuse,
-        Swatch.green, Swatch.grass, Swatch.brightGreen, Swatch.emerald, Swatch.mint, Swatch.teal,
-        Swatch.cyan, Swatch.sky, Swatch.blue, Swatch.indigo, Swatch.violet, Swatch.purple,
-        Swatch.deepPurple, Swatch.amethyst, Swatch.magenta, Swatch.fuchsia, Swatch.hotPink, Swatch.pink,
-    ]
 
     private static let headerDarkenFactor = 0.72
 
-    static func colors(for index: Int) -> (header: Color, body: Color) {
-        let body = bodies[abs(index) % bodies.count]
+    static func colors(for group: TrackGroup?) -> (header: Color, body: Color) {
+        colors(forPaletteKey: group?.paletteKey)
+    }
+
+    static func colors(forGroupName name: String?) -> (header: Color, body: Color) {
+        colors(forPaletteKey: defaultKey(forGroupName: name)?.rawValue)
+    }
+
+    static func colors(forPaletteKey key: String?) -> (header: Color, body: Color) {
+        let body = bodyColor(forPaletteKey: key)
         return (body.darkened(sRGBBy: headerDarkenFactor), body)
+    }
+
+    static func defaultKey(forGroupName name: String?) -> Key? {
+        guard let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+
+        switch trimmed.lowercased() {
+        case "drums":
+            return .red
+        case "percussion":
+            return .orange
+        case "bass", "eg", "ag":
+            return .blue
+        case "keys", "synth":
+            return .green
+        case "lv", "bgv":
+            return .purple
+        case "strings":
+            return .brown
+        case "click":
+            return .darkGray
+        case "cues":
+            return .white
+        case "other":
+            return .gray
+        default:
+            return .gray
+        }
+    }
+
+    private static func bodyColor(forPaletteKey key: String?) -> Color {
+        guard let raw = key?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty,
+              let matched = Key(rawValue: raw) else {
+            return Key.gray.color
+        }
+        return matched.color
     }
 }

@@ -104,6 +104,10 @@ enum ClickTrackFileGenerator {
             track = created
         }
 
+        TrackGroupStore.ensureDefaults(in: context)
+        track.group = TrackGroupStore.findOrCreateGroup(named: "Click", in: context)
+        TrackGroupStore.reorderTracksByGroup(in: song, context: context)
+
         try context.save()
         try SongProjectBridge.syncProjectFile(for: song, context: context)
         return track

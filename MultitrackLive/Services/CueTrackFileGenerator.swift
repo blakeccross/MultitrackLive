@@ -161,6 +161,10 @@ enum CueTrackFileGenerator {
         // Prefer the baked cues stem over live TTS so callouts are not doubled.
         song.dynamicCuesEnabled = false
 
+        TrackGroupStore.ensureDefaults(in: context)
+        track.group = TrackGroupStore.findOrCreateGroup(named: "Cues", in: context)
+        TrackGroupStore.reorderTracksByGroup(in: song, context: context)
+
         try context.save()
         try SongProjectBridge.syncProjectFile(for: song, context: context)
         return track

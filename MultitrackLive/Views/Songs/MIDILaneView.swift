@@ -3,7 +3,6 @@ import SwiftUI
 struct MIDITrackHeaderView: View {
     @Bindable var track: MIDITrack
     let laneHeight: CGFloat
-    let trackColorIndex: Int
     let isSelected: Bool
     let onSelect: () -> Void
     let onConfigChange: () -> Void
@@ -12,7 +11,7 @@ struct MIDITrackHeaderView: View {
     let onDelete: () -> Void
 
     private var trackColors: (header: Color, body: Color) {
-        TrackClipPalette.colors(for: trackColorIndex)
+        TrackGroupPalette.colors(forPaletteKey: nil)
     }
 
     var body: some View {
@@ -115,7 +114,6 @@ struct MIDILaneView: View {
     let timelineDuration: TimeInterval
     let timelineContentWidth: CGFloat
     let laneHeight: CGFloat
-    let trackColorIndex: Int
     @Binding var events: [MIDIEvent]
     let tempoChanges: [TempoChange]
     let timeSignatureChanges: [TimeSignatureChange]
@@ -126,7 +124,7 @@ struct MIDILaneView: View {
     @State private var dragPreviewTime: TimeInterval?
 
     private var trackColors: (header: Color, body: Color) {
-        TrackClipPalette.colors(for: trackColorIndex)
+        TrackGroupPalette.colors(forPaletteKey: nil)
     }
 
     private var safeDuration: TimeInterval {

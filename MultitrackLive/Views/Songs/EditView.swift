@@ -715,6 +715,7 @@ struct EditView: View {
                 loopSlotIDs: $loopSlotIDs,
                 showingSongLibrary: $showingSongLibrary,
                 showingBakeSheet: $showingBakeSheet,
+                showingGroupEditor: $showingGroupEditor,
                 onBack: onBack,
                 onClearMarkerCue: { clearMarkerCue() },
                 currentSectionAtTime: { time in
@@ -1379,6 +1380,7 @@ struct EditView: View {
             loopSlotIDs: $loopSlotIDs,
             showingSongLibrary: $showingSongLibrary,
             showingBakeSheet: $showingBakeSheet,
+            showingGroupEditor: $showingGroupEditor,
             onClearMarkerCue: { clearMarkerCue() },
             onPersistArrangement: {
                 performUndoableChange("Edit Arrangement") {
@@ -1656,7 +1658,7 @@ struct EditView: View {
 
     private var trackLanesContent: some View {
         LazyVStack(spacing: TimelineLayout.laneSpacing) {
-            ForEach(Array(song.sortedTracks.enumerated()), id: \.element.id) { index, track in
+            ForEach(song.sortedTracks, id: \.id) { track in
                 if let fileURL = FileStore.trackURL(for: song, track: track) {
                 WaveformLaneView(
                     track: track,
@@ -1674,7 +1676,6 @@ struct EditView: View {
                     tempoChanges: normalizedTempoChanges,
                     timeSignatureChanges: normalizedTimeSignatureChanges,
                     laneHeight: TimelineLayout.laneHeight,
-                    trackColorIndex: index,
                     onTrimChange: {
                         performUndoableChange("Trim Track") {
                             viewModel.updateTrim(for: track, context: modelContext)
@@ -1697,14 +1698,13 @@ struct EditView: View {
                 }
             }
 
-            ForEach(Array(midiTracks.enumerated()), id: \.element.id) { index, track in
+            ForEach(midiTracks, id: \.id) { track in
                 MIDILaneView(
                     track: track,
                     device: track.device,
                     timelineDuration: timelineDuration,
                     timelineContentWidth: timelineContentWidth,
                     laneHeight: TimelineLayout.laneHeight,
-                    trackColorIndex: song.sortedTracks.count + index,
                     events: $midiEvents,
                     tempoChanges: normalizedTempoChanges,
                     timeSignatureChanges: normalizedTimeSignatureChanges,
@@ -1719,11 +1719,10 @@ struct EditView: View {
 
     private var trackHeaderList: some View {
         VStack(spacing: TimelineLayout.laneSpacing) {
-            ForEach(Array(song.sortedTracks.enumerated()), id: \.element.id) { index, track in
+            ForEach(song.sortedTracks, id: \.id) { track in
                 TrackLaneHeaderView(
                     track: track,
                     laneHeight: TimelineLayout.laneHeight,
-                    trackColorIndex: index,
                     isSelected: selectedTrackID == track.id,
                     groups: trackGroups,
                     onSelect: {
@@ -1752,11 +1751,10 @@ struct EditView: View {
                 )
             }
 
-            ForEach(Array(midiTracks.enumerated()), id: \.element.id) { index, track in
+            ForEach(midiTracks, id: \.id) { track in
                 MIDITrackHeaderView(
                     track: track,
                     laneHeight: TimelineLayout.laneHeight,
-                    trackColorIndex: song.sortedTracks.count + index,
                     isSelected: selectedTrackID == track.id,
                     onSelect: {
                         selectedTrackID = track.id
@@ -2002,6 +2000,7 @@ private struct EditSongToolbarContent: ToolbarContent {
     @Binding var loopSlotIDs: Set<UUID>
     @Binding var showingSongLibrary: Bool
     @Binding var showingBakeSheet: Bool
+    @Binding var showingGroupEditor: Bool
     let onBack: () -> Void
     let onClearMarkerCue: () -> Void
     let currentSectionAtTime: (TimeInterval) -> ArrangementDisplaySection?
@@ -2231,6 +2230,9 @@ private struct EditSongToolbarContent: ToolbarContent {
 
     private var moreMenu: some View {
         Menu {
+            Button("Manage Groups…") {
+                showingGroupEditor = true
+            }
             Button("Bake Tracks") {
                 showingBakeSheet = true
             }
@@ -2265,6 +2267,7 @@ private struct EditTransportBar: View {
     @Binding var loopSlotIDs: Set<UUID>
     @Binding var showingSongLibrary: Bool
     @Binding var showingBakeSheet: Bool
+    @Binding var showingGroupEditor: Bool
     let onClearMarkerCue: () -> Void
     let onPersistArrangement: () -> Void
     let onUndoableChange: UndoableChangeHandler
@@ -2454,6 +2457,9 @@ private struct EditTransportBar: View {
 
     private var moreMenu: some View {
         Menu {
+            Button("Manage Groups…") {
+                showingGroupEditor = true
+            }
             Button("Bake Tracks…") {
                 showingBakeSheet = true
             }

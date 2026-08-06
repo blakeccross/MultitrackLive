@@ -7,7 +7,6 @@ struct TrackLaneHeaderView: View {
     @Bindable var track: AudioTrack
     @Bindable private var audioEngine = AudioEngineManager.shared
     let laneHeight: CGFloat
-    let trackColorIndex: Int
     let isSelected: Bool
     let groups: [TrackGroup]
     let onSelect: () -> Void
@@ -18,7 +17,7 @@ struct TrackLaneHeaderView: View {
     let onDelete: () -> Void
 
     private var trackColors: (header: Color, body: Color) {
-        TrackClipPalette.colors(for: trackColorIndex)
+        TrackGroupPalette.colors(for: track.group)
     }
 
     var body: some View {
@@ -113,7 +112,7 @@ struct TrackLaneHeaderView: View {
                     .font(.system(size: 8, weight: .semibold))
             }
             .font(.caption2)
-            .foregroundStyle(track.group == nil ? AppColors.textTertiary : AppColors.textPrimary)
+            .foregroundStyle(trackColors.body)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
@@ -146,7 +145,6 @@ struct WaveformLaneView: View {
     let tempoChanges: [TempoChange]
     let timeSignatureChanges: [TimeSignatureChange]
     let laneHeight: CGFloat
-    let trackColorIndex: Int
     let onTrimChange: () -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
     let loopSlotIDs: Set<UUID>
@@ -379,7 +377,7 @@ struct WaveformLaneView: View {
             clipID: segment.id,
             slotID: segment.slotID,
             title: track.displayName,
-            colorIndex: trackColorIndex,
+            paletteKey: track.group?.paletteKey,
             clipWidth: clipWidth,
             timelineStart: bounds.start,
             timelineEnd: bounds.end,
@@ -413,7 +411,7 @@ struct WaveformLaneView: View {
                 clipID: section.id,
                 slotID: section.slotID,
                 title: track.displayName,
-                colorIndex: trackColorIndex,
+                paletteKey: track.group?.paletteKey,
                 clipWidth: clipWidth,
                 timelineStart: bounds.start,
                 timelineEnd: bounds.end,
@@ -444,7 +442,7 @@ struct WaveformLaneView: View {
         clipID: UUID,
         slotID: UUID,
         title: String,
-        colorIndex: Int,
+        paletteKey: String?,
         clipWidth: CGFloat,
         timelineStart: TimeInterval,
         timelineEnd: TimeInterval,
@@ -454,7 +452,7 @@ struct WaveformLaneView: View {
         sourceTrimLeading: Bool,
         sourceTrimTrailing: Bool
     ) -> some View {
-        let palette = TrackClipPalette.colors(for: colorIndex)
+        let palette = TrackGroupPalette.colors(forPaletteKey: paletteKey)
         let selection = matchingClipSelection(for: clipID)
         let isSelected = selection != nil
         let isWholeSelected = selection?.isWholeClip == true

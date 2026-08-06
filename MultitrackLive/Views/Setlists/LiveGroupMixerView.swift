@@ -296,6 +296,7 @@ struct LiveGroupMixerView: View {
                     ForEach(groups) { group in
                         LiveGroupChannelStrip(
                             title: group.name,
+                            titleColor: TrackGroupPalette.colors(for: group).body,
                             meterLevel: audioEngine.groupMeterLevel(for: group.id),
                             volume: Binding(
                                 get: { group.volume },
@@ -314,6 +315,7 @@ struct LiveGroupMixerView: View {
                     if let routingConfig {
                         LiveGroupChannelStrip(
                             title: "No Group",
+                            titleColor: TrackGroupPalette.colors(forPaletteKey: nil).body,
                             meterLevel: audioEngine.groupMeterLevel(for: nil),
                             volume: Binding(
                                 get: { routingConfig.ungroupedVolume },
@@ -346,6 +348,7 @@ struct LiveGroupMixerView: View {
 
 private struct LiveGroupChannelStrip: View {
     let title: String
+    let titleColor: Color
     let meterLevel: Float
     @Binding var volume: Double
     @Binding var isMuted: Bool
@@ -376,12 +379,16 @@ private struct LiveGroupChannelStrip: View {
 
             Text(title)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(.white)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(width: stripWidth, alignment: .center)
                 .frame(minHeight: 28)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .background(titleColor)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
         }
         .padding(AppSpacing.sm)
     }
