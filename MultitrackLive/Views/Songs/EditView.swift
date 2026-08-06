@@ -98,6 +98,31 @@ struct EditView: View {
         viewModel.syncTempoMap(normalized, timeSignatureChanges: normalizedTimeSignatureChanges)
     }
 
+    private func applyReferenceTempo(_ bpm: Double) {
+        guard TempoChange.validBPMRange.contains(bpm) else { return }
+
+        let current = normalizedTempoChanges.referenceBPM
+        if abs(current - bpm) < 0.0001, abs((song.bpm ?? current) - bpm) < 0.0001 {
+            return
+        }
+
+        performUndoableChange("Edit Tempo") {
+            song.bpm = bpm
+            if let index = tempoChanges.firstIndex(where: { $0.startMeasure == 1 }) {
+                let existing = tempoChanges[index]
+                tempoChanges[index] = TempoChange(
+                    id: existing.id,
+                    startMeasure: 1,
+                    bpm: bpm,
+                    sortOrder: existing.sortOrder
+                )
+            } else {
+                tempoChanges.insert(TempoChange(startMeasure: 1, bpm: bpm, sortOrder: 0), at: 0)
+            }
+            persistTempoChanges()
+        }
+    }
+
     private func persistTimeSignatureChanges() {
         let normalized = normalizedTimeSignatureChanges
         timeSignatureChanges = normalized
@@ -679,11 +704,7 @@ struct EditView: View {
                 },
                 tempoChanges: $tempoChanges,
                 normalizedTempoChanges: normalizedTempoChanges,
-                onPersistTempoChanges: {
-                    performUndoableChange("Edit Tempo") {
-                        persistTempoChanges()
-                    }
-                },
+                onApplyTempo: applyReferenceTempo,
                 showingChangeKey: $showingChangeKey,
                 arrangementSlots: $arrangementSlots,
                 clipTrims: $clipTrims,
@@ -1354,11 +1375,7 @@ struct EditView: View {
             },
             tempoChanges: $tempoChanges,
             normalizedTempoChanges: normalizedTempoChanges,
-            onPersistTempoChanges: {
-                performUndoableChange("Edit Tempo") {
-                    persistTempoChanges()
-                }
-            },
+            onApplyTempo: applyReferenceTempo,
             showingChangeKey: $showingChangeKey,
             arrangementSlots: $arrangementSlots,
             clipTrims: $clipTrims,
@@ -1981,7 +1998,7 @@ private struct EditSongToolbarContent: ToolbarContent {
     let onPersistTimeSignatureChanges: () -> Void
     @Binding var tempoChanges: [TempoChange]
     let normalizedTempoChanges: [TempoChange]
-    let onPersistTempoChanges: () -> Void
+    let onApplyTempo: (Double) -> Void
     @Binding var showingChangeKey: Bool
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
@@ -2098,25 +2115,23 @@ private struct EditSongToolbarContent: ToolbarContent {
             onPlay: viewModel.play,
             onPause: viewModel.pause,
             onToggleLoop: { onToggleLoopAtTime(time) },
-            onTapBPM: { showingTempoToolbarEditor = true },
-            onTapMeter: { showingTimeSignatureEditor = true }
+            showingBPMPopover: $showingTempoToolbarEditor,
+            showingMeterPopover: $showingTimeSignatureEditor,
+            bpmPopover: {
+                TempoEditorMenu(
+                    currentBPM: normalizedTempoChanges.referenceBPM,
+                    onApply: onApplyTempo
+                )
+            },
+            meterPopover: {
+                TimeSignatureEditorMenu(
+                    song: song,
+                    timeSignatureChanges: $timeSignatureChanges,
+                    normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
+                    onPersist: onPersistTimeSignatureChanges
+                )
+            }
         )
-        .popover(isPresented: $showingTempoToolbarEditor, arrowEdge: .bottom) {
-            TempoEditorMenu(
-                song: song,
-                tempoChanges: $tempoChanges,
-                normalizedTempoChanges: normalizedTempoChanges,
-                onPersist: onPersistTempoChanges
-            )
-        }
-        .popover(isPresented: $showingTimeSignatureEditor, arrowEdge: .bottom) {
-            TimeSignatureEditorMenu(
-                song: song,
-                timeSignatureChanges: $timeSignatureChanges,
-                normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
-                onPersist: onPersistTimeSignatureChanges
-            )
-        }
     }
 
     private var songsButton: some View {
@@ -2157,7 +2172,7 @@ private struct EditSongToolbarContent: ToolbarContent {
         return TransportStatusSnapshot(
             position: MeasureTiming.formatTransportPosition(position),
             bpm: String(format: "%.1f", bpm),
-            meter: "\(signature.numerator) / \(signature.denominator)",
+            meter: "\(signature.numerator)/\(signature.denominator)",
             key: "-"
         )
     }
@@ -2214,7 +2229,7 @@ private struct EditTransportBar: View {
     let onPersistTimeSignatureChanges: () -> Void
     @Binding var tempoChanges: [TempoChange]
     let normalizedTempoChanges: [TempoChange]
-    let onPersistTempoChanges: () -> Void
+    let onApplyTempo: (Double) -> Void
     @Binding var showingChangeKey: Bool
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
@@ -2279,25 +2294,23 @@ private struct EditTransportBar: View {
             onPlay: viewModel.play,
             onPause: viewModel.pause,
             onToggleLoop: { onToggleLoopAtTime(time) },
-            onTapBPM: { showingTempoToolbarEditor = true },
-            onTapMeter: { showingTimeSignatureEditor = true }
+            showingBPMPopover: $showingTempoToolbarEditor,
+            showingMeterPopover: $showingTimeSignatureEditor,
+            bpmPopover: {
+                TempoEditorMenu(
+                    currentBPM: normalizedTempoChanges.referenceBPM,
+                    onApply: onApplyTempo
+                )
+            },
+            meterPopover: {
+                TimeSignatureEditorMenu(
+                    song: song,
+                    timeSignatureChanges: $timeSignatureChanges,
+                    normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
+                    onPersist: onPersistTimeSignatureChanges
+                )
+            }
         )
-        .popover(isPresented: $showingTempoToolbarEditor, arrowEdge: .bottom) {
-            TempoEditorMenu(
-                song: song,
-                tempoChanges: $tempoChanges,
-                normalizedTempoChanges: normalizedTempoChanges,
-                onPersist: onPersistTempoChanges
-            )
-        }
-        .popover(isPresented: $showingTimeSignatureEditor, arrowEdge: .bottom) {
-            TimeSignatureEditorMenu(
-                song: song,
-                timeSignatureChanges: $timeSignatureChanges,
-                normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
-                onPersist: onPersistTimeSignatureChanges
-            )
-        }
     }
 
     private var leadingControls: some View {
@@ -2342,7 +2355,7 @@ private struct EditTransportBar: View {
         return TransportStatusSnapshot(
             position: MeasureTiming.formatTransportPosition(position),
             bpm: String(format: "%.1f", bpm),
-            meter: "\(signature.numerator) / \(signature.denominator)",
+            meter: "\(signature.numerator)/\(signature.denominator)",
             key: "-"
         )
     }
@@ -2556,26 +2569,18 @@ private struct TimeSignatureEditorMenu: View {
 }
 
 private struct TempoEditorMenu: View {
-    @Environment(\.modelContext) private var modelContext
-
-    @Bindable var song: Song
-    @Binding var tempoChanges: [TempoChange]
-    let normalizedTempoChanges: [TempoChange]
-    let onPersist: () -> Void
+    let currentBPM: Double
+    let onApply: (Double) -> Void
 
     @State private var bpm: Double
+    @State private var bpmText: String
+    @FocusState private var isBPMFieldFocused: Bool
 
-    init(
-        song: Song,
-        tempoChanges: Binding<[TempoChange]>,
-        normalizedTempoChanges: [TempoChange],
-        onPersist: @escaping () -> Void
-    ) {
-        self.song = song
-        _tempoChanges = tempoChanges
-        self.normalizedTempoChanges = normalizedTempoChanges
-        self.onPersist = onPersist
-        _bpm = State(initialValue: normalizedTempoChanges.referenceBPM)
+    init(currentBPM: Double, onApply: @escaping (Double) -> Void) {
+        self.currentBPM = currentBPM
+        self.onApply = onApply
+        _bpm = State(initialValue: currentBPM)
+        _bpmText = State(initialValue: Self.formatBPM(currentBPM))
     }
 
     var body: some View {
@@ -2587,50 +2592,69 @@ private struct TempoEditorMenu: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Stepper(value: $bpm, in: TempoChange.validBPMRange, step: 0.1) {
-                Text(String(format: "%.1f BPM", bpm))
+            HStack(spacing: 12) {
+                TextField("BPM", text: $bpmText)
+                    .textFieldStyle(.roundedBorder)
                     .monospacedDigit()
-            }
-            .onChange(of: bpm) { _, newValue in
-                applyTempo(newValue)
+                    .frame(width: 88)
+                    .focused($isBPMFieldFocused)
+                    .onSubmit(commitTextField)
+#if os(iOS)
+                    .keyboardType(.decimalPad)
+#endif
+
+                Text("BPM")
+                    .foregroundStyle(.secondary)
+
+                Stepper(
+                    "",
+                    value: Binding(
+                        get: { bpm },
+                        set: { applyTempo($0) }
+                    ),
+                    in: TempoChange.validBPMRange,
+                    step: 0.1
+                )
+                .labelsHidden()
             }
         }
         .padding()
         .frame(minWidth: 280)
-        .onChange(of: song.bpm) { _, _ in
-            syncFromSong()
+        .onChange(of: currentBPM) { _, newValue in
+            guard abs(newValue - bpm) >= 0.0001 else { return }
+            bpm = newValue
+            bpmText = Self.formatBPM(newValue)
         }
-    }
-
-    private func syncFromSong() {
-        bpm = normalizedTempoChanges.referenceBPM
-    }
-
-    private func applyTempo(_ bpm: Double) {
-        guard TempoChange.validBPMRange.contains(bpm) else { return }
-
-        song.bpm = bpm
-
-        if let measureOneID = normalizedTempoChanges.first(where: { $0.startMeasure == 1 })?.id {
-            tempoChanges = tempoChanges.map { change in
-                guard change.id == measureOneID else { return change }
-                return TempoChange(
-                    id: change.id,
-                    startMeasure: 1,
-                    bpm: bpm,
-                    sortOrder: change.sortOrder
-                )
+        .onChange(of: isBPMFieldFocused) { _, focused in
+            if !focused {
+                commitTextField()
             }
-        } else {
-            tempoChanges = [
-                TempoChange(startMeasure: 1, bpm: bpm, sortOrder: 0)
-            ]
         }
+    }
 
-        try? modelContext.save()
-        onPersist()
+    private func commitTextField() {
+        let sanitized = bpmText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(sanitized) else {
+            bpmText = Self.formatBPM(bpm)
+            return
+        }
+        applyTempo(value)
+    }
 
-        self.bpm = bpm
+    private func applyTempo(_ value: Double) {
+        let clamped = min(
+            max(value, TempoChange.validBPMRange.lowerBound),
+            TempoChange.validBPMRange.upperBound
+        )
+        bpm = clamped
+        bpmText = Self.formatBPM(clamped)
+        onApply(clamped)
+    }
+
+    private static func formatBPM(_ value: Double) -> String {
+        String(format: "%.1f", value)
     }
 }
 
@@ -2641,6 +2665,7 @@ private struct TempoMarkerEditorMenu: View {
     let onDelete: () -> Void
 
     @State private var bpm: Double
+    @State private var bpmText: String
 
     init(
         marker: TempoChange,
@@ -2653,6 +2678,7 @@ private struct TempoMarkerEditorMenu: View {
         self.onApply = onApply
         self.onDelete = onDelete
         _bpm = State(initialValue: marker.bpm)
+        _bpmText = State(initialValue: String(format: "%.1f", marker.bpm))
     }
 
     var body: some View {
@@ -2664,13 +2690,32 @@ private struct TempoMarkerEditorMenu: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 16) {
-                Stepper(value: $bpm, in: TempoChange.validBPMRange, step: 0.1) {
-                    Text(String(format: "%.1f BPM", bpm))
-                        .monospacedDigit()
-                }
+            HStack(spacing: 12) {
+                TextField("BPM", text: $bpmText)
+                    .textFieldStyle(.roundedBorder)
+                    .monospacedDigit()
+                    .frame(width: 88)
+                    .onSubmit(commitTextField)
+#if os(iOS)
+                    .keyboardType(.decimalPad)
+#endif
+
+                Text("BPM")
+                    .foregroundStyle(.secondary)
+
+                Stepper(
+                    "",
+                    value: Binding(
+                        get: { bpm },
+                        set: { updateBPM($0) }
+                    ),
+                    in: TempoChange.validBPMRange,
+                    step: 0.1
+                )
+                .labelsHidden()
 
                 Button("Apply") {
+                    commitTextField()
                     onApply(bpm)
                 }
                 .buttonStyle(.borderedProminent)
@@ -2687,6 +2732,26 @@ private struct TempoMarkerEditorMenu: View {
         }
         .padding()
         .frame(minWidth: 280)
+    }
+
+    private func commitTextField() {
+        let sanitized = bpmText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(sanitized) else {
+            bpmText = String(format: "%.1f", bpm)
+            return
+        }
+        updateBPM(value)
+    }
+
+    private func updateBPM(_ value: Double) {
+        let clamped = min(
+            max(value, TempoChange.validBPMRange.lowerBound),
+            TempoChange.validBPMRange.upperBound
+        )
+        bpm = clamped
+        bpmText = String(format: "%.1f", clamped)
     }
 }
 

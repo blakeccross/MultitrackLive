@@ -41,11 +41,6 @@
 		AA0000010000000000000027 /* TrackMemoryPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000027 /* TrackMemoryPlayer.swift */; };
 		AA0000010000000000000028 /* LiveSongWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000028 /* LiveSongWaveformView.swift */; };
 		AA0000010000000000000029 /* SetlistTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000029 /* SetlistTransition.swift */; };
-		AA00000100000000000000B1 /* OverlapTransitionConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000B1 /* OverlapTransitionConfig.swift */; };
-		AA00000100000000000000B2 /* OverlapTransitionTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000B2 /* OverlapTransitionTiming.swift */; };
-		AA00000100000000000000B3 /* SetlistOverlapEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000B3 /* SetlistOverlapEditorView.swift */; };
-		AA00000100000000000000B4 /* OverlapPreviewEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000B4 /* OverlapPreviewEngine.swift */; };
-		AA00000100000000000000B5 /* OverlapTrackGraphBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000B5 /* OverlapTrackGraphBuilder.swift */; };
 		AA000001000000000000002A /* TrackGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000002A /* TrackGroup.swift */; };
 		AA000001000000000000002B /* TrackGroupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000002B /* TrackGroupStore.swift */; };
 		AA000001000000000000002C /* TrackGroupEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000002C /* TrackGroupEditorView.swift */; };
@@ -74,21 +69,10 @@
 		AA0000010000000000000049 /* SongArrangementLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000049 /* SongArrangementLayoutTests.swift */; };
 		AA000001000000000000004A /* ClipRegionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004A /* ClipRegionStore.swift */; };
 		AA000001000000000000004B /* ClipRegionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004B /* ClipRegionStoreTests.swift */; };
-		AA00000100000000000000A0 /* TimelineRippleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000A0 /* TimelineRippleStore.swift */; };
-		AA00000100000000000000A1 /* TimelineRippleStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000A1 /* TimelineRippleStoreTests.swift */; };
-		AA00000100000000000000C6 /* OverlapTransitionConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000C6 /* OverlapTransitionConfigTests.swift */; };
-		AA00000100000000000000C7 /* AudioTimelineMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000C7 /* AudioTimelineMathTests.swift */; };
-		AA00000100000000000000C8 /* AudioPlaybackTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000C8 /* AudioPlaybackTransportTests.swift */; };
 		AA000001000000000000004C /* SectionLoopController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004C /* SectionLoopController.swift */; };
 		AA000001000000000000004D /* WaveformBarsCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004D /* WaveformBarsCanvas.swift */; };
 		AA000001000000000000004E /* ClickTrackScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004E /* ClickTrackScheduler.swift */; };
 		AA0000010000000000000050 /* ClickTrackSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000050 /* ClickTrackSchedulerTests.swift */; };
-		AA00000100000000000000F0 /* StemAudioWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F0 /* StemAudioWriter.swift */; };
-		AA00000100000000000000F1 /* ClickTrackFileGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F1 /* ClickTrackFileGenerator.swift */; };
-		AA00000100000000000000F2 /* SectionAnnouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F2 /* SectionAnnouncer.swift */; };
-		AA00000100000000000000F3 /* SongSectionPresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F3 /* SongSectionPresets.swift */; };
-		AA00000100000000000000F4 /* SongSectionNameNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F4 /* SongSectionNameNormalizer.swift */; };
-		AA00000100000000000000F5 /* SongSectionNameNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F5 /* SongSectionNameNormalizerTests.swift */; };
 		AA0000010000000000000060 /* MIDITrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000060 /* MIDITrack.swift */; };
 		AA0000010000000000000061 /* MIDIEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000061 /* MIDIEvent.swift */; };
 		AA0000010000000000000063 /* MIDIOutputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000063 /* MIDIOutputService.swift */; };
@@ -105,9 +89,6 @@
 		AA0000010000000000000076 /* ProjectFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000076 /* ProjectFileStore.swift */; };
 		AA0000010000000000000077 /* SongProjectBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000077 /* SongProjectBridge.swift */; };
 		AA0000010000000000000078 /* MediaConsolidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000078 /* MediaConsolidator.swift */; };
-		AA00000100000000000000E0 /* SetlistPackageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000E0 /* SetlistPackageStore.swift */; };
-		AA00000100000000000000E1 /* SongMediaHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000E1 /* SongMediaHealth.swift */; };
-		AA00000100000000000000E2 /* MissingMediaRelinkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000E2 /* MissingMediaRelinkView.swift */; };
 		AA0000010000000000000079 /* GroupMixStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000079 /* GroupMixStore.swift */; };
 		AA000001000000000000007A /* TrackMixControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000007A /* TrackMixControls.swift */; };
 		AA000001000000000000007B /* LiveGroupMixerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000007B /* LiveGroupMixerView.swift */; };
@@ -125,6 +106,16 @@
 		AA000001000000000000008C /* AppSheetContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000008C /* AppSheetContainer.swift */; };
 		AA000001000000000000008D /* AppEmptyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000008D /* AppEmptyState.swift */; };
 		AA000001000000000000008E /* TransportStatusReadout.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000008E /* TransportStatusReadout.swift */; };
+		AA00000100000000000000A0 /* TimelineRippleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000A0 /* TimelineRippleStore.swift */; };
+		AA00000100000000000000A1 /* TimelineRippleStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000A1 /* TimelineRippleStoreTests.swift */; };
+		AA00000100000000000000B1 /* OverlapTransitionConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000B1 /* OverlapTransitionConfig.swift */; };
+		AA00000100000000000000B2 /* OverlapTransitionTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000B2 /* OverlapTransitionTiming.swift */; };
+		AA00000100000000000000B3 /* SetlistOverlapEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000B3 /* SetlistOverlapEditorView.swift */; };
+		AA00000100000000000000B4 /* OverlapPreviewEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000B4 /* OverlapPreviewEngine.swift */; };
+		AA00000100000000000000B5 /* OverlapTrackGraphBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000B5 /* OverlapTrackGraphBuilder.swift */; };
+		AA00000100000000000000C6 /* OverlapTransitionConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000C6 /* OverlapTransitionConfigTests.swift */; };
+		AA00000100000000000000C7 /* AudioTimelineMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000C7 /* AudioTimelineMathTests.swift */; };
+		AA00000100000000000000C8 /* AudioPlaybackTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000C8 /* AudioPlaybackTransportTests.swift */; };
 		AA00000100000000000000D0 /* SongBakeManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D0 /* SongBakeManifest.swift */; };
 		AA00000100000000000000D1 /* SongBakeFingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D1 /* SongBakeFingerprint.swift */; };
 		AA00000100000000000000D2 /* SongBakeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D2 /* SongBakeStore.swift */; };
@@ -136,6 +127,16 @@
 		AA00000100000000000000D8 /* SongEditSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D8 /* SongEditSnapshotTests.swift */; };
 		AA00000100000000000000D9 /* SongUndoControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000D9 /* SongUndoControllerTests.swift */; };
 		AA00000100000000000000DA /* SharedTransportStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000DA /* SharedTransportStrip.swift */; };
+		AA00000100000000000000E0 /* SetlistPackageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000E0 /* SetlistPackageStore.swift */; };
+		AA00000100000000000000E1 /* SongMediaHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000E1 /* SongMediaHealth.swift */; };
+		AA00000100000000000000E2 /* MissingMediaRelinkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000E2 /* MissingMediaRelinkView.swift */; };
+		AA00000100000000000000F0 /* StemAudioWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F0 /* StemAudioWriter.swift */; };
+		AA00000100000000000000F1 /* ClickTrackFileGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F1 /* ClickTrackFileGenerator.swift */; };
+		AA00000100000000000000F2 /* SectionAnnouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F2 /* SectionAnnouncer.swift */; };
+		AA00000100000000000000F3 /* SongSectionPresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F3 /* SongSectionPresets.swift */; };
+		AA00000100000000000000F4 /* SongSectionNameNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F4 /* SongSectionNameNormalizer.swift */; };
+		AA00000100000000000000F5 /* SongSectionNameNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F5 /* SongSectionNameNormalizerTests.swift */; };
+		AA00000100000000000000F6 /* AbletonProjectImporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F6 /* AbletonProjectImporterTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -184,11 +185,6 @@
 		AA0000020000000000000027 /* TrackMemoryPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackMemoryPlayer.swift; sourceTree = "<group>"; };
 		AA0000020000000000000028 /* LiveSongWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSongWaveformView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000029 /* SetlistTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistTransition.swift; sourceTree = "<group>"; };
-		AA00000200000000000000B1 /* OverlapTransitionConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlapTransitionConfig.swift; sourceTree = "<group>"; };
-		AA00000200000000000000B2 /* OverlapTransitionTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlapTransitionTiming.swift; sourceTree = "<group>"; };
-		AA00000200000000000000B3 /* SetlistOverlapEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistOverlapEditorView.swift; sourceTree = "<group>"; };
-		AA00000200000000000000B4 /* OverlapPreviewEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlapPreviewEngine.swift; sourceTree = "<group>"; };
-		AA00000200000000000000B5 /* OverlapTrackGraphBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlapTrackGraphBuilder.swift; sourceTree = "<group>"; };
 		AA000002000000000000002A /* TrackGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackGroup.swift; sourceTree = "<group>"; };
 		AA000002000000000000002B /* TrackGroupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackGroupStore.swift; sourceTree = "<group>"; };
 		AA000002000000000000002C /* TrackGroupEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackGroupEditorView.swift; sourceTree = "<group>"; };
@@ -220,20 +216,9 @@
 		AA0000020000000000000049 /* SongArrangementLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongArrangementLayoutTests.swift; sourceTree = "<group>"; };
 		AA000002000000000000004A /* ClipRegionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipRegionStore.swift; sourceTree = "<group>"; };
 		AA000002000000000000004B /* ClipRegionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipRegionStoreTests.swift; sourceTree = "<group>"; };
-		AA00000200000000000000A0 /* TimelineRippleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineRippleStore.swift; sourceTree = "<group>"; };
-		AA00000200000000000000A1 /* TimelineRippleStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineRippleStoreTests.swift; sourceTree = "<group>"; };
-		AA00000200000000000000C6 /* OverlapTransitionConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlapTransitionConfigTests.swift; sourceTree = "<group>"; };
-		AA00000200000000000000C7 /* AudioTimelineMathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioTimelineMathTests.swift; sourceTree = "<group>"; };
-		AA00000200000000000000C8 /* AudioPlaybackTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlaybackTransportTests.swift; sourceTree = "<group>"; };
 		AA000002000000000000004C /* SectionLoopController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionLoopController.swift; sourceTree = "<group>"; };
 		AA000002000000000000004D /* WaveformBarsCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsCanvas.swift; sourceTree = "<group>"; };
 		AA000002000000000000004E /* ClickTrackScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackScheduler.swift; sourceTree = "<group>"; };
-		AA00000200000000000000F0 /* StemAudioWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StemAudioWriter.swift; sourceTree = "<group>"; };
-		AA00000200000000000000F1 /* ClickTrackFileGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackFileGenerator.swift; sourceTree = "<group>"; };
-		AA00000200000000000000F2 /* SectionAnnouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionAnnouncer.swift; sourceTree = "<group>"; };
-		AA00000200000000000000F3 /* SongSectionPresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongSectionPresets.swift; sourceTree = "<group>"; };
-		AA00000200000000000000F4 /* SongSectionNameNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongSectionNameNormalizer.swift; sourceTree = "<group>"; };
-		AA00000200000000000000F5 /* SongSectionNameNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongSectionNameNormalizerTests.swift; sourceTree = "<group>"; };
 		AA0000020000000000000050 /* ClickTrackSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackSchedulerTests.swift; sourceTree = "<group>"; };
 		AA0000020000000000000060 /* MIDITrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDITrack.swift; sourceTree = "<group>"; };
 		AA0000020000000000000061 /* MIDIEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIDIEvent.swift; sourceTree = "<group>"; };
@@ -251,9 +236,6 @@
 		AA0000020000000000000076 /* ProjectFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectFileStore.swift; sourceTree = "<group>"; };
 		AA0000020000000000000077 /* SongProjectBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongProjectBridge.swift; sourceTree = "<group>"; };
 		AA0000020000000000000078 /* MediaConsolidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaConsolidator.swift; sourceTree = "<group>"; };
-		AA00000200000000000000E0 /* SetlistPackageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistPackageStore.swift; sourceTree = "<group>"; };
-		AA00000200000000000000E1 /* SongMediaHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongMediaHealth.swift; sourceTree = "<group>"; };
-		AA00000200000000000000E2 /* MissingMediaRelinkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissingMediaRelinkView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000079 /* GroupMixStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupMixStore.swift; sourceTree = "<group>"; };
 		AA000002000000000000007A /* TrackMixControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackMixControls.swift; sourceTree = "<group>"; };
 		AA000002000000000000007B /* LiveGroupMixerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveGroupMixerView.swift; sourceTree = "<group>"; };
@@ -271,8 +253,16 @@
 		AA000002000000000000008C /* AppSheetContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSheetContainer.swift; sourceTree = "<group>"; };
 		AA000002000000000000008D /* AppEmptyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEmptyState.swift; sourceTree = "<group>"; };
 		AA000002000000000000008E /* TransportStatusReadout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportStatusReadout.swift; sourceTree = "<group>"; };
-		AA0000030000000000000001 /* MultitrackLive.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MultitrackLive.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		AA0000030000000000000002 /* MultitrackLiveTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MultitrackLiveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA00000200000000000000A0 /* TimelineRippleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineRippleStore.swift; sourceTree = "<group>"; };
+		AA00000200000000000000A1 /* TimelineRippleStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineRippleStoreTests.swift; sourceTree = "<group>"; };
+		AA00000200000000000000B1 /* OverlapTransitionConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlapTransitionConfig.swift; sourceTree = "<group>"; };
+		AA00000200000000000000B2 /* OverlapTransitionTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlapTransitionTiming.swift; sourceTree = "<group>"; };
+		AA00000200000000000000B3 /* SetlistOverlapEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistOverlapEditorView.swift; sourceTree = "<group>"; };
+		AA00000200000000000000B4 /* OverlapPreviewEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlapPreviewEngine.swift; sourceTree = "<group>"; };
+		AA00000200000000000000B5 /* OverlapTrackGraphBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlapTrackGraphBuilder.swift; sourceTree = "<group>"; };
+		AA00000200000000000000C6 /* OverlapTransitionConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlapTransitionConfigTests.swift; sourceTree = "<group>"; };
+		AA00000200000000000000C7 /* AudioTimelineMathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioTimelineMathTests.swift; sourceTree = "<group>"; };
+		AA00000200000000000000C8 /* AudioPlaybackTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlaybackTransportTests.swift; sourceTree = "<group>"; };
 		AA00000200000000000000D0 /* SongBakeManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongBakeManifest.swift; sourceTree = "<group>"; };
 		AA00000200000000000000D1 /* SongBakeFingerprint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongBakeFingerprint.swift; sourceTree = "<group>"; };
 		AA00000200000000000000D2 /* SongBakeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongBakeStore.swift; sourceTree = "<group>"; };
@@ -284,6 +274,18 @@
 		AA00000200000000000000D8 /* SongEditSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongEditSnapshotTests.swift; sourceTree = "<group>"; };
 		AA00000200000000000000D9 /* SongUndoControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongUndoControllerTests.swift; sourceTree = "<group>"; };
 		AA00000200000000000000DA /* SharedTransportStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedTransportStrip.swift; sourceTree = "<group>"; };
+		AA00000200000000000000E0 /* SetlistPackageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistPackageStore.swift; sourceTree = "<group>"; };
+		AA00000200000000000000E1 /* SongMediaHealth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongMediaHealth.swift; sourceTree = "<group>"; };
+		AA00000200000000000000E2 /* MissingMediaRelinkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissingMediaRelinkView.swift; sourceTree = "<group>"; };
+		AA00000200000000000000F0 /* StemAudioWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StemAudioWriter.swift; sourceTree = "<group>"; };
+		AA00000200000000000000F1 /* ClickTrackFileGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackFileGenerator.swift; sourceTree = "<group>"; };
+		AA00000200000000000000F2 /* SectionAnnouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionAnnouncer.swift; sourceTree = "<group>"; };
+		AA00000200000000000000F3 /* SongSectionPresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongSectionPresets.swift; sourceTree = "<group>"; };
+		AA00000200000000000000F4 /* SongSectionNameNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongSectionNameNormalizer.swift; sourceTree = "<group>"; };
+		AA00000200000000000000F5 /* SongSectionNameNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongSectionNameNormalizerTests.swift; sourceTree = "<group>"; };
+		AA00000200000000000000F6 /* AbletonProjectImporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AbletonProjectImporterTests.swift; sourceTree = "<group>"; };
+		AA0000030000000000000001 /* MultitrackLive.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MultitrackLive.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000030000000000000002 /* MultitrackLiveTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MultitrackLiveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -525,14 +527,6 @@
 			path = Click;
 			sourceTree = "<group>";
 		};
-		AA00000500000000000000D6 /* Editing */ = {
-			isa = PBXGroup;
-			children = (
-				AA00000200000000000000D6 /* SongEditSnapshot.swift */,
-			);
-			path = Editing;
-			sourceTree = "<group>";
-		};
 		AA0000050000000000000011 /* MultitrackLiveTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -548,6 +542,7 @@
 				AA00000200000000000000D8 /* SongEditSnapshotTests.swift */,
 				AA00000200000000000000D9 /* SongUndoControllerTests.swift */,
 				AA00000200000000000000F5 /* SongSectionNameNormalizerTests.swift */,
+				AA00000200000000000000F6 /* AbletonProjectImporterTests.swift */,
 			);
 			path = MultitrackLiveTests;
 			sourceTree = "<group>";
@@ -588,6 +583,14 @@
 				AA000002000000000000008D /* AppEmptyState.swift */,
 			);
 			path = Components;
+			sourceTree = "<group>";
+		};
+		AA00000500000000000000D6 /* Editing */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000200000000000000D6 /* SongEditSnapshot.swift */,
+			);
+			path = Editing;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -815,6 +818,7 @@
 				AA00000100000000000000D8 /* SongEditSnapshotTests.swift in Sources */,
 				AA00000100000000000000D9 /* SongUndoControllerTests.swift in Sources */,
 				AA00000100000000000000F5 /* SongSectionNameNormalizerTests.swift in Sources */,
+				AA00000100000000000000F6 /* AbletonProjectImporterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -930,12 +934,23 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = NO;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 6U2Y6W57T7;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
@@ -958,6 +973,12 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.blakecross.MultitrackLive;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
@@ -973,12 +994,23 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				AUTOMATION_APPLE_EVENTS = NO;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 6U2Y6W57T7;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1001,6 +1033,12 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.blakecross.MultitrackLive;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
+				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
+				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
+				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
+				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
+				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;

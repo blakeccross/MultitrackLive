@@ -81,7 +81,7 @@ struct LiveSetlistNowPlayingInfoView: View {
         return TransportStatusSnapshot(
             position: MeasureTiming.formatTransportPosition(position),
             bpm: String(format: "%.1f", bpm),
-            meter: "\(signature.numerator) / \(signature.denominator)",
+            meter: "\(signature.numerator)/\(signature.denominator)",
             key: "-"
         )
     }

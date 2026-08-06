@@ -11,6 +11,9 @@ struct AudioOutputDevice: Identifiable, Equatable {
 }
 
 enum AudioOutputDeviceService {
+    /// Large I/O quantum for playback stability (no recording / monitoring path).
+    static let stableBufferFrameSize: UInt32 = 2048
+
     static func availableDevices() -> [AudioOutputDevice] {
         #if os(macOS)
         return macOSDevices()
@@ -21,9 +24,23 @@ enum AudioOutputDeviceService {
 
     static func setSystemDefaultOutputDevice(uid: String) -> Bool {
         #if os(macOS)
-        return setMacOSDefaultOutputDevice(uid: uid)
+        let didSet = setMacOSDefaultOutputDevice(uid: uid)
+        if didSet {
+            applyStableBufferSize()
+        }
+        return didSet
         #else
         return false
+        #endif
+    }
+
+    /// Prefer a large hardware / session buffer to reduce underruns during multitrack playback.
+    @discardableResult
+    static func applyStableBufferSize() -> Bool {
+        #if os(macOS)
+        return applyMacOSStableBufferSize()
+        #else
+        return applyIOSStableBufferSize()
         #endif
     }
 
@@ -100,7 +117,44 @@ enum AudioOutputDeviceService {
         ) == noErr
     }
 
-    private static func macOSDefaultOutputChannelCount() -> Int {
+    private static func applyMacOSStableBufferSize() -> Bool {
+        guard let deviceID = defaultOutputDeviceID() else { return false }
+        let frames = clampedBufferFrameSize(stableBufferFrameSize, for: deviceID)
+        var mutableFrames = frames
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyBufferFrameSize,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let size = UInt32(MemoryLayout<UInt32>.size)
+        return AudioObjectSetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            size,
+            &mutableFrames
+        ) == noErr
+    }
+
+    private static func clampedBufferFrameSize(_ preferred: UInt32, for deviceID: AudioDeviceID) -> UInt32 {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyBufferFrameSizeRange,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var range = AudioValueRange()
+        var size = UInt32(MemoryLayout<AudioValueRange>.size)
+        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &range) == noErr else {
+            return preferred
+        }
+
+        let minimum = UInt32(max(1, range.mMinimum.rounded(.up)))
+        let maximum = UInt32(max(Double(minimum), range.mMaximum.rounded(.down)))
+        return min(max(preferred, minimum), maximum)
+    }
+
+    private static func defaultOutputDeviceID() -> AudioDeviceID? {
         var deviceID = AudioDeviceID(0)
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultOutputDevice,
@@ -115,7 +169,14 @@ enum AudioOutputDeviceService {
             nil,
             &size,
             &deviceID
-        ) == noErr else { return 2 }
+        ) == noErr, deviceID != 0 else {
+            return nil
+        }
+        return deviceID
+    }
+
+    private static func macOSDefaultOutputChannelCount() -> Int {
+        guard let deviceID = defaultOutputDeviceID() else { return 2 }
         return max(outputChannelCount(for: deviceID), 2)
     }
 
@@ -227,6 +288,18 @@ enum AudioOutputDeviceService {
     private static func iOSOutputChannelCount() -> Int {
         let session = AVAudioSession.sharedInstance()
         return max(session.outputNumberOfChannels, 2)
+    }
+
+    private static func applyIOSStableBufferSize() -> Bool {
+        let session = AVAudioSession.sharedInstance()
+        let sampleRate = session.sampleRate > 0 ? session.sampleRate : DecodedStemBuffer.engineSampleRate
+        let duration = Double(stableBufferFrameSize) / sampleRate
+        do {
+            try session.setPreferredIOBufferDuration(duration)
+            return true
+        } catch {
+            return false
+        }
     }
     #endif
 }

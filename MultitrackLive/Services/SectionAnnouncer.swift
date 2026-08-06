@@ -3,10 +3,15 @@ import Foundation
 
 /// Pre-renders section names with TTS and plays them through the shared audio engine.
 @Observable
+@MainActor
 final class SectionAnnouncer {
     private let synthesizer = AVSpeechSynthesizer()
     private var cache: [String: AVAudioPCMBuffer] = [:]
-    private var renderTasks: [String: Task<Void, Never>] = [:]
+    private var preparedNames: Set<String> = []
+    private var pendingNames: [String] = []
+    private var pendingNameSet: Set<String> = []
+    private var playbackRequests: Set<String> = []
+    private var renderTask: Task<Void, Never>?
 
     func prepare(names: [String]) {
         let unique = Set(
@@ -14,23 +19,22 @@ final class SectionAnnouncer {
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
         )
+        preparedNames = unique
 
         let staleKeys = cache.keys.filter { !unique.contains($0) }
         for key in staleKeys {
             cache.removeValue(forKey: key)
-            renderTasks.removeValue(forKey: key)?.cancel()
         }
 
-        for name in unique where cache[name] == nil && renderTasks[name] == nil {
-            renderTasks[name] = Task { [weak self] in
-                guard let self else { return }
-                if let buffer = await self.renderSpeechBuffer(for: name) {
-                    guard !Task.isCancelled else { return }
-                    self.cache[name] = buffer
-                }
-                self.renderTasks[name] = nil
-            }
+        pendingNames.removeAll {
+            !unique.contains($0) && !playbackRequests.contains($0)
         }
+        pendingNameSet = Set(pendingNames)
+
+        for name in unique where cache[name] == nil {
+            enqueue(name)
+        }
+        startRenderingIfNeeded()
     }
 
     func announce(name: String) {
@@ -42,23 +46,51 @@ final class SectionAnnouncer {
             return
         }
 
-        Task { [weak self] in
-            guard let self else { return }
-            if let buffer = await self.renderSpeechBuffer(for: trimmed) {
-                self.cache[trimmed] = buffer
-                await MainActor.run {
-                    AudioEngineManager.shared.playAnnouncement(buffer)
-                }
-            }
-        }
+        playbackRequests.insert(trimmed)
+        enqueue(trimmed, prioritized: true)
+        startRenderingIfNeeded()
     }
 
     func clearCache() {
-        for task in renderTasks.values {
-            task.cancel()
-        }
-        renderTasks.removeAll()
+        preparedNames.removeAll()
+        pendingNames.removeAll()
+        pendingNameSet.removeAll()
+        playbackRequests.removeAll()
         cache.removeAll()
+    }
+
+    private func enqueue(_ name: String, prioritized: Bool = false) {
+        guard cache[name] == nil, pendingNameSet.insert(name).inserted else { return }
+        if prioritized {
+            pendingNames.insert(name, at: 0)
+        } else {
+            pendingNames.append(name)
+        }
+    }
+
+    private func startRenderingIfNeeded() {
+        guard renderTask == nil, !pendingNames.isEmpty else { return }
+        renderTask = Task { @MainActor [weak self] in
+            await self?.processRenderQueue()
+        }
+    }
+
+    private func processRenderQueue() async {
+        while !pendingNames.isEmpty {
+            let name = pendingNames.removeFirst()
+            pendingNameSet.remove(name)
+
+            if cache[name] == nil,
+               let buffer = await renderSpeechBuffer(for: name),
+               preparedNames.contains(name) || playbackRequests.contains(name) {
+                cache[name] = buffer
+            }
+
+            if let buffer = cache[name], playbackRequests.remove(name) != nil {
+                AudioEngineManager.shared.playAnnouncement(buffer)
+            }
+        }
+        renderTask = nil
     }
 
     private func renderSpeechBuffer(for name: String) async -> AVAudioPCMBuffer? {

@@ -88,6 +88,8 @@ final class AudioEngineManager {
         #if os(iOS)
         configureAudioSession()
         #endif
+        AudioOutputDeviceService.applyStableBufferSize()
+        applyStableMaximumFramesToRender()
     }
 
     /// Duration of one measure ending at `timelineSeconds`, using the active tempo/meter.
@@ -122,9 +124,7 @@ final class AudioEngineManager {
 
     func playAnnouncement(_ buffer: AVAudioPCMBuffer) {
         wireAnnouncementPlayerIfNeeded()
-        if !engine.isRunning {
-            try? engine.start()
-        }
+        try? startEngineIfNeeded()
 
         announcementPlayer.stop()
         announcementPlayer.scheduleBuffer(buffer, at: nil, options: [])
@@ -148,9 +148,15 @@ final class AudioEngineManager {
     private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default)
+        try? session.setPreferredSampleRate(DecodedStemBuffer.engineSampleRate)
+        AudioOutputDeviceService.applyStableBufferSize()
         try? session.setActive(true)
     }
     #endif
+
+    private func applyStableMaximumFramesToRender() {
+        engine.outputNode.auAudioUnit.maximumFramesToRender = AudioOutputDeviceService.stableBufferFrameSize
+    }
 
     func loadTracks(
         _ payloads: [(id: UUID, url: URL, settings: TrackSettings, groupID: UUID?)],
@@ -403,9 +409,7 @@ final class AudioEngineManager {
 
     func play() {
         guard canPlay, !isPlaying else { return }
-        if !engine.isRunning {
-            try? engine.start()
-        }
+        try? startEngineIfNeeded()
 
         let startTime = quantizeTimelineTime(transport.pausedTimelineSeconds())
         applyTrackPitch(at: startTime)
@@ -932,6 +936,8 @@ final class AudioEngineManager {
     }
 
     private func startEngineIfNeeded() throws {
+        AudioOutputDeviceService.applyStableBufferSize()
+        applyStableMaximumFramesToRender()
         if !engine.isRunning {
             try engine.start()
         }

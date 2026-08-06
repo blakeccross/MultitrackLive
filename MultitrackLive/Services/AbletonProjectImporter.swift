@@ -45,6 +45,11 @@ enum AbletonProjectImporter {
 
         let data = try Data(contentsOf: url)
         let xmlData = try gunzip(data)
+        return try importFromXMLData(xmlData)
+    }
+
+    /// Parses an already-decompressed Ableton Live Set XML document.
+    static func importFromXMLData(_ xmlData: Data) throws -> ImportResult {
         let parsed = try parseProject(xmlData)
 
         guard let bpm = parsed.bpm, bpm > 0 else {
@@ -521,7 +526,12 @@ private enum AbletonTimeSignatureEncoding {
 }
 
 private final class TempoXMLParser: NSObject, XMLParserDelegate {
-    private(set) var bpm: Double?
+    /// Prefer modern Live's explicit Manual value; fall back to Live 8-era tempo automation.
+    private var manualBPM: Double?
+    private var automationBPM: Double?
+    private var earliestAutomationTime = Double.infinity
+
+    var bpm: Double? { manualBPM ?? automationBPM }
 
     func parser(
         _ parser: XMLParser,
@@ -530,9 +540,24 @@ private final class TempoXMLParser: NSObject, XMLParserDelegate {
         qualifiedName qName: String?,
         attributes attributeDict: [String: String] = [:]
     ) {
-        guard elementName == "Manual", bpm == nil else { return }
-        guard let value = attributeDict["Value"], let parsed = parseBPM(value) else { return }
-        bpm = parsed
+        switch elementName {
+        case "Manual":
+            guard manualBPM == nil,
+                  let value = attributeDict["Value"],
+                  let parsed = parseBPM(value) else { return }
+            manualBPM = parsed
+        case "FloatEvent":
+            guard let timeString = attributeDict["Time"],
+                  let valueString = attributeDict["Value"],
+                  let time = Double(timeString.replacingOccurrences(of: ",", with: ".")),
+                  let parsed = parseBPM(valueString) else { return }
+            // Use the earliest automation point (Ableton's initial sentinel, or beat 0).
+            guard time < earliestAutomationTime else { return }
+            earliestAutomationTime = time
+            automationBPM = parsed
+        default:
+            break
+        }
     }
 
     private func parseBPM(_ value: String) -> Double? {

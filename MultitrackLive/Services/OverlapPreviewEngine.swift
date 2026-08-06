@@ -25,6 +25,8 @@ final class OverlapPreviewEngine {
     init() {
         engine.attach(masterMixer)
         engine.connect(masterMixer, to: engine.mainMixerNode, format: nil)
+        AudioOutputDeviceService.applyStableBufferSize()
+        engine.outputNode.auAudioUnit.maximumFramesToRender = AudioOutputDeviceService.stableBufferFrameSize
     }
 
     deinit {
@@ -101,6 +103,8 @@ final class OverlapPreviewEngine {
     func play() {
         guard isLoaded, !isPlaying else { return }
         do {
+            AudioOutputDeviceService.applyStableBufferSize()
+            engine.outputNode.auAudioUnit.maximumFramesToRender = AudioOutputDeviceService.stableBufferFrameSize
             if !engine.isRunning {
                 try engine.start()
             }
