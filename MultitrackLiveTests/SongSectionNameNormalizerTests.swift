@@ -29,7 +29,12 @@ final class SongSectionNameNormalizerTests: XCTestCase {
         XCTAssertEqual(SongSectionNameNormalizer.canonicalize("My Cue"), "My Cue")
         XCTAssertEqual(SongSectionNameNormalizer.canonicalize("Section 2"), "Section 2")
         XCTAssertEqual(SongSectionNameNormalizer.canonicalize("Start"), "Start")
+    }
+
+    func testNumberedExtrasCanonicalizeToPresets() {
         XCTAssertEqual(SongSectionNameNormalizer.canonicalize("Verse 4"), "Verse 4")
+        XCTAssertEqual(SongSectionNameNormalizer.canonicalize("Chorus 2"), "Chorus 2")
+        XCTAssertEqual(SongSectionNameNormalizer.canonicalize("Acapella"), "Acapella")
     }
 
     func testEmptyNameStaysEmpty() {

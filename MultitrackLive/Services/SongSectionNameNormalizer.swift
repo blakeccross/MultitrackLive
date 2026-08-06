@@ -21,7 +21,7 @@ enum SongSectionNameNormalizer {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return trimmed }
 
-        let key = normalizeKey(trimmed)
+        let key = lookupKey(trimmed)
         let presetByKey = presetsByKey()
         if let exact = presetByKey[key] {
             return exact
@@ -43,6 +43,11 @@ enum SongSectionNameNormalizer {
         }
 
         return trimmed
+    }
+
+    /// Normalized lookup key used for preset matching and guide-sample filenames.
+    static func lookupKey(_ raw: String) -> String {
+        normalizeKey(raw)
     }
 
     private static func presetsByKey() -> [String: String] {

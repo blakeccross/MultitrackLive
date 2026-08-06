@@ -64,6 +64,7 @@
 		AA0000010000000000000043 /* ClickTrackGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000043 /* ClickTrackGenerator.swift */; };
 		AA0000010000000000000044 /* click-accent.wav in Resources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000044 /* click-accent.wav */; };
 		AA0000010000000000000045 /* click-normal.wav in Resources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000045 /* click-normal.wav */; };
+		AA0000010000000000000100 /* SongSections in Resources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000100 /* SongSections */; };
 		AA0000010000000000000046 /* ClickTrackGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000046 /* ClickTrackGeneratorTests.swift */; };
 		AA0000010000000000000047 /* ClickTrackSubdivision.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000047 /* ClickTrackSubdivision.swift */; };
 		AA0000010000000000000049 /* SongArrangementLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000049 /* SongArrangementLayoutTests.swift */; };
@@ -143,6 +144,7 @@
 		AA00000100000000000000FA /* CueTrackFileGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000FA /* CueTrackFileGenerator.swift */; };
 		AA00000100000000000000FB /* CueTrackSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000FB /* CueTrackSchedulerTests.swift */; };
 		AA00000100000000000000FC /* CueTrackGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000FC /* CueTrackGeneratorTests.swift */; };
+		AA0000010000000000000102 /* SpeechSampleRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000102 /* SpeechSampleRendererTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -217,6 +219,7 @@
 		AA0000020000000000000043 /* ClickTrackGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackGenerator.swift; sourceTree = "<group>"; };
 		AA0000020000000000000044 /* click-accent.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "click-accent.wav"; sourceTree = "<group>"; };
 		AA0000020000000000000045 /* click-normal.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "click-normal.wav"; sourceTree = "<group>"; };
+		AA0000020000000000000100 /* SongSections */ = {isa = PBXFileReference; lastKnownFileType = folder; path = SongSections; sourceTree = "<group>"; };
 		AA0000020000000000000046 /* ClickTrackGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackGeneratorTests.swift; sourceTree = "<group>"; };
 		AA0000020000000000000047 /* ClickTrackSubdivision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackSubdivision.swift; sourceTree = "<group>"; };
 		AA0000020000000000000049 /* SongArrangementLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongArrangementLayoutTests.swift; sourceTree = "<group>"; };
@@ -296,6 +299,7 @@
 		AA00000200000000000000FA /* CueTrackFileGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CueTrackFileGenerator.swift; sourceTree = "<group>"; };
 		AA00000200000000000000FB /* CueTrackSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CueTrackSchedulerTests.swift; sourceTree = "<group>"; };
 		AA00000200000000000000FC /* CueTrackGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CueTrackGeneratorTests.swift; sourceTree = "<group>"; };
+		AA0000020000000000000102 /* SpeechSampleRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechSampleRendererTests.swift; sourceTree = "<group>"; };
 		AA0000030000000000000001 /* MultitrackLive.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MultitrackLive.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000030000000000000002 /* MultitrackLiveTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MultitrackLiveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -530,8 +534,17 @@
 			isa = PBXGroup;
 			children = (
 				AA0000050000000000000010 /* Click */,
+				AA0000050000000000000101 /* Guides */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		AA0000050000000000000101 /* Guides */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000020000000000000100 /* SongSections */,
+			);
+			path = Guides;
 			sourceTree = "<group>";
 		};
 		AA0000050000000000000010 /* Click */ = {
@@ -561,6 +574,7 @@
 				AA00000200000000000000F6 /* AbletonProjectImporterTests.swift */,
 				AA00000200000000000000FB /* CueTrackSchedulerTests.swift */,
 				AA00000200000000000000FC /* CueTrackGeneratorTests.swift */,
+				AA0000020000000000000102 /* SpeechSampleRendererTests.swift */,
 			);
 			path = MultitrackLiveTests;
 			sourceTree = "<group>";
@@ -694,6 +708,7 @@
 				AA0000010000000000000014 /* Assets.xcassets in Resources */,
 				AA0000010000000000000044 /* click-accent.wav in Resources */,
 				AA0000010000000000000045 /* click-normal.wav in Resources */,
+				AA0000010000000000000100 /* SongSections in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -843,6 +858,7 @@
 				AA00000100000000000000F6 /* AbletonProjectImporterTests.swift in Sources */,
 				AA00000100000000000000FB /* CueTrackSchedulerTests.swift in Sources */,
 				AA00000100000000000000FC /* CueTrackGeneratorTests.swift in Sources */,
+				AA0000010000000000000102 /* SpeechSampleRendererTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
