@@ -79,6 +79,9 @@ final class AudioEngineManager {
     private(set) var duration: TimeInterval = 0
 
     var onPlaybackFinished: (() -> Void)?
+    /// Called when playback reaches the end of the timeline while still playing.
+    /// Return `true` to keep playing (for example after a section-loop wrap); `false` to finish normally.
+    var onWillReachEnd: (() -> Bool)?
 
     init() {
         midiScheduler = MIDIScheduler(transport: transport)
@@ -638,15 +641,45 @@ final class AudioEngineManager {
         transport.cancelScheduledTransition()
     }
 
+    /// Arms a sample-accurate transport loop for the active arrangement section.
+    func setSectionLoop(start: TimeInterval, end: TimeInterval) {
+        transport.setLoopRegion(start: start, end: end)
+        applyLoopPrefetch()
+    }
+
+    func clearSectionLoop() {
+        transport.clearLoopRegion()
+        applyLoopPrefetch()
+    }
+
+    /// Streaming stems evict pages behind the playhead, so the audio under the
+    /// loop start has to be pinned before playback wraps back onto it.
+    private func applyLoopPrefetch() {
+        let loopStart = transport.currentLoopRegion()?.start
+        for track in tracks.values {
+            track.memoryPlayer.prepareLoopPrefetch(atMasterTimeline: loopStart)
+        }
+        for track in overlapTracks.values {
+            track.memoryPlayer.prepareLoopPrefetch(atMasterTimeline: loopStart)
+        }
+    }
+
+    var hasActiveSectionLoop: Bool {
+        transport.hasActiveLoopRegion
+    }
+
     func snapToTransitionTarget(_ targetOffset: TimeInterval) {
         let target = quantizeTimelineTime(clampedTimelineTime(targetOffset))
         transport.clearScheduledTransition()
         currentTime = target
         transport.setPausedTimeline(target)
+        applyTrackPitch(at: target)
         midiScheduler.reset(toTimeline: target)
 
-        if isPlaying, let hostTime = currentHostTime() {
-            transport.resetAnchor(to: target, hostTime: hostTime)
+        // Use beginPlayback (not resetAnchor with lastRenderTime) so the next
+        // audio callback captures elapsed=0 and renders the target sample.
+        if isPlaying {
+            transport.beginPlayback(from: target)
         }
     }
 
@@ -771,6 +804,10 @@ final class AudioEngineManager {
         )
         track.memoryPlayer.updateMapper(mapper)
         tracks[trackID] = track
+        // The loop start may now resolve to a different source position.
+        track.memoryPlayer.prepareLoopPrefetch(
+            atMasterTimeline: transport.currentLoopRegion()?.start
+        )
     }
 
     private var canPlay: Bool {
@@ -1036,6 +1073,12 @@ final class AudioEngineManager {
 
             if !self.didNotifyPlaybackFinished,
                self.currentTime >= self.duration - (1.0 / self.referenceSampleRate) {
+                // Transport-level section loops wrap before duration; never auto-stop
+                // while a loop region is armed or the host requests a wrap.
+                if self.transport.hasActiveLoopRegion || self.onWillReachEnd?() == true {
+                    self.didNotifyPlaybackFinished = false
+                    return
+                }
                 self.didNotifyPlaybackFinished = true
                 if self.isOverlapPlaybackActive || self.suppressAutoStopOnPlaybackFinished {
                     self.onPlaybackFinished?()
@@ -1097,10 +1140,16 @@ final class AudioEngineManager {
 
     /// Host-clock playhead position for UI rendering without publishing observable updates.
     func livePlayheadTime() -> TimeInterval {
+        let raw: TimeInterval
         if let hostTime = currentHostTime() {
-            return transport.timelineSeconds(atHostTime: hostTime)
+            raw = transport.timelineSeconds(atHostTime: hostTime)
+        } else {
+            raw = transport.pausedTimelineSeconds()
         }
-        return transport.pausedTimelineSeconds()
+        if let loop = transport.currentLoopRegion(), loop.isValid {
+            return AudioPlaybackTransport.wrappedTimeline(raw, loop: loop)
+        }
+        return raw
     }
 
     private func currentHostTime() -> UInt64? {

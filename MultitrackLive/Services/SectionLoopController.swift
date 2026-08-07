@@ -1,6 +1,32 @@
 import Foundation
 import Observation
 
+/// Shared timing helpers for section-loop boundary detection.
+enum SectionLoopTiming {
+    /// Matches `AudioEngineManager`'s end-of-playback threshold so last-section
+    /// loops fire before auto-stop zeros the playhead.
+    static func sampleThreshold(sampleRate: Double) -> TimeInterval {
+        1.0 / max(sampleRate, 1)
+    }
+
+    static func hasReachedBoundary(
+        time: TimeInterval,
+        sectionEnd: TimeInterval,
+        sampleRate: Double
+    ) -> Bool {
+        time >= sectionEnd - sampleThreshold(sampleRate: sampleRate)
+    }
+
+    /// True when the looping section ends at (or within one sample of) song duration.
+    static func sectionEndsAtSongEnd(
+        sectionEnd: TimeInterval,
+        songDuration: TimeInterval,
+        sampleRate: Double
+    ) -> Bool {
+        sectionEnd >= songDuration - sampleThreshold(sampleRate: sampleRate)
+    }
+}
+
 /// Tracks which arrangement section is actively looping during playback.
 @Observable
 final class SectionLoopController {

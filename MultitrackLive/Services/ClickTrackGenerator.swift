@@ -37,7 +37,7 @@ enum ClickTrackGenerator {
             defaultDenominator: MeasureTiming.defaultDenominator
         )
 
-        let frameCount = Int((duration * sampleRate).rounded(.up))
+        let frameCount = max(1, Int((duration * sampleRate).rounded(.toNearestOrAwayFromZero)))
         let output = try DecodedStemBuffer.silent(frameCount: frameCount, sampleRate: sampleRate)
 
         let accentSample = try accent ?? sharedAccentSample()
@@ -53,7 +53,7 @@ enum ClickTrackGenerator {
 
         for click in clicks {
             let sample = click.isAccent ? accentSample : normalSample
-            let startFrame = Int((click.time * sampleRate).rounded())
+            let startFrame = AudioPlaybackTransport.frameIndex(for: click.time, sampleRate: sampleRate)
             output.mixAdding(sample, atFrame: startFrame)
         }
 

@@ -613,9 +613,6 @@ struct EditView: View {
                 loopController: sectionLoop,
                 sections: displaySections,
                 loopSlotIDs: loopSlotIDs,
-                onLoop: { section in
-                    viewModel.snapToScheduledSection(section.timelineStartSeconds)
-                },
                 onLoopActivated: { clearMarkerCue() }
             )
         }

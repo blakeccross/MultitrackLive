@@ -144,7 +144,9 @@ final class PlaybackCoordinator {
 
     func unbindPlaybackHandlers() {
         audioEngine.onPlaybackFinished = nil
+        audioEngine.onWillReachEnd = nil
         clockEngine.onPlaybackFinished = nil
+        clockEngine.onWillReachEnd = nil
     }
 
     private func bindPlaybackFinishedHandler() {

@@ -33,10 +33,16 @@ protocol StemSampleSource: AnyObject, Sendable {
     /// Hint that playback is about to read near `frame`; streaming sources use
     /// this to warm their look-ahead window. In-memory sources ignore it.
     func prewarm(aroundSourceFrame frame: Int)
+
+    /// Keeps `sourceFrames` resident no matter where the playhead is. Streaming
+    /// sources evict pages behind the playhead, so a loop restart would otherwise
+    /// read silence from the loop head. In-memory sources ignore it.
+    func setPinnedRegion(sourceFrames: Range<Int>?)
 }
 
 extension StemSampleSource {
     func prewarm(aroundSourceFrame frame: Int) {}
+    func setPinnedRegion(sourceFrames: Range<Int>?) {}
 }
 
 /// Float32 PCM decoded once at load time for real-time memory playback.
@@ -532,6 +538,10 @@ final class StreamingStemBuffer: StemSampleSource, @unchecked Sendable {
     private var requestedCenterFrame = 0
     private var centerLock = os_unfair_lock()
 
+    // Pages held resident regardless of the playhead, guarded by `pinnedLock`.
+    private var pinnedPages: ClosedRange<Int>?
+    private var pinnedLock = os_unfair_lock()
+
     // File + scratch buffer are ONLY ever used on `readerQueue`.
     private let readerQueue = DispatchQueue(label: "StreamingStemBuffer.reader", qos: .userInitiated)
     private let reader: AVAudioFile
@@ -581,6 +591,40 @@ final class StreamingStemBuffer: StemSampleSource, @unchecked Sendable {
         requestedCenterFrame = clamped
         os_unfair_lock_unlock(&centerLock)
         readerQueue.sync { self.fillWindow(around: clamped) }
+    }
+
+    func setPinnedRegion(sourceFrames: Range<Int>?) {
+        let range = pageRange(for: sourceFrames)
+
+        os_unfair_lock_lock(&pinnedLock)
+        let changed = pinnedPages != range
+        pinnedPages = range
+        os_unfair_lock_unlock(&pinnedLock)
+
+        guard changed, range != nil else { return }
+
+        // Page in off the caller's thread; nobody should wait on disk to arm a loop.
+        readerQueue.async { [weak self] in
+            guard let self else { return }
+            os_unfair_lock_lock(&self.centerLock)
+            let center = self.requestedCenterFrame
+            os_unfair_lock_unlock(&self.centerLock)
+            self.fillWindow(around: center)
+        }
+    }
+
+    private func pageRange(for sourceFrames: Range<Int>?) -> ClosedRange<Int>? {
+        guard let sourceFrames, !sourceFrames.isEmpty, frameCount > 0 else { return nil }
+        guard sourceFrames.lowerBound < frameCount, sourceFrames.upperBound > 0 else { return nil }
+        let first = max(0, sourceFrames.lowerBound) / pageFrames
+        let last = min(frameCount - 1, sourceFrames.upperBound - 1) / pageFrames
+        return first <= last ? first...last : nil
+    }
+
+    private func currentPinnedPages() -> ClosedRange<Int>? {
+        os_unfair_lock_lock(&pinnedLock)
+        defer { os_unfair_lock_unlock(&pinnedLock) }
+        return pinnedPages
     }
 
     @discardableResult
@@ -680,18 +724,30 @@ final class StreamingStemBuffer: StemSampleSource, @unchecked Sendable {
         let centerPage = centerFrame / pageFrames
         let lowest = max(0, centerPage - lookBehindPages)
         let highest = centerPage + lookAheadPages
+        let pinned = currentPinnedPages()
 
         os_unfair_lock_lock(&pageLock)
         let residentIndices = Array(pages.keys)
         os_unfair_lock_unlock(&pageLock)
 
-        for index in residentIndices where index < lowest || index > highest {
+        for index in residentIndices
+        where (index < lowest || index > highest) && pinned?.contains(index) != true {
             os_unfair_lock_lock(&pageLock)
             pages[index] = nil
             os_unfair_lock_unlock(&pageLock)
         }
 
-        var index = lowest
+        // Sliding window first: it feeds the frames about to be rendered.
+        fillPages(from: lowest, through: highest)
+
+        if let pinned {
+            fillPages(from: pinned.lowerBound, through: pinned.upperBound)
+        }
+    }
+
+    /// Runs on `readerQueue`. Decodes any missing page in the inclusive range.
+    private func fillPages(from lowest: Int, through highest: Int) {
+        var index = max(0, lowest)
         while index <= highest {
             guard index * pageFrames < frameCount else { break }
 

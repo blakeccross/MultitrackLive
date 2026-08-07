@@ -26,6 +26,7 @@ struct SongLibraryPanel: View {
     @State private var sortOrder: SongLibrarySortOrder = .newest
     @State private var showingNewSongAlert = false
     @State private var showingAddSongOptions = false
+    @State private var showingAddClickSheet = false
     @State private var newSongName = ""
     @State private var songPendingRename: Song?
     @State private var renameSongName = ""
@@ -151,6 +152,16 @@ struct SongLibraryPanel: View {
         } message: {
             Text(consolidateSummary ?? "")
         }
+        .sheet(isPresented: $showingAddClickSheet) {
+            AddClickSongSheet { name, bpm, numerator, denominator in
+                createClickSong(
+                    name: name,
+                    bpm: bpm,
+                    numerator: numerator,
+                    denominator: denominator
+                )
+            }
+        }
     }
 
     private var headerBar: some View {
@@ -186,6 +197,9 @@ struct SongLibraryPanel: View {
                     Button("New Song") {
                         newSongName = ""
                         showingNewSongAlert = true
+                    }
+                    Button("Add Click") {
+                        showingAddClickSheet = true
                     }
                     Button("Import from Folder") {
                         presentFolderImporter()
@@ -325,6 +339,27 @@ struct SongLibraryPanel: View {
             onRequestTrackImport(song)
         } catch {
             modelContext.delete(song)
+            createSongError = error.localizedDescription
+        }
+    }
+
+    private func createClickSong(
+        name: String,
+        bpm: Double,
+        numerator: Int,
+        denominator: Int
+    ) {
+        do {
+            let song = try ClickSongCreator.create(
+                name: name,
+                bpm: bpm,
+                numerator: numerator,
+                denominator: denominator,
+                context: modelContext
+            )
+            showingAddClickSheet = false
+            onEdit(song)
+        } catch {
             createSongError = error.localizedDescription
         }
     }
@@ -599,6 +634,109 @@ private struct SongLibraryRow: View {
                 .fill(AppColors.separator)
                 .frame(height: 0.5)
         }
+    }
+}
+
+private struct AddClickSongSheet: View {
+    var onCreate: (String, Double, Int, Int) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var songName = ""
+    @State private var bpmText = "120"
+    @State private var numerator = TimeSignatureChange.defaultNumerator
+    @State private var denominator = TimeSignatureChange.defaultDenominator
+
+    private static let presets: [(numerator: Int, denominator: Int)] = [
+        (4, 4), (3, 4), (2, 4), (6, 8), (5, 4), (7, 8), (12, 8)
+    ]
+
+    private var canCreate: Bool {
+        !songName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && parsedBPM != nil
+    }
+
+    private var parsedBPM: Double? {
+        let sanitized = bpmText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(sanitized), value > 0, value.isFinite else {
+            return nil
+        }
+        return min(
+            max(value, TempoChange.validBPMRange.lowerBound),
+            TempoChange.validBPMRange.upperBound
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Song name", text: $songName)
+                    TextField("Tempo (BPM)", text: $bpmText)
+                        #if os(iOS)
+                        .keyboardType(.decimalPad)
+                        #endif
+                }
+
+                Section("Meter") {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
+                        ForEach(Array(Self.presets.enumerated()), id: \.offset) { _, preset in
+                            Button {
+                                numerator = preset.numerator
+                                denominator = preset.denominator
+                            } label: {
+                                Text("\(preset.numerator)/\(preset.denominator)")
+                                    .font(.body.monospacedDigit().weight(.medium))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                            }
+                            .appEditorToolbarPill()
+                            .tint(
+                                numerator == preset.numerator && denominator == preset.denominator
+                                    ? AppColors.accent
+                                    : .secondary
+                            )
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                }
+
+                Section {
+                    Text("Creates an 8-bar click track set to loop.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Add Click")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        guard let bpm = parsedBPM else { return }
+                        onCreate(
+                            songName.trimmingCharacters(in: .whitespacesAndNewlines),
+                            bpm,
+                            numerator,
+                            denominator
+                        )
+                    }
+                    .disabled(!canCreate)
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 360, minHeight: 380)
+        #endif
     }
 }
 

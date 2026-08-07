@@ -526,7 +526,6 @@ struct LivePlaybackView: View {
             sectionLoop: sectionLoop,
             loopSections: loopSections,
             loopSlotIDs: loopSlotIDs,
-            onLoop: snapToLoopSectionStart,
             onLoopActivated: { clearMarkerCue() }
         )
     }
@@ -534,10 +533,6 @@ struct LivePlaybackView: View {
     private func prepareSectionAnnouncements() {
         guard coordinator.currentSong?.dynamicCuesEnabled == true else { return }
         sectionAnnouncer.prepare(names: loopSections.map(\.name))
-    }
-
-    private func snapToLoopSectionStart(_ section: ArrangementDisplaySection) {
-        coordinator.snapToScheduledSection(section.timelineStartSeconds)
     }
 
     private func toggleSectionLoop() {
@@ -1285,7 +1280,6 @@ private struct LivePlaybackMonitorSupport: View {
     @Bindable var sectionLoop: SectionLoopController
     let loopSections: [ArrangementDisplaySection]
     let loopSlotIDs: Set<UUID>
-    let onLoop: (ArrangementDisplaySection) -> Void
     let onLoopActivated: () -> Void
 
     var body: some View {
@@ -1305,7 +1299,6 @@ private struct LivePlaybackMonitorSupport: View {
             loopController: sectionLoop,
             sections: loopSections,
             loopSlotIDs: loopSlotIDs,
-            onLoop: onLoop,
             onLoopActivated: onLoopActivated
         )
     }

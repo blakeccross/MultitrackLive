@@ -161,56 +161,98 @@ struct SectionLoopPlaybackSupport: View {
     @Bindable var loopController: SectionLoopController
     let sections: [ArrangementDisplaySection]
     let loopSlotIDs: Set<UUID>
-    let onLoop: (ArrangementDisplaySection) -> Void
     let onLoopActivated: () -> Void
 
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
-            .background {
-                SectionLoopMonitor(
-                    activeLoopSection: loopController.activeSection(
-                        in: sections,
-                        loopSlotIDs: loopSlotIDs
-                    ),
-                    onLoop: fireLoopIfNeeded
-                )
+            .onAppear {
+                syncEngineLoopRegion()
+                installWillReachEndHandler()
+            }
+            .onDisappear {
+                audioEngine.clearSectionLoop()
+                clearWillReachEndHandler()
             }
             .onChange(of: audioEngine.currentTime) { _, time in
                 loopController.handlePlaybackTimeChange(
                     at: time,
                     sections: sections,
                     loopSlotIDs: loopSlotIDs,
-                    onActivate: onLoopActivated
+                    onActivate: {
+                        onLoopActivated()
+                        syncEngineLoopRegion()
+                    }
                 )
+                syncEngineLoopRegion()
             }
             .onChange(of: loopSlotIDs) { _, newLoopSlotIDs in
                 loopController.handleLoopSlotIDsChange(newLoopSlotIDs)
+                loopController.handlePlaybackTimeChange(
+                    at: audioEngine.currentTime,
+                    sections: sections,
+                    loopSlotIDs: newLoopSlotIDs,
+                    onActivate: onLoopActivated
+                )
+                syncEngineLoopRegion()
+                installWillReachEndHandler()
+            }
+            .onChange(of: sections) { _, _ in
+                syncEngineLoopRegion()
+                installWillReachEndHandler()
+            }
+            .onChange(of: loopController.isLooping) { _, _ in
+                syncEngineLoopRegion()
             }
     }
 
-    private func fireLoopIfNeeded() {
-        guard let section = loopController.activeSection(in: sections, loopSlotIDs: loopSlotIDs) else {
-            return
+    /// Arms the audio-thread loop region. Seeking/snapping is intentionally not
+    /// used — wrapping is sample-accurate inside the transport + render path.
+    private func syncEngineLoopRegion() {
+        if let section = loopController.activeSection(in: sections, loopSlotIDs: loopSlotIDs) {
+            audioEngine.setSectionLoop(
+                start: section.timelineStartSeconds,
+                end: section.timelineEndSeconds
+            )
+        } else {
+            audioEngine.clearSectionLoop()
         }
-        onLoop(section)
     }
-}
 
-/// Fires a callback when playback reaches the end of an actively looping section.
-struct SectionLoopMonitor: View {
-    @Bindable private var audioEngine = AudioEngineManager.shared
-    let activeLoopSection: ArrangementDisplaySection?
-    let onLoop: () -> Void
+    private func installWillReachEndHandler() {
+        audioEngine.onWillReachEnd = { [loopController, sections, loopSlotIDs, onLoopActivated, audioEngine] in
+            // Activate a marked loop section if playback reached the end before the
+            // deferred SwiftUI time observer ran (common for single-section songs).
+            let nearEnd = max(
+                0,
+                audioEngine.duration - SectionLoopTiming.sampleThreshold(
+                    sampleRate: audioEngine.referenceSampleRate
+                )
+            )
+            loopController.handlePlaybackTimeChange(
+                at: nearEnd,
+                sections: sections,
+                loopSlotIDs: loopSlotIDs,
+                onActivate: onLoopActivated
+            )
 
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .onChange(of: audioEngine.currentTime) { _, time in
-                guard let section = activeLoopSection else { return }
-                guard time >= section.timelineEndSeconds else { return }
-                onLoop()
+            guard let section = loopController.activeSection(
+                in: sections,
+                loopSlotIDs: loopSlotIDs
+            ) else {
+                return audioEngine.hasActiveSectionLoop
             }
+
+            audioEngine.setSectionLoop(
+                start: section.timelineStartSeconds,
+                end: section.timelineEndSeconds
+            )
+            return true
+        }
+    }
+
+    private func clearWillReachEndHandler() {
+        audioEngine.onWillReachEnd = nil
     }
 }
 

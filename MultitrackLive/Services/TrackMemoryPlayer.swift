@@ -3,6 +3,10 @@ import Foundation
 
 /// Pull-based memory playback for one track via `AVAudioSourceNode`.
 final class TrackMemoryPlayer {
+    /// Head of a loop kept resident by streaming sources. The reader polls every
+    /// 40ms, so this only has to cover its catch-up latency after a wrap.
+    private static let loopPrefetchSeconds: TimeInterval = 2
+
     struct MixState: Sendable {
         var volume: Float = 1
         var isAudible: Bool = true
@@ -75,18 +79,44 @@ final class TrackMemoryPlayer {
             }
         }
 
-        private func silentGapSkipFrames(
+        private func regionRunFrames(
             regionSeconds: TimeInterval,
             remainingFrames: Int
         ) -> Int {
-            min(Int((regionSeconds * sampleRate).rounded(.down)), remainingFrames)
+            min(
+                AudioPlaybackTransport.frameSpan(forSeconds: regionSeconds, sampleRate: sampleRate),
+                remainingFrames
+            )
         }
 
-        private func silentGapSkipFrames(
-            regionSeconds: TimeInterval,
-            remainingFrames: AVAudioFrameCount
-        ) -> AVAudioFrameCount {
-            min(AVAudioFrameCount(regionSeconds * sampleRate), remainingFrames)
+        /// Output frames that fit before the master timeline advances `masterFrames`,
+        /// given `step` master frames consumed per output frame, capped at `limit`.
+        /// Capping in `Double` keeps a very small `step` from overflowing `Int`.
+        private func outputFrameSpan(forMasterFrames masterFrames: Int, step: Double, limit: Int) -> Int {
+            guard masterFrames > 0, limit > 0 else { return 0 }
+            guard step > 0 else { return min(masterFrames, limit) }
+            let frames = (Double(masterFrames) / step).rounded(.up)
+            guard frames < Double(limit) else { return limit }
+            return max(1, Int(frames))
+        }
+
+        private func loopFrameBounds() -> (start: Int, end: Int)? {
+            guard let loop = transport.currentLoopRegion(), loop.isValid, sampleRate > 0 else {
+                return nil
+            }
+            let start = AudioPlaybackTransport.frameIndex(for: loop.start, sampleRate: sampleRate)
+            let end = AudioPlaybackTransport.frameIndex(for: loop.end, sampleRate: sampleRate)
+            guard end > start else { return nil }
+            return (start, end)
+        }
+
+        /// Maps a continuously increasing master frame into the active loop via integer modulo.
+        private func loopedMasterFrame(_ absoluteMasterFrame: Int, loop: (start: Int, end: Int)?) -> Int {
+            guard let loop, absoluteMasterFrame >= loop.start else {
+                return absoluteMasterFrame
+            }
+            let length = loop.end - loop.start
+            return loop.start + ((absoluteMasterFrame - loop.start) % length)
         }
 
         private func renderConstantTempo(
@@ -96,62 +126,76 @@ final class TrackMemoryPlayer {
             transportMasterStart: TimeInterval
         ) {
             let (leftGain, rightGain) = Self.channelGains(for: mix)
+            let loop = loopFrameBounds()
+            let totalFrames = Int(frameCount)
 
-            var renderedFrames: AVAudioFrameCount = 0
-            var masterTime = masterStart
-            var transportTime = transportMasterStart
+            var renderedFrames = 0
+            // Unwrapped absolute frame from transport; looping is applied per-run via modulo.
+            var absoluteMasterFrame = AudioPlaybackTransport.frameIndex(
+                for: masterStart,
+                sampleRate: sampleRate
+            )
+            let absoluteTransportOrigin = AudioPlaybackTransport.frameIndex(
+                for: transportMasterStart,
+                sampleRate: sampleRate
+            )
+            let transportOffsetFrames = absoluteTransportOrigin - absoluteMasterFrame
+            let endFrame = playbackEndTimeline.map {
+                AudioPlaybackTransport.frameIndex(for: $0, sampleRate: sampleRate)
+            }
 
-            while renderedFrames < frameCount {
-                if let endTimeline = playbackEndTimeline, transportTime >= endTimeline {
-                    break
+            while renderedFrames < totalFrames {
+                let absoluteTransportFrame = absoluteMasterFrame + transportOffsetFrames
+                if let endFrame, absoluteTransportFrame >= endFrame { break }
+
+                let playbackMasterFrame = loopedMasterFrame(absoluteMasterFrame, loop: loop)
+                let playbackMasterTime = Double(playbackMasterFrame) / sampleRate
+
+                var maxRun = totalFrames - renderedFrames
+                if let loop {
+                    maxRun = min(maxRun, max(0, loop.end - playbackMasterFrame))
                 }
+                if let endFrame {
+                    maxRun = min(maxRun, max(0, endFrame - absoluteTransportFrame))
+                }
+                guard maxRun > 0 else { break }
 
-                let bufferRemaining = Double(frameCount - renderedFrames) / sampleRate
                 let regionSeconds = mapper.regionRemainingSeconds(
-                    fromMasterTimeline: masterTime,
-                    bufferLimit: bufferRemaining
+                    fromMasterTimeline: playbackMasterTime,
+                    bufferLimit: Double(maxRun) / sampleRate
+                )
+                let runFrames = regionRunFrames(
+                    regionSeconds: regionSeconds,
+                    remainingFrames: maxRun
                 )
 
-                guard regionSeconds > 0 else { break }
-
-                guard let sourceStart = mapper.sourceSeconds(atMasterTimeline: masterTime) else {
-                    let skipFrames = silentGapSkipFrames(
-                        regionSeconds: regionSeconds,
-                        remainingFrames: frameCount - renderedFrames
-                    )
-                    guard skipFrames > 0 else { break }
-                    renderedFrames += skipFrames
-                    masterTime += Double(skipFrames) / sampleRate
-                    transportTime += Double(skipFrames) / sampleRate
+                guard runFrames > 0 else {
+                    // Nothing mapped here: a gap past the last clip, or the tail of a
+                    // trimmed region. Advance silently up to the wrap point rather than
+                    // abandoning the buffer, so an armed loop still restarts on the exact
+                    // frame instead of leaving the top of the loop silent.
+                    guard loop != nil else { break }
+                    renderedFrames += maxRun
+                    absoluteMasterFrame += maxRun
                     continue
                 }
 
-                var runFrames = silentGapSkipFrames(
-                    regionSeconds: regionSeconds,
-                    remainingFrames: frameCount - renderedFrames
-                )
-                if let endTimeline = playbackEndTimeline {
-                    let framesUntilEnd = silentGapSkipFrames(
-                        regionSeconds: endTimeline - transportTime,
-                        remainingFrames: runFrames
+                if let sourceStart = mapper.sourceSeconds(atMasterTimeline: playbackMasterTime) {
+                    mixFromMemory(
+                        startingFrame: AudioPlaybackTransport.frameIndex(
+                            for: sourceStart,
+                            sampleRate: sampleRate
+                        ),
+                        frameCount: runFrames,
+                        into: outputBuffer,
+                        outputFrameOffset: renderedFrames,
+                        leftGain: leftGain,
+                        rightGain: rightGain
                     )
-                    runFrames = min(runFrames, framesUntilEnd)
                 }
-                guard runFrames > 0 else { break }
-
-                let sourceFrame = Int((sourceStart * sampleRate).rounded(.toNearestOrAwayFromZero))
-                mixFromMemory(
-                    startingFrame: sourceFrame,
-                    frameCount: Int(runFrames),
-                    into: outputBuffer,
-                    outputFrameOffset: Int(renderedFrames),
-                    leftGain: leftGain,
-                    rightGain: rightGain
-                )
 
                 renderedFrames += runFrames
-                masterTime += Double(runFrames) / sampleRate
-                transportTime += Double(runFrames) / sampleRate
+                absoluteMasterFrame += runFrames
             }
         }
 
@@ -170,7 +214,10 @@ final class TrackMemoryPlayer {
             let outputChannelCount = outputBuffers.count
             guard outputChannelCount > 0 else { return }
 
-            if let bounds = mapper.linearResampleBounds(atMasterTimeline: masterStart, sampleRate: sampleRate) {
+            // The linear fast path runs straight through to the trim end, so it can
+            // only be used when no loop is armed.
+            if loopFrameBounds() == nil,
+               let bounds = mapper.linearResampleBounds(atMasterTimeline: masterStart, sampleRate: sampleRate) {
                 renderResampledTempoLinear(
                     startSourceFrame: bounds.startSourceFrame,
                     endSourceFrame: bounds.endSourceFrame,
@@ -233,65 +280,82 @@ final class TrackMemoryPlayer {
             transportMasterStart: TimeInterval
         ) {
             var renderedFrames = 0
-            var masterTime = masterStart
-            var transportTime = transportMasterStart
-            let masterStep = ratio / sampleRate
+            let loop = loopFrameBounds()
+            var absoluteMasterFrame = Double(
+                AudioPlaybackTransport.frameIndex(for: masterStart, sampleRate: sampleRate)
+            )
+            let absoluteTransportOrigin = Double(
+                AudioPlaybackTransport.frameIndex(for: transportMasterStart, sampleRate: sampleRate)
+            )
+            let transportOffsetFrames = absoluteTransportOrigin - absoluteMasterFrame
+            let masterStep = ratio
+            guard masterStep > 0 else { return }
+            let endFrame = playbackEndTimeline.map {
+                AudioPlaybackTransport.frameIndex(for: $0, sampleRate: sampleRate)
+            }
 
             while renderedFrames < outputFrames {
-                if let endTimeline = playbackEndTimeline, transportTime >= endTimeline {
-                    break
-                }
+                let absoluteTransportFrame = Int(
+                    (absoluteMasterFrame + transportOffsetFrames).rounded(.down)
+                )
+                if let endFrame, absoluteTransportFrame >= endFrame { break }
 
-                let bufferRemaining = Double(outputFrames - renderedFrames) / sampleRate
+                let absoluteFrameInt = Int(absoluteMasterFrame.rounded(.down))
+                let playbackMasterFrame = loopedMasterFrame(absoluteFrameInt, loop: loop)
+                let playbackMasterTime = Double(playbackMasterFrame) / sampleRate
+
+                // Each output frame advances the master timeline by `masterStep`, so
+                // master-frame distances must be converted before capping the run.
+                var maxRun = outputFrames - renderedFrames
+                if let loop {
+                    maxRun = outputFrameSpan(
+                        forMasterFrames: loop.end - playbackMasterFrame,
+                        step: masterStep,
+                        limit: maxRun
+                    )
+                }
+                if let endFrame {
+                    maxRun = outputFrameSpan(
+                        forMasterFrames: endFrame - absoluteTransportFrame,
+                        step: masterStep,
+                        limit: maxRun
+                    )
+                }
+                guard maxRun > 0 else { break }
+
                 let regionSeconds = mapper.regionRemainingSeconds(
-                    fromMasterTimeline: masterTime,
-                    bufferLimit: bufferRemaining
+                    fromMasterTimeline: playbackMasterTime,
+                    bufferLimit: Double(maxRun) * masterStep / sampleRate
+                )
+                let runFrames = regionRunFrames(
+                    regionSeconds: regionSeconds / masterStep,
+                    remainingFrames: maxRun
                 )
 
-                guard regionSeconds > 0 else { break }
-
-                guard let sourceStart = mapper.sourceSeconds(atMasterTimeline: masterTime) else {
-                    let skipFrames = silentGapSkipFrames(
-                        regionSeconds: regionSeconds,
-                        remainingFrames: outputFrames - renderedFrames
-                    )
-                    guard skipFrames > 0 else { break }
-                    renderedFrames += skipFrames
-                    masterTime += Double(skipFrames) / sampleRate
-                    transportTime += Double(skipFrames) / sampleRate
+                guard runFrames > 0 else {
+                    guard loop != nil else { break }
+                    renderedFrames += maxRun
+                    absoluteMasterFrame += Double(maxRun) * masterStep
                     continue
                 }
 
-                var runFrames = silentGapSkipFrames(
-                    regionSeconds: regionSeconds,
-                    remainingFrames: outputFrames - renderedFrames
-                )
-                if let endTimeline = playbackEndTimeline {
-                    let framesUntilEnd = silentGapSkipFrames(
-                        regionSeconds: endTimeline - transportTime,
-                        remainingFrames: runFrames
-                    )
-                    runFrames = min(runFrames, framesUntilEnd)
-                }
-                guard runFrames > 0 else { break }
-
-                var sourceFrame = sourceStart * sampleRate
-
-                for offset in 0..<runFrames {
-                    writeResampledFrame(
-                        sourceFrame: sourceFrame,
-                        outputFrame: renderedFrames + offset,
-                        outputBuffers: outputBuffers,
-                        outputChannelCount: outputChannelCount,
-                        leftGain: leftGain,
-                        rightGain: rightGain
-                    )
-                    sourceFrame += ratio
-                    masterTime += masterStep
-                    transportTime += masterStep
+                if let sourceStart = mapper.sourceSeconds(atMasterTimeline: playbackMasterTime) {
+                    var sourceFrame = sourceStart * sampleRate
+                    for offset in 0..<runFrames {
+                        writeResampledFrame(
+                            sourceFrame: sourceFrame,
+                            outputFrame: renderedFrames + offset,
+                            outputBuffers: outputBuffers,
+                            outputChannelCount: outputChannelCount,
+                            leftGain: leftGain,
+                            rightGain: rightGain
+                        )
+                        sourceFrame += masterStep
+                    }
                 }
 
                 renderedFrames += runFrames
+                absoluteMasterFrame += Double(runFrames) * masterStep
             }
         }
 
@@ -472,6 +536,34 @@ final class TrackMemoryPlayer {
 
     func consumePeakMeter(decay: Float = 0.55) -> Float {
         renderContext.peakMeter.consume(decay: decay)
+    }
+
+    /// Pins the source audio under the loop start so the frames rendered right
+    /// after a wrap are already resident. Streaming stems evict pages behind the
+    /// playhead, which otherwise silences the top of every loop pass.
+    /// Pass `nil` when no loop is armed.
+    func prepareLoopPrefetch(atMasterTimeline masterLoopStart: TimeInterval?) {
+        guard let masterLoopStart else {
+            renderContext.buffer.setPinnedRegion(sourceFrames: nil)
+            return
+        }
+
+        let effectiveTimeline = masterLoopStart - renderContext.playbackTimelineOffset
+        guard effectiveTimeline >= 0,
+              let sourceSeconds = renderContext.mapper.sourceSeconds(
+                atMasterTimeline: effectiveTimeline
+              ) else {
+            renderContext.buffer.setPinnedRegion(sourceFrames: nil)
+            return
+        }
+
+        let sampleRate = renderContext.sampleRate
+        let startFrame = AudioPlaybackTransport.frameIndex(
+            for: sourceSeconds,
+            sampleRate: sampleRate
+        )
+        let length = max(1, Int(Self.loopPrefetchSeconds * sampleRate))
+        renderContext.buffer.setPinnedRegion(sourceFrames: startFrame..<(startFrame + length))
     }
 
     /// Warms the backing sample source for playback starting at the given master

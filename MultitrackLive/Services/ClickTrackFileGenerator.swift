@@ -51,15 +51,37 @@ enum ClickTrackFileGenerator {
             throw ClickTrackFileGeneratorError.invalidDuration
         }
 
-        let projectURL = try SongProjectBridge.ensureProjectFile(for: song, context: context)
         let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
+        return try generateAndAttach(
+            to: song,
+            context: context,
+            duration: duration,
+            tempoChanges: projectState.tempoChanges,
+            timeSignatureChanges: projectState.timeSignatureChanges
+        )
+    }
+
+    /// Generates a click audio file for an explicit duration and links or replaces a Click track.
+    @discardableResult
+    static func generateAndAttach(
+        to song: Song,
+        context: ModelContext,
+        duration: TimeInterval,
+        tempoChanges: [TempoChange],
+        timeSignatureChanges: [TimeSignatureChange]
+    ) throws -> AudioTrack {
+        guard duration > 0 else {
+            throw ClickTrackFileGeneratorError.invalidDuration
+        }
+
+        let projectURL = try SongProjectBridge.ensureProjectFile(for: song, context: context)
 
         let buffer: DecodedStemBuffer
         do {
             buffer = try ClickTrackGenerator.generate(
                 duration: duration,
-                tempoChanges: projectState.tempoChanges,
-                timeSignatureChanges: projectState.timeSignatureChanges,
+                tempoChanges: tempoChanges,
+                timeSignatureChanges: timeSignatureChanges,
                 subdivision: .quarter
             )
         } catch {
