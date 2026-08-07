@@ -149,6 +149,8 @@
 		AA00000100000000000000FB /* CueTrackSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000FB /* CueTrackSchedulerTests.swift */; };
 		AA00000100000000000000FC /* CueTrackGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000FC /* CueTrackGeneratorTests.swift */; };
 		AA0000010000000000000102 /* SpeechSampleRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000102 /* SpeechSampleRendererTests.swift */; };
+		AA0000010000000000000200 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000E20000000000000200 /* Sparkle */; platformFilter = macos; };
+		AA0000010000000000000201 /* SparkleUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000201 /* SparkleUpdater.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -308,6 +310,8 @@
 		AA00000200000000000000FB /* CueTrackSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CueTrackSchedulerTests.swift; sourceTree = "<group>"; };
 		AA00000200000000000000FC /* CueTrackGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CueTrackGeneratorTests.swift; sourceTree = "<group>"; };
 		AA0000020000000000000102 /* SpeechSampleRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechSampleRendererTests.swift; sourceTree = "<group>"; };
+		AA0000020000000000000200 /* MultitrackLive.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MultitrackLive.entitlements; sourceTree = "<group>"; };
+		AA0000020000000000000201 /* SparkleUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkleUpdater.swift; sourceTree = "<group>"; };
 		AA0000030000000000000001 /* MultitrackLive.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MultitrackLive.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000030000000000000002 /* MultitrackLiveTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MultitrackLiveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -318,6 +322,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA000001000000000000003B /* Accelerate.framework in Frameworks */,
+				AA0000010000000000000200 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -354,6 +359,7 @@
 			children = (
 				AA0000020000000000000001 /* MultitrackLiveApp.swift */,
 				AA000002000000000000003B /* MultitrackLive-Bridging-Header.h */,
+				AA0000020000000000000200 /* MultitrackLive.entitlements */,
 				AA00000500000000000000A2 /* DesignSystem */,
 				AA000005000000000000000E /* Audio */,
 				AA0000050000000000000004 /* Models */,
@@ -429,6 +435,7 @@
 				AA00000200000000000000FA /* CueTrackFileGenerator.swift */,
 				AA00000200000000000000F2 /* SectionAnnouncer.swift */,
 				AA00000200000000000000F4 /* SongSectionNameNormalizer.swift */,
+				AA0000020000000000000201 /* SparkleUpdater.swift */,
 				AA000002000000000000001F /* SongArrangementStore.swift */,
 				AA000002000000000000004A /* ClipRegionStore.swift */,
 				AA00000200000000000000A0 /* TimelineRippleStore.swift */,
@@ -653,6 +660,9 @@
 			dependencies = (
 			);
 			name = MultitrackLive;
+			packageProductDependencies = (
+				AA0000E20000000000000200 /* Sparkle */,
+			);
 			productName = MultitrackLive;
 			productReference = AA0000030000000000000001 /* MultitrackLive.app */;
 			productType = "com.apple.product-type.application";
@@ -702,6 +712,9 @@
 				Base,
 			);
 			mainGroup = AA0000050000000000000001;
+			packageReferences = (
+				AA0000E10000000000000200 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			productRefGroup = AA0000050000000000000003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -781,6 +794,7 @@
 				AA00000100000000000000F2 /* SectionAnnouncer.swift in Sources */,
 				AA00000100000000000000F3 /* SongSectionPresets.swift in Sources */,
 				AA00000100000000000000F4 /* SongSectionNameNormalizer.swift in Sources */,
+				AA0000010000000000000201 /* SparkleUpdater.swift in Sources */,
 				AA000001000000000000001C /* TimelineLayout.swift in Sources */,
 				AA000001000000000000001D /* ArrangementSlot.swift in Sources */,
 				AA000001000000000000001E /* SongArrangementStore.swift in Sources */,
@@ -994,6 +1008,7 @@
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = MultitrackLive/MultitrackLive.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 6U2Y6W57T7;
@@ -1054,6 +1069,7 @@
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = MultitrackLive/MultitrackLive.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 6U2Y6W57T7;
@@ -1190,6 +1206,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AA0000E10000000000000200 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.7.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AA0000E20000000000000200 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA0000E10000000000000200 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AA00000A0000000000000001 /* Project object */;
 }

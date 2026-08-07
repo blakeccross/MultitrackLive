@@ -13,6 +13,9 @@ private enum AppWindowMetrics {
 @main
 struct MultitrackLiveApp: App {
     private let modelContainer: ModelContainer
+    #if os(macOS)
+    private let sparkleUpdater = SparkleUpdater()
+    #endif
 
     init() {
         do {
@@ -42,6 +45,9 @@ struct MultitrackLiveApp: App {
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.expanded)
         .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(updater: sparkleUpdater.updater)
+            }
             FileMenuCommands()
             SongMenuCommands()
             SongUndoCommands()
