@@ -43,9 +43,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project MultitrackLive.xcodeproj -scheme MultitrackLive
 
       - name: Resolve versions
         id: versions
@@ -98,6 +103,7 @@ jobs:
             -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
       - name: Archive and export Developer ID app
         env:
@@ -110,6 +116,7 @@ jobs:
 
           mkdir -p build
 
+          set -o pipefail
           xcodebuild \
             -project MultitrackLive.xcodeproj \
             -scheme MultitrackLive \
@@ -122,7 +129,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
             OTHER_CODE_SIGN_FLAGS="--timestamp --options runtime" \
-            clean archive
+            clean archive 2>&1 | tee build/archive.log
 
           # Keep ExportOptions team ID in sync with secrets
           /usr/libexec/PlistBuddy -c "Set :teamID $APPLE_TEAM_ID" ExportOptions-DeveloperID.plist
@@ -134,6 +141,14 @@ jobs:
             -exportOptionsPlist ExportOptions-DeveloperID.plist
 
           test -d build/export/MultitrackLive.app
+
+      - name: Show compile errors on failure
+        if: failure()
+        run: |
+          if [[ -f build/archive.log ]]; then
+            echo "===== error: lines from archive log ====="
+            grep -E "error:|fatal error:|❌" build/archive.log || true
+          fi
 
       - name: Notarize and staple
         env:
