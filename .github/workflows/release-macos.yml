@@ -47,10 +47,19 @@ jobs:
           submodules: recursive
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+          xcrun --show-sdk-version --sdk macosx
 
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project MultitrackLive.xcodeproj -scheme MultitrackLive
+
+      - name: Verify rubberband submodule
+        run: |
+          test -f ThirdParty/rubberband/single/RubberBandSingle.cpp
+          test -f ThirdParty/rubberband/rubberband/rubberband-c.h
+          echo "rubberband submodule OK"
 
       - name: Resolve versions
         id: versions
@@ -117,18 +126,25 @@ jobs:
           mkdir -p build
 
           set -o pipefail
+          # arm64-only keeps CI memory under control (Release whole-module + universal often OOMs).
+          # ENABLE_PREVIEWS=NO avoids the Release/-O preview warning path.
           xcodebuild \
             -project MultitrackLive.xcodeproj \
             -scheme MultitrackLive \
             -configuration Release \
             -destination "generic/platform=macOS" \
             -archivePath "$PWD/build/MultitrackLive.xcarchive" \
+            -resultBundlePath "$PWD/build/Archive.xcresult" \
             MARKETING_VERSION="$MARKETING" \
             CURRENT_PROJECT_VERSION="$BUILD" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
             OTHER_CODE_SIGN_FLAGS="--timestamp --options runtime" \
+            ENABLE_PREVIEWS=NO \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            EXCLUDED_ARCHS=x86_64 \
             clean archive 2>&1 | tee build/archive.log
 
           # Keep ExportOptions team ID in sync with secrets
@@ -146,9 +162,21 @@ jobs:
         if: failure()
         run: |
           if [[ -f build/archive.log ]]; then
-            echo "===== error: lines from archive log ====="
-            grep -E "error:|fatal error:|❌" build/archive.log || true
+            echo "===== Likely compiler diagnostics ====="
+            grep -E "error:|fatal error:|❌|LLVM ERROR|out of memory|unable to|cannot find|No such file|Command.*failed" build/archive.log | tail -n 200 || true
+            echo "===== Last 80 log lines ====="
+            tail -n 80 build/archive.log || true
           fi
+
+      - name: Upload archive diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-diagnostics
+          path: |
+            build/archive.log
+            build/Archive.xcresult
+          if-no-files-found: ignore
 
       - name: Notarize and staple
         env:
