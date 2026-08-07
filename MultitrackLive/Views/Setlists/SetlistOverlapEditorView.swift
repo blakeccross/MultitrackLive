@@ -162,6 +162,11 @@ struct SetlistOverlapEditorView: View {
             previewEngine.teardown()
             restoreLivePlaybackIfNeeded()
         }
+        .onChange(of: previewEngine.isPlaying) { _, isPlaying in
+            if !isPlaying {
+                restoreLivePlaybackIfNeeded()
+            }
+        }
         .task {
             await loadWaveformSnapshotsIfNeeded()
         }
@@ -296,11 +301,16 @@ struct SetlistOverlapEditorView: View {
             Button {
                 Task { await togglePreview() }
             } label: {
-                Label(
-                    previewEngine.isPlaying ? "Stop" : "Preview",
-                    systemImage: previewEngine.isPlaying ? "stop.fill" : "play.fill"
-                )
-                .font(.subheadline.weight(.semibold))
+                if isLoadingPreview {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Label(
+                        previewEngine.isPlaying ? "Stop" : "Preview",
+                        systemImage: previewEngine.isPlaying ? "stop.fill" : "play.fill"
+                    )
+                    .font(.subheadline.weight(.semibold))
+                }
             }
             .disabled(windowDuration <= 0 || isLoadingPreview)
         }
@@ -536,16 +546,25 @@ struct SetlistOverlapEditorView: View {
     private func togglePreview() async {
         if previewEngine.isPlaying {
             previewEngine.pause()
+            return
+        }
+
+        pauseLivePlaybackForPreview()
+        await loadPreview()
+        guard previewEngine.isLoaded else {
+            previewError = previewEngine.loadError ?? "Unable to load overlap preview."
             restoreLivePlaybackIfNeeded()
             return
         }
 
-        await loadPreview()
-        guard previewEngine.isLoaded else { return }
-
-        pauseLivePlaybackForPreview()
-        previewEngine.stop()
         previewEngine.play()
+        previewError = previewEngine.loadError
+        if previewEngine.loadError != nil || !previewEngine.isPlaying {
+            if !previewEngine.isPlaying, previewError == nil {
+                previewError = "Unable to start overlap preview."
+            }
+            restoreLivePlaybackIfNeeded()
+        }
     }
 
     private func pauseLivePlaybackForPreview() {
@@ -554,9 +573,11 @@ struct SetlistOverlapEditorView: View {
         if wasLivePlaybackRunning {
             audioEngine.pause()
         }
+        audioEngine.suspendHardware()
     }
 
     private func restoreLivePlaybackIfNeeded() {
+        AudioEngineManager.shared.resumeHardware()
         if wasLivePlaybackRunning {
             AudioEngineManager.shared.play()
             wasLivePlaybackRunning = false

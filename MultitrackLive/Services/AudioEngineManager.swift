@@ -428,6 +428,20 @@ final class AudioEngineManager {
         midiScheduler.stop()
     }
 
+    /// Stops the underlying `AVAudioEngine` without clearing the loaded graph.
+    /// Used when another engine (e.g. overlap preview) needs exclusive hardware access.
+    func suspendHardware() {
+        if engine.isRunning {
+            engine.stop()
+        }
+    }
+
+    /// Restarts the audio graph after `suspendHardware()` if tracks are still loaded.
+    func resumeHardware() {
+        guard !tracks.isEmpty else { return }
+        try? startEngineIfNeeded()
+    }
+
     /// When true, this engine will not call `stop()` automatically when it reaches
     /// the end of its timeline. Useful for external handoffs (e.g. crossfades
     /// between two independent engines).

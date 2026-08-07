@@ -2,32 +2,25 @@ import AVFoundation
 import Foundation
 import Observation
 
+/// Previews an overlap transition by playing the outgoing and incoming songs on
+/// two independent `AudioEngineManager` instances (same approach as live overlap).
 @Observable
 final class OverlapPreviewEngine {
-    private let engine = AVAudioEngine()
-    private let masterMixer = AVAudioMixerNode()
-    private let transport = AudioPlaybackTransport()
+    private let outgoingEngine = AudioEngineManager()
+    private let incomingEngine = AudioEngineManager()
 
-    private var outgoingTracks: [OverlapTrackGraphBuilder.BuiltTrack] = []
-    private var incomingTracks: [OverlapTrackGraphBuilder.BuiltTrack] = []
     private var playbackTimer: Timer?
     private var loadGeneration = 0
+    private var incomingStarted = false
 
     private var previewStartTime: TimeInterval = 0
-    private var incomingStartTime: TimeInterval = 0
+    private var incomingLaneOffset: TimeInterval = 0
     private var previewDuration: TimeInterval = 0
 
     private(set) var isPlaying = false
     private(set) var currentTime: TimeInterval = 0
     private(set) var isLoaded = false
     private(set) var loadError: String?
-
-    init() {
-        engine.attach(masterMixer)
-        engine.connect(masterMixer, to: engine.mainMixerNode, format: nil)
-        AudioOutputDeviceService.applyStableBufferSize()
-        engine.outputNode.auAudioUnit.maximumFramesToRender = AudioOutputDeviceService.stableBufferFrameSize
-    }
 
     deinit {
         teardown()
@@ -42,8 +35,7 @@ final class OverlapPreviewEngine {
         loadGeneration += 1
         let generation = loadGeneration
 
-        stop()
-        teardownTracks()
+        stopPlayback()
         isLoaded = false
         loadError = nil
 
@@ -64,147 +56,117 @@ final class OverlapPreviewEngine {
         )
 
         let outgoingWindowStart = max(0, outgoingDuration - windowDuration)
-        let incomingLaneOffset = OverlapTransitionTiming.incomingLaneOffset(
+        let laneOffset = OverlapTransitionTiming.incomingLaneOffset(
             outgoingDuration: outgoingDuration,
             windowDuration: windowDuration,
             startOffsetSeconds: clampedOffset
         )
 
         previewStartTime = outgoingWindowStart
-        incomingStartTime = outgoingWindowStart + incomingLaneOffset
+        incomingLaneOffset = laneOffset
         previewDuration = windowDuration
 
         do {
-            try await loadTracks(for: outgoingSong, isOutgoing: true)
-            guard generation == loadGeneration else {
-                teardownTracks()
-                return
-            }
-            try await loadTracks(for: incomingSong, isOutgoing: false)
-            guard generation == loadGeneration else {
-                teardownTracks()
-                return
-            }
-            transport.setDuration(previewStartTime + previewDuration)
+            try loadSong(outgoingSong, into: outgoingEngine)
+            guard generation == loadGeneration else { return }
+            try loadSong(incomingSong, into: incomingEngine)
+            guard generation == loadGeneration else { return }
+
+            outgoingEngine.setSuppressAutoStopOnPlaybackFinished(true)
+            incomingEngine.setSuppressAutoStopOnPlaybackFinished(true)
+            outgoingEngine.setMasterVolume(1)
+            incomingEngine.setMasterVolume(1)
+
             isLoaded = true
         } catch {
-            teardownTracks()
+            teardownEngines()
             loadError = error.localizedDescription
         }
     }
 
     func invalidateConfiguration() {
         loadGeneration += 1
-        stop()
-        teardownTracks()
+        stopPlayback()
         isLoaded = false
     }
 
     func play() {
         guard isLoaded, !isPlaying else { return }
-        do {
-            AudioOutputDeviceService.applyStableBufferSize()
-            engine.outputNode.auAudioUnit.maximumFramesToRender = AudioOutputDeviceService.stableBufferFrameSize
-            if !engine.isRunning {
-                try engine.start()
-            }
 
-            for track in outgoingTracks {
-                track.memoryPlayer.setPlaybackWindow(offset: 0, endTimeline: previewStartTime + previewDuration)
-                track.memoryPlayer.prewarm(atTimelineSeconds: previewStartTime)
-            }
-            for track in incomingTracks {
-                track.memoryPlayer.setPlaybackWindow(offset: incomingStartTime, endTimeline: nil)
-                track.memoryPlayer.prewarm(atTimelineSeconds: incomingStartTime)
-            }
+        AudioOutputDeviceService.applyStableBufferSize()
 
-            transport.beginPlayback(from: previewStartTime)
-            isPlaying = true
-            currentTime = 0
-            startTimer()
-        } catch {
-            loadError = error.localizedDescription
+        outgoingEngine.seek(to: previewStartTime)
+        incomingEngine.seek(to: 0)
+        incomingEngine.setMasterVolume(0)
+        incomingStarted = false
+
+        outgoingEngine.play()
+        guard outgoingEngine.isPlaying else {
+            loadError = "Unable to start overlap preview."
+            return
         }
+
+        isPlaying = true
+        currentTime = 0
+        startTimer()
+        // Incoming may need to start immediately when the overlap begins at the window start.
+        syncIncomingAudibility()
     }
 
     func pause() {
         guard isPlaying else { return }
         refreshCurrentTime()
-        transport.pause(capturingTimeline: previewStartTime + currentTime)
+        outgoingEngine.pause()
+        incomingEngine.pause()
         isPlaying = false
         stopTimer()
     }
 
     func stop() {
-        transport.stop()
-        isPlaying = false
-        currentTime = 0
-        stopTimer()
+        stopPlayback()
     }
 
     func teardown() {
-        stop()
-        teardownTracks()
-        if engine.isRunning {
-            engine.stop()
-        }
+        stopPlayback()
+        teardownEngines()
         isLoaded = false
     }
 
-    private func loadTracks(
-        for song: Song,
-        isOutgoing: Bool
-    ) async throws {
-        let trackInputs = SongTrackLoader.trackInputs(for: song)
-        let payloads = try await Task { @MainActor in
-            try SongTrackLoader.streamingPayloads(trackInputs: trackInputs)
-        }.value
+    private func loadSong(_ song: Song, into engine: AudioEngineManager) throws {
+        let payloads = try SongTrackLoader.playbackPayloads(for: song)
+        try engine.loadPreparedTracks(payloads)
 
         let arrangement = SongPlaybackArrangementLoader.sections(for: song)
-        var bundles: [OverlapTrackGraphBuilder.BuiltTrack] = []
-
-        for payload in payloads {
-            let bundle = try OverlapTrackGraphBuilder.buildTrack(
-                payload: payload,
-                sections: arrangement.sectionsByTrack[payload.id] ?? arrangement.masterSections,
-                transport: transport,
-                engine: engine
-            )
-            bundle.memoryPlayer.updateMix(
-                volume: bundle.settings.volume,
-                isAudible: !bundle.settings.isMuted
-            )
-            bundles.append(bundle)
-        }
-
-        if isOutgoing {
-            outgoingTracks = bundles
-            for track in outgoingTracks {
-                track.memoryPlayer.setPlaybackWindow(offset: 0, endTimeline: previewStartTime + previewDuration)
-                OverlapTrackGraphBuilder.connect(track, to: masterMixer, in: engine)
-            }
-        } else {
-            incomingTracks = bundles
-            for track in incomingTracks {
-                track.memoryPlayer.setPlaybackWindow(offset: incomingStartTime, endTimeline: nil)
-                OverlapTrackGraphBuilder.connect(track, to: masterMixer, in: engine)
-            }
-        }
+        let projectState = SongProjectBridge.projectStateOrDefaults(for: song)
+        engine.setArrangement(
+            sectionsByTrack: arrangement.sectionsByTrack,
+            masterSections: arrangement.masterSections,
+            removedClips: projectState.arrangement.removedClips
+        )
+        engine.setTempoMap(
+            projectState.tempoChanges,
+            referenceBPM: projectState.tempoChanges.referenceBPM,
+            timeSignatureChanges: projectState.timeSignatureChanges
+        )
     }
 
-    private func teardownTracks() {
-        stopEngineIfNeeded()
-        for bundle in outgoingTracks + incomingTracks {
-            OverlapTrackGraphBuilder.detach(bundle, from: engine)
-        }
-        outgoingTracks = []
-        incomingTracks = []
+    private func stopPlayback() {
+        outgoingEngine.pause()
+        incomingEngine.pause()
+        outgoingEngine.seek(to: 0)
+        incomingEngine.seek(to: 0)
+        incomingEngine.setMasterVolume(1)
+        isPlaying = false
+        currentTime = 0
+        incomingStarted = false
+        stopTimer()
     }
 
-    private func stopEngineIfNeeded() {
-        if engine.isRunning {
-            engine.stop()
-        }
+    private func teardownEngines() {
+        outgoingEngine.stop()
+        incomingEngine.stop()
+        outgoingEngine.suspendHardware()
+        incomingEngine.suspendHardware()
     }
 
     private func startTimer() {
@@ -212,6 +174,8 @@ final class OverlapPreviewEngine {
         let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             guard let self, self.isPlaying else { return }
             self.refreshCurrentTime()
+            self.syncIncomingAudibility()
+
             if self.currentTime >= self.previewDuration - (1.0 / 48_000) {
                 self.pause()
                 self.currentTime = self.previewDuration
@@ -227,7 +191,18 @@ final class OverlapPreviewEngine {
     }
 
     private func refreshCurrentTime() {
-        let state = transport.renderTimeline(atHostTime: mach_absolute_time(), captureAnchor: true)
-        currentTime = max(0, min(state.timelineSeconds - previewStartTime, previewDuration))
+        let timeline = outgoingEngine.livePlayheadTime()
+        currentTime = max(0, min(timeline - previewStartTime, previewDuration))
+    }
+
+    private func syncIncomingAudibility() {
+        guard !incomingStarted, currentTime >= incomingLaneOffset - (1.0 / 48_000) else { return }
+
+        incomingEngine.seek(to: 0)
+        incomingEngine.setMasterVolume(1)
+        if !incomingEngine.isPlaying {
+            incomingEngine.play()
+        }
+        incomingStarted = true
     }
 }
