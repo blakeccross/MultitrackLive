@@ -157,7 +157,11 @@ struct TimelinePlayheadOverlay: View {
 
 /// Wires section-loop monitoring and playback-time handling into a timeline view.
 struct SectionLoopPlaybackSupport: View {
-    @Bindable private var audioEngine = AudioEngineManager.shared
+    /// UI / clock engine used for playhead observation. Remains `shared` after overlap.
+    @Bindable private var clockEngine = AudioEngineManager.shared
+    /// Audible engine that must own the transport loop region. After an overlap
+    /// handoff this can be a separate `AudioEngineManager` instance.
+    var playbackEngine: AudioEngineManager = .shared
     @Bindable var loopController: SectionLoopController
     let sections: [ArrangementDisplaySection]
     let loopSlotIDs: Set<UUID>
@@ -171,10 +175,10 @@ struct SectionLoopPlaybackSupport: View {
                 installWillReachEndHandler()
             }
             .onDisappear {
-                audioEngine.clearSectionLoop()
+                clearLoopRegions()
                 clearWillReachEndHandler()
             }
-            .onChange(of: audioEngine.currentTime) { _, time in
+            .onChange(of: clockEngine.currentTime) { _, time in
                 loopController.handlePlaybackTimeChange(
                     at: time,
                     sections: sections,
@@ -189,7 +193,7 @@ struct SectionLoopPlaybackSupport: View {
             .onChange(of: loopSlotIDs) { _, newLoopSlotIDs in
                 loopController.handleLoopSlotIDsChange(newLoopSlotIDs)
                 loopController.handlePlaybackTimeChange(
-                    at: audioEngine.currentTime,
+                    at: clockEngine.currentTime,
                     sections: sections,
                     loopSlotIDs: newLoopSlotIDs,
                     onActivate: onLoopActivated
@@ -204,30 +208,50 @@ struct SectionLoopPlaybackSupport: View {
             .onChange(of: loopController.isLooping) { _, _ in
                 syncEngineLoopRegion()
             }
+            .onChange(of: ObjectIdentifier(playbackEngine)) { _, _ in
+                syncEngineLoopRegion()
+                installWillReachEndHandler()
+            }
     }
 
     /// Arms the audio-thread loop region. Seeking/snapping is intentionally not
     /// used — wrapping is sample-accurate inside the transport + render path.
     private func syncEngineLoopRegion() {
         if let section = loopController.activeSection(in: sections, loopSlotIDs: loopSlotIDs) {
-            audioEngine.setSectionLoop(
+            applyLoopRegion(
                 start: section.timelineStartSeconds,
                 end: section.timelineEndSeconds
             )
         } else {
-            audioEngine.clearSectionLoop()
+            clearLoopRegions()
+        }
+    }
+
+    private func applyLoopRegion(start: TimeInterval, end: TimeInterval) {
+        playbackEngine.setSectionLoop(start: start, end: end)
+        // After overlap, the UI clock stays on `shared` while audio plays on a
+        // separate engine — both need the loop region so playhead and audio wrap.
+        if playbackEngine !== clockEngine {
+            clockEngine.setSectionLoop(start: start, end: end)
+        }
+    }
+
+    private func clearLoopRegions() {
+        playbackEngine.clearSectionLoop()
+        if playbackEngine !== clockEngine {
+            clockEngine.clearSectionLoop()
         }
     }
 
     private func installWillReachEndHandler() {
-        audioEngine.onWillReachEnd = { [loopController, sections, loopSlotIDs, onLoopActivated, audioEngine] in
+        let handler: () -> Bool = { [loopController, sections, loopSlotIDs, onLoopActivated, playbackEngine, clockEngine] in
             // Activate a marked loop section if playback reached the end before the
             // deferred SwiftUI time observer ran (common for single-section songs).
+            let duration = max(playbackEngine.duration, clockEngine.duration)
+            let sampleRate = playbackEngine.referenceSampleRate
             let nearEnd = max(
                 0,
-                audioEngine.duration - SectionLoopTiming.sampleThreshold(
-                    sampleRate: audioEngine.referenceSampleRate
-                )
+                duration - SectionLoopTiming.sampleThreshold(sampleRate: sampleRate)
             )
             loopController.handlePlaybackTimeChange(
                 at: nearEnd,
@@ -240,19 +264,33 @@ struct SectionLoopPlaybackSupport: View {
                 in: sections,
                 loopSlotIDs: loopSlotIDs
             ) else {
-                return audioEngine.hasActiveSectionLoop
+                return playbackEngine.hasActiveSectionLoop || clockEngine.hasActiveSectionLoop
             }
 
-            audioEngine.setSectionLoop(
+            playbackEngine.setSectionLoop(
                 start: section.timelineStartSeconds,
                 end: section.timelineEndSeconds
             )
+            if playbackEngine !== clockEngine {
+                clockEngine.setSectionLoop(
+                    start: section.timelineStartSeconds,
+                    end: section.timelineEndSeconds
+                )
+            }
             return true
+        }
+
+        playbackEngine.onWillReachEnd = handler
+        if playbackEngine !== clockEngine {
+            clockEngine.onWillReachEnd = handler
         }
     }
 
     private func clearWillReachEndHandler() {
-        audioEngine.onWillReachEnd = nil
+        playbackEngine.onWillReachEnd = nil
+        if playbackEngine !== clockEngine {
+            clockEngine.onWillReachEnd = nil
+        }
     }
 }
 

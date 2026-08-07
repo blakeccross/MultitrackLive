@@ -526,6 +526,7 @@ struct LivePlaybackView: View {
             sectionLoop: sectionLoop,
             loopSections: loopSections,
             loopSlotIDs: loopSlotIDs,
+            playbackEngine: coordinator.playbackEngine,
             onLoopActivated: { clearMarkerCue() }
         )
     }
@@ -1280,6 +1281,7 @@ private struct LivePlaybackMonitorSupport: View {
     @Bindable var sectionLoop: SectionLoopController
     let loopSections: [ArrangementDisplaySection]
     let loopSlotIDs: Set<UUID>
+    var playbackEngine: AudioEngineManager
     let onLoopActivated: () -> Void
 
     var body: some View {
@@ -1296,6 +1298,7 @@ private struct LivePlaybackMonitorSupport: View {
             announcer: announcer
         )
         SectionLoopPlaybackSupport(
+            playbackEngine: playbackEngine,
             loopController: sectionLoop,
             sections: loopSections,
             loopSlotIDs: loopSlotIDs,

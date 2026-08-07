@@ -44,6 +44,10 @@ final class PlaybackCoordinator {
     private let clockEngine = AudioEngineManager.shared
     private var incomingAudioEngine: AudioEngineManager?
 
+    /// Audible engine for the current song. After an overlap handoff this may be a
+    /// separate instance from `AudioEngineManager.shared` (the UI clock engine).
+    var playbackEngine: AudioEngineManager { audioEngine }
+
     private(set) var songs: [Song] = []
     private(set) var transitions: [SetlistTransition] = []
     private(set) var overlapConfigs: [OverlapTransitionConfig?] = []
