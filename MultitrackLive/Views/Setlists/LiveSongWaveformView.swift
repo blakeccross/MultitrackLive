@@ -849,7 +849,9 @@ struct LiveSetlistWaveformScrollView: View {
                 .frame(minWidth: viewportWidth, alignment: .leading)
             }
             .defaultScrollAnchor(.leading)
-            .modifier(LiveSetlistFollowScrollTargetBehavior(isFollowing: isFollowing))
+            // Keep a single scrollTargetBehavior instance so toggling follow does not
+            // recreate the ScrollView (which would jump to defaultScrollAnchor).
+            .scrollTargetBehavior(LiveSetlistFollowScrollTargetBehavior(isFollowing: isFollowing))
             .modifier(LiveSetlistFollowUserScrollDetector(
                 isFollowing: $isFollowing,
                 isPlayingProvider: isPlayingProvider
@@ -1076,16 +1078,15 @@ private struct LiveSetlistWaveformLanePlaceholder: View {
     }
 }
 
-private struct LiveSetlistFollowScrollTargetBehavior: ViewModifier {
-    let isFollowing: Bool
+/// View-aligned snapping while free-scrolling; no-op while following the playhead.
+/// Implemented as `ScrollTargetBehavior` (not a conditional `ViewModifier`) so
+/// enabling/disabling follow does not change ScrollView identity or reset offset.
+private struct LiveSetlistFollowScrollTargetBehavior: ScrollTargetBehavior {
+    var isFollowing: Bool
 
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if isFollowing {
-            content
-        } else {
-            content.scrollTargetBehavior(.viewAligned)
-        }
+    func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
+        guard !isFollowing else { return }
+        ViewAlignedScrollTargetBehavior().updateTarget(&target, context: context)
     }
 }
 
