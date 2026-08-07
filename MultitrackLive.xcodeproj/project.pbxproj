@@ -149,8 +149,9 @@
 		AA00000100000000000000FB /* CueTrackSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000FB /* CueTrackSchedulerTests.swift */; };
 		AA00000100000000000000FC /* CueTrackGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000FC /* CueTrackGeneratorTests.swift */; };
 		AA0000010000000000000102 /* SpeechSampleRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000102 /* SpeechSampleRendererTests.swift */; };
-		AA0000010000000000000200 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000E20000000000000200 /* Sparkle */; platformFilter = macos; };
+		AA0000010000000000000200 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000E20000000000000200 /* Sparkle */; platformFilters = (macos, ); };
 		AA0000010000000000000201 /* SparkleUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000201 /* SparkleUpdater.swift */; };
+		AA0000010000000000000202 /* ToolbarSharedBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000202 /* ToolbarSharedBackground.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -312,6 +313,7 @@
 		AA0000020000000000000102 /* SpeechSampleRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechSampleRendererTests.swift; sourceTree = "<group>"; };
 		AA0000020000000000000200 /* MultitrackLive.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MultitrackLive.entitlements; sourceTree = "<group>"; };
 		AA0000020000000000000201 /* SparkleUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkleUpdater.swift; sourceTree = "<group>"; };
+		AA0000020000000000000202 /* ToolbarSharedBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarSharedBackground.swift; sourceTree = "<group>"; };
 		AA0000030000000000000001 /* MultitrackLive.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MultitrackLive.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000030000000000000002 /* MultitrackLiveTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MultitrackLiveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -617,6 +619,7 @@
 				AA0000020000000000000082 /* AppSpacing.swift */,
 				AA0000020000000000000083 /* AppAnimation.swift */,
 				AA0000020000000000000084 /* AppModifiers.swift */,
+				AA0000020000000000000202 /* ToolbarSharedBackground.swift */,
 				AA00000500000000000000A3 /* Components */,
 			);
 			path = DesignSystem;
@@ -795,6 +798,7 @@
 				AA00000100000000000000F3 /* SongSectionPresets.swift in Sources */,
 				AA00000100000000000000F4 /* SongSectionNameNormalizer.swift in Sources */,
 				AA0000010000000000000201 /* SparkleUpdater.swift in Sources */,
+				AA0000010000000000000202 /* ToolbarSharedBackground.swift in Sources */,
 				AA000001000000000000001C /* TimelineLayout.swift in Sources */,
 				AA000001000000000000001D /* ArrangementSlot.swift in Sources */,
 				AA000001000000000000001E /* SongArrangementStore.swift in Sources */,
@@ -1035,7 +1039,16 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = (
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=iphonesimulator*]" = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
@@ -1049,12 +1062,15 @@
 				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
 				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
 				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
-				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
+				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = YES;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "MultitrackLive/MultitrackLive-Bridging-Header.h";
+				"OTHER_SWIFT_FLAGS[sdk=macosx26*]" = "$(inherited) -DMTLIVE_TOOLBAR_GLASS_SDK26";
+				"OTHER_SWIFT_FLAGS[sdk=iphoneos26*]" = "$(inherited) -DMTLIVE_TOOLBAR_GLASS_SDK26";
+				"OTHER_SWIFT_FLAGS[sdk=iphonesimulator26*]" = "$(inherited) -DMTLIVE_TOOLBAR_GLASS_SDK26";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1096,7 +1112,16 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = (
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=iphonesimulator*]" = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
@@ -1116,6 +1141,9 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "MultitrackLive/MultitrackLive-Bridging-Header.h";
+				"OTHER_SWIFT_FLAGS[sdk=macosx26*]" = "$(inherited) -DMTLIVE_TOOLBAR_GLASS_SDK26";
+				"OTHER_SWIFT_FLAGS[sdk=iphoneos26*]" = "$(inherited) -DMTLIVE_TOOLBAR_GLASS_SDK26";
+				"OTHER_SWIFT_FLAGS[sdk=iphonesimulator26*]" = "$(inherited) -DMTLIVE_TOOLBAR_GLASS_SDK26";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

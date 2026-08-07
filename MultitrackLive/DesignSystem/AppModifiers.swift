@@ -137,6 +137,11 @@ private final class ToolbarDisplayModeLockView: NSView {
         if #available(macOS 15.0, *) {
             toolbar.allowsDisplayModeCustomization = false
         }
+        // Hide Liquid Glass shared backgrounds on toolbar items (API may be absent on older SDKs).
+        for item in toolbar.items {
+            guard item.responds(to: Selector(("setHidesSharedBackground:"))) else { continue }
+            item.setValue(true, forKey: "hidesSharedBackground")
+        }
     }
 }
 #endif

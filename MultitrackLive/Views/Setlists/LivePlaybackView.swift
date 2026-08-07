@@ -1464,43 +1464,25 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @ToolbarContentBuilder
     var body: some ToolbarContent {
         #if os(macOS)
-        if #available(macOS 26.0, *) {
-            ToolbarItem(placement: .navigation) {
-                songsButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .principal) {
-                transportInfoBar
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .automatic) {
-                mixerButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .primaryAction) {
-                manageOutputsButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(placement: .navigation) {
-                songsButton
-            }
-
-            ToolbarItem(placement: .principal) {
-                transportInfoBar
-            }
-
-            ToolbarItem(placement: .automatic) {
-                mixerButton
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                manageOutputsButton
-            }
+        ToolbarItem(placement: .navigation) {
+            songsButton
         }
+        .multitrackHideSharedBackground()
+
+        ToolbarItem(placement: .principal) {
+            transportInfoBar
+        }
+        .multitrackHideSharedBackground()
+
+        ToolbarItem(placement: .automatic) {
+            mixerButton
+        }
+        .multitrackHideSharedBackground()
+
+        ToolbarItem(placement: .primaryAction) {
+            manageOutputsButton
+        }
+        .multitrackHideSharedBackground()
         #else
         ToolbarItem(placement: .navigation) {
             songsButton

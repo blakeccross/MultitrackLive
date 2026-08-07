@@ -2013,103 +2013,57 @@ private struct EditSongToolbarContent: ToolbarContent {
 
     @ToolbarContentBuilder
     var body: some ToolbarContent {
-        if #available(macOS 26.0, *) {
-            ToolbarItem(placement: .navigation) {
-                backButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .navigation) {
-                songsButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .principal) {
-                transportStrip(at: audioEngine.currentTime)
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .primaryAction) {
-                changeKeyButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .primaryAction) {
-                ClickTrackEditorButton(
-                    song: song,
-                    viewModel: viewModel,
-                    captureSnapshot: captureSnapshot,
-                    registerUndo: registerUndo
-                )
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .primaryAction) {
-                CueTrackEditorButton(
-                    song: song,
-                    viewModel: viewModel,
-                    captureSnapshot: captureSnapshot,
-                    registerUndo: registerUndo
-                )
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            if !markers.isEmpty {
-                ToolbarItem(placement: .primaryAction) {
-                    arrangementEditorButton
-                }
-                .sharedBackgroundVisibility(.hidden)
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                moreMenu
-            }
-            .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(placement: .navigation) {
-                backButton
-            }
-
-            ToolbarItem(placement: .navigation) {
-                songsButton
-            }
-
-            ToolbarItem(placement: .principal) {
-                transportStrip(at: audioEngine.currentTime)
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                changeKeyButton
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                ClickTrackEditorButton(
-                    song: song,
-                    viewModel: viewModel,
-                    captureSnapshot: captureSnapshot,
-                    registerUndo: registerUndo
-                )
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                CueTrackEditorButton(
-                    song: song,
-                    viewModel: viewModel,
-                    captureSnapshot: captureSnapshot,
-                    registerUndo: registerUndo
-                )
-            }
-
-            if !markers.isEmpty {
-                ToolbarItem(placement: .primaryAction) {
-                    arrangementEditorButton
-                }
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                moreMenu
-            }
+        ToolbarItem(placement: .navigation) {
+            backButton
         }
+        .multitrackHideSharedBackground()
+
+        ToolbarItem(placement: .navigation) {
+            songsButton
+        }
+        .multitrackHideSharedBackground()
+
+        ToolbarItem(placement: .principal) {
+            transportStrip(at: audioEngine.currentTime)
+        }
+        .multitrackHideSharedBackground()
+
+        ToolbarItem(placement: .primaryAction) {
+            changeKeyButton
+        }
+        .multitrackHideSharedBackground()
+
+        ToolbarItem(placement: .primaryAction) {
+            ClickTrackEditorButton(
+                song: song,
+                viewModel: viewModel,
+                captureSnapshot: captureSnapshot,
+                registerUndo: registerUndo
+            )
+        }
+        .multitrackHideSharedBackground()
+
+        ToolbarItem(placement: .primaryAction) {
+            CueTrackEditorButton(
+                song: song,
+                viewModel: viewModel,
+                captureSnapshot: captureSnapshot,
+                registerUndo: registerUndo
+            )
+        }
+        .multitrackHideSharedBackground()
+
+        if !markers.isEmpty {
+            ToolbarItem(placement: .primaryAction) {
+                arrangementEditorButton
+            }
+            .multitrackHideSharedBackground()
+        }
+
+        ToolbarItem(placement: .primaryAction) {
+            moreMenu
+        }
+        .multitrackHideSharedBackground()
     }
 
     private func transportStrip(at time: TimeInterval) -> some View {
