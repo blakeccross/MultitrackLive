@@ -365,6 +365,12 @@ final class DecodedStemBuffer: StemSampleSource, @unchecked Sendable {
         }
     }
 
+    /// Exposes a channel's PCM for in-place synthesis (e.g. LTC).
+    func withMutableSamples(channel: Int, _ body: (UnsafeMutablePointer<Float>, Int) -> Void) {
+        guard channel >= 0, channel < channelCount else { return }
+        body(channels[channel], frameCount)
+    }
+
     static func impulseSample(
         frameCount: Int = 100,
         peakFrame: Int = 0,

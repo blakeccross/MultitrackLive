@@ -136,6 +136,15 @@
 		AA00000100000000000000E2 /* MissingMediaRelinkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000E2 /* MissingMediaRelinkView.swift */; };
 		AA00000100000000000000F0 /* StemAudioWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F0 /* StemAudioWriter.swift */; };
 		AA00000100000000000000F1 /* ClickTrackFileGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F1 /* ClickTrackFileGenerator.swift */; };
+		AA0000010000000000000110 /* TimecodeSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000110 /* TimecodeSettings.swift */; };
+		AA0000010000000000000111 /* TimecodeSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000111 /* TimecodeSettingsStore.swift */; };
+		AA0000010000000000000112 /* TimecodeStartCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000112 /* TimecodeStartCalculator.swift */; };
+		AA0000010000000000000113 /* LTCFrameEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000113 /* LTCFrameEncoder.swift */; };
+		AA0000010000000000000114 /* LTCGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000114 /* LTCGenerator.swift */; };
+		AA0000010000000000000115 /* TimecodePlaybackSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000115 /* TimecodePlaybackSupport.swift */; };
+		AA0000010000000000000116 /* TimecodeStartCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000116 /* TimecodeStartCalculatorTests.swift */; };
+		AA0000010000000000000117 /* LTCFrameEncoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000117 /* LTCFrameEncoderTests.swift */; };
+		AA0000010000000000000118 /* LTCGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000118 /* LTCGeneratorTests.swift */; };
 		AA00000100000000000000FD /* ClickSongCreator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000FD /* ClickSongCreator.swift */; };
 		AA00000100000000000000FE /* ClickSongCreatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000FE /* ClickSongCreatorTests.swift */; };
 		AA00000100000000000000F2 /* SectionAnnouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000F2 /* SectionAnnouncer.swift */; };
@@ -299,6 +308,15 @@
 		AA00000200000000000000E2 /* MissingMediaRelinkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissingMediaRelinkView.swift; sourceTree = "<group>"; };
 		AA00000200000000000000F0 /* StemAudioWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StemAudioWriter.swift; sourceTree = "<group>"; };
 		AA00000200000000000000F1 /* ClickTrackFileGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickTrackFileGenerator.swift; sourceTree = "<group>"; };
+		AA0000020000000000000110 /* TimecodeSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimecodeSettings.swift; sourceTree = "<group>"; };
+		AA0000020000000000000111 /* TimecodeSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimecodeSettingsStore.swift; sourceTree = "<group>"; };
+		AA0000020000000000000112 /* TimecodeStartCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimecodeStartCalculator.swift; sourceTree = "<group>"; };
+		AA0000020000000000000113 /* LTCFrameEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LTCFrameEncoder.swift; sourceTree = "<group>"; };
+		AA0000020000000000000114 /* LTCGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LTCGenerator.swift; sourceTree = "<group>"; };
+		AA0000020000000000000115 /* TimecodePlaybackSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimecodePlaybackSupport.swift; sourceTree = "<group>"; };
+		AA0000020000000000000116 /* TimecodeStartCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimecodeStartCalculatorTests.swift; sourceTree = "<group>"; };
+		AA0000020000000000000117 /* LTCFrameEncoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LTCFrameEncoderTests.swift; sourceTree = "<group>"; };
+		AA0000020000000000000118 /* LTCGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LTCGeneratorTests.swift; sourceTree = "<group>"; };
 		AA00000200000000000000FD /* ClickSongCreator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickSongCreator.swift; sourceTree = "<group>"; };
 		AA00000200000000000000FE /* ClickSongCreatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickSongCreatorTests.swift; sourceTree = "<group>"; };
 		AA00000200000000000000F2 /* SectionAnnouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionAnnouncer.swift; sourceTree = "<group>"; };
@@ -399,6 +417,7 @@
 				AA000002000000000000002A /* TrackGroup.swift */,
 				AA000002000000000000002D /* OutputDestination.swift */,
 				AA000002000000000000002E /* OutputRoutingConfig.swift */,
+				AA0000020000000000000110 /* TimecodeSettings.swift */,
 				AA000002000000000000002F /* GroupOutputRoute.swift */,
 				AA0000020000000000000019 /* ArrangementMarker.swift */,
 				AA00000200000000000000F3 /* SongSectionPresets.swift */,
@@ -432,6 +451,11 @@
 				AA000002000000000000004E /* ClickTrackScheduler.swift */,
 				AA00000200000000000000F0 /* StemAudioWriter.swift */,
 				AA00000200000000000000F1 /* ClickTrackFileGenerator.swift */,
+				AA0000020000000000000111 /* TimecodeSettingsStore.swift */,
+				AA0000020000000000000112 /* TimecodeStartCalculator.swift */,
+				AA0000020000000000000113 /* LTCFrameEncoder.swift */,
+				AA0000020000000000000114 /* LTCGenerator.swift */,
+				AA0000020000000000000115 /* TimecodePlaybackSupport.swift */,
 				AA00000200000000000000FD /* ClickSongCreator.swift */,
 				AA00000200000000000000F7 /* SpeechSampleRenderer.swift */,
 				AA00000200000000000000F8 /* CueTrackScheduler.swift */,
@@ -581,6 +605,9 @@
 			isa = PBXGroup;
 			children = (
 				AA0000020000000000000046 /* ClickTrackGeneratorTests.swift */,
+				AA0000020000000000000116 /* TimecodeStartCalculatorTests.swift */,
+				AA0000020000000000000117 /* LTCFrameEncoderTests.swift */,
+				AA0000020000000000000118 /* LTCGeneratorTests.swift */,
 				AA0000020000000000000050 /* ClickTrackSchedulerTests.swift */,
 				AA00000200000000000000FE /* ClickSongCreatorTests.swift */,
 				AA0000020000000000000103 /* SectionLoopTimingTests.swift */,
@@ -792,6 +819,12 @@
 				AA000001000000000000004E /* ClickTrackScheduler.swift in Sources */,
 				AA00000100000000000000F0 /* StemAudioWriter.swift in Sources */,
 				AA00000100000000000000F1 /* ClickTrackFileGenerator.swift in Sources */,
+				AA0000010000000000000110 /* TimecodeSettings.swift in Sources */,
+				AA0000010000000000000111 /* TimecodeSettingsStore.swift in Sources */,
+				AA0000010000000000000112 /* TimecodeStartCalculator.swift in Sources */,
+				AA0000010000000000000113 /* LTCFrameEncoder.swift in Sources */,
+				AA0000010000000000000114 /* LTCGenerator.swift in Sources */,
+				AA0000010000000000000115 /* TimecodePlaybackSupport.swift in Sources */,
 				AA00000100000000000000FD /* ClickSongCreator.swift in Sources */,
 				AA00000100000000000000F7 /* SpeechSampleRenderer.swift in Sources */,
 				AA00000100000000000000F8 /* CueTrackScheduler.swift in Sources */,
@@ -879,6 +912,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA0000010000000000000046 /* ClickTrackGeneratorTests.swift in Sources */,
+				AA0000010000000000000116 /* TimecodeStartCalculatorTests.swift in Sources */,
+				AA0000010000000000000117 /* LTCFrameEncoderTests.swift in Sources */,
+				AA0000010000000000000118 /* LTCGeneratorTests.swift in Sources */,
 				AA0000010000000000000050 /* ClickTrackSchedulerTests.swift in Sources */,
 				AA00000100000000000000FE /* ClickSongCreatorTests.swift in Sources */,
 				AA0000010000000000000103 /* SectionLoopTimingTests.swift in Sources */,

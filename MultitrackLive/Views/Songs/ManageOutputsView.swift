@@ -15,6 +15,10 @@ struct ManageOutputsView: View {
     @State private var channelCount = 2
     @State private var groupDestinations: [UUID: OutputDestination] = [:]
     @State private var ungroupedDestination: OutputDestination = .defaultDestination
+    @State private var timecodeEnabled = false
+    @State private var timecodeMode: TimecodeMode = .resetPerSong
+    @State private var timecodeStartingHour = 1
+    @State private var timecodeFrameRate: TimecodeFrameRate = .fps30
 
     private let groupNameWidth: CGFloat = 92
     private let destinationControlWidth: CGFloat = 108
@@ -34,6 +38,7 @@ struct ManageOutputsView: View {
                     VStack(alignment: .leading, spacing: AppSpacing.xl) {
                         deviceSection
                         groupOutputsSection
+                        timecodeSection
                         footerText
                     }
                     .padding(AppSpacing.lg)
@@ -54,7 +59,7 @@ struct ManageOutputsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         #if os(macOS)
-        .frame(minWidth: 500, idealWidth: 520, minHeight: 300, idealHeight: 400, maxHeight: 460)
+        .frame(minWidth: 500, idealWidth: 520, minHeight: 420, idealHeight: 560, maxHeight: 680)
         #endif
     }
 
@@ -124,11 +129,92 @@ struct ManageOutputsView: View {
     }
 
     private var footerText: some View {
-        Text("Assign each track group to a stereo pair or mono output channel on the selected device.")
+        Text("Assign each track group to a stereo pair or mono output channel on the selected device. Route the Timecode group to a dedicated mono output for lighting or video gear.")
             .font(.caption)
             .foregroundStyle(AppColors.textTertiary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var timecodeSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            AppSectionHeader(title: "Timecode (LTC)")
+
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                Toggle("Enable LTC", isOn: $timecodeEnabled)
+                    .tint(AppColors.accent)
+                    .onChange(of: timecodeEnabled) { _, _ in
+                        persistTimecodeSettings()
+                    }
+
+                if timecodeEnabled {
+                    VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                        Text("Mode")
+                            .font(.caption)
+                            .foregroundStyle(AppColors.textTertiary)
+
+                        #if os(macOS)
+                        Picker("Timecode Mode", selection: $timecodeMode) {
+                            ForEach(TimecodeMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.radioGroup)
+                        .labelsHidden()
+                        .onChange(of: timecodeMode) { _, _ in
+                            persistTimecodeSettings()
+                        }
+                        #else
+                        Picker("Timecode Mode", selection: $timecodeMode) {
+                            ForEach(TimecodeMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                        .onChange(of: timecodeMode) { _, _ in
+                            persistTimecodeSettings()
+                        }
+                        #endif
+                    }
+
+                    HStack {
+                        Text("Starting hour")
+                            .foregroundStyle(AppColors.textPrimary)
+                        Spacer()
+                        Stepper(
+                            value: $timecodeStartingHour,
+                            in: 0...23
+                        ) {
+                            Text(String(format: "%02d", timecodeStartingHour))
+                                .monospacedDigit()
+                                .foregroundStyle(AppColors.textPrimary)
+                        }
+                        .onChange(of: timecodeStartingHour) { _, _ in
+                            persistTimecodeSettings()
+                        }
+                    }
+
+                    HStack {
+                        Text("Frame rate")
+                            .foregroundStyle(AppColors.textPrimary)
+                        Spacer()
+                        Picker("Frame rate", selection: $timecodeFrameRate) {
+                            ForEach(TimecodeFrameRate.allCases) { rate in
+                                Text(rate.displayName).tag(rate)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 140, alignment: .trailing)
+                        .onChange(of: timecodeFrameRate) { _, _ in
+                            persistTimecodeSettings()
+                        }
+                    }
+                }
+            }
+            .padding(AppSpacing.sm)
+            .background(AppColors.surface, in: RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        }
     }
 
     @ViewBuilder
@@ -233,6 +319,10 @@ struct ManageOutputsView: View {
 
     private func loadState() {
         OutputRoutingStore.ensureConfig(in: modelContext)
+        TimecodeSettingsStore.ensureConfig(in: modelContext)
+        TrackGroupStore.ensureDefaults(in: modelContext)
+        _ = TimecodePlaybackSupport.resolveGroupID(in: modelContext)
+
         devices = AudioOutputDeviceService.availableDevices()
         let config = OutputRoutingStore.config(in: modelContext)
 
@@ -254,6 +344,22 @@ struct ManageOutputsView: View {
         }
         groupDestinations = loaded
         ungroupedDestination = OutputRoutingStore.ungroupedRoute(in: modelContext)
+
+        let timecode = TimecodeSettingsStore.settings(in: modelContext)
+        timecodeEnabled = timecode.isEnabled
+        timecodeMode = timecode.mode
+        timecodeStartingHour = timecode.startingHour
+        timecodeFrameRate = timecode.frameRate
+    }
+
+    private func persistTimecodeSettings() {
+        TimecodeSettingsStore.save({ settings in
+            settings.isEnabled = timecodeEnabled
+            settings.mode = timecodeMode
+            settings.startingHour = timecodeStartingHour
+            settings.frameRate = timecodeFrameRate
+        }, in: modelContext)
+        scheduleRoutingChange()
     }
 
     private func applyDeviceSelection(_ uid: String?) {

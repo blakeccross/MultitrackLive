@@ -16,12 +16,14 @@ final class SongEditorViewModel {
     private var decodedBufferCache: [UUID: CachedDecodedTrack] = [:]
     private var reloadTask: Task<Void, Never>?
     private var reloadGeneration = 0
+    private var modelContext: ModelContext?
 
     init(song: Song) {
         self.song = song
     }
 
-    func loadSong() {
+    func loadSong(context: ModelContext) {
+        modelContext = context
         claimEngineForSongEditing()
         reloadSong()
     }
@@ -167,7 +169,9 @@ final class SongEditorViewModel {
             let timeSignatureChanges = projectState.timeSignatureChanges
 
             do {
-                try audioEngine.loadPreparedTracks(prepared)
+                var payloads = prepared
+                try appendTimecodePayloadIfNeeded(to: &payloads)
+                try audioEngine.loadPreparedTracks(payloads)
                 isLoaded = true
                 loadError = nil
                 syncTempoMap(tempoChanges, timeSignatureChanges: timeSignatureChanges)
@@ -184,6 +188,25 @@ final class SongEditorViewModel {
                 loadError = error.localizedDescription
             }
         }
+    }
+
+    private func appendTimecodePayloadIfNeeded(
+        to payloads: inout [AudioEngineManager.PreparedTrackPayload]
+    ) throws {
+        guard let modelContext else { return }
+        let settings = TimecodeSettingsStore.snapshot(in: modelContext)
+        guard settings.isEnabled else { return }
+
+        let duration = TimecodePlaybackSupport.timelineDuration(for: song)
+        let groupID = TimecodePlaybackSupport.resolveGroupID(in: modelContext)
+        try TimecodePlaybackSupport.appendPayloadIfNeeded(
+            to: &payloads,
+            settings: settings,
+            songIndex: 0,
+            priorSongDurations: [],
+            duration: duration,
+            groupID: groupID
+        )
     }
 
     func play() {

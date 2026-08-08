@@ -293,7 +293,7 @@ struct SongDetailView: View {
     private func loadEditor(for song: Song, forceReloadViewModel: Bool) {
         if viewModel == nil || forceReloadViewModel {
             let model = SongEditorViewModel(song: song)
-            model.loadSong()
+            model.loadSong(context: modelContext)
             viewModel = model
         }
         try? SongProjectBridge.ensureProjectFile(for: song, context: modelContext)

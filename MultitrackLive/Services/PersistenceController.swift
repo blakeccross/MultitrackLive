@@ -4,7 +4,7 @@ import SwiftData
 
 enum PersistenceController {
     /// Bump when arrangement marker storage changes so stale rows are discarded.
-    private static let storeVersion = 20
+    private static let storeVersion = 21
     private static let storeVersionKey = "SwiftDataStoreVersion"
     private static let logger = Logger(subsystem: "com.blakecross.MultitrackLive", category: "Persistence")
     private static let storeDirectoryName = "com.blakecross.MultitrackLive"
@@ -18,6 +18,7 @@ enum PersistenceController {
         TrackGroup.self,
         OutputRoutingConfig.self,
         GroupOutputRoute.self,
+        TimecodeSettings.self,
         Setlist.self,
         SetlistEntry.self,
     ]

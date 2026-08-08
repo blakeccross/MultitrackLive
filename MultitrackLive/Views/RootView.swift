@@ -13,6 +13,7 @@ struct RootView: View {
         .onAppear {
             TrackGroupStore.ensureDefaults(in: modelContext)
             OutputRoutingStore.ensureConfig(in: modelContext)
+            TimecodeSettingsStore.ensureConfig(in: modelContext)
             SongProjectBridge.restoreShowsFromDisk(in: modelContext)
         }
     }
@@ -20,5 +21,5 @@ struct RootView: View {
 
 #Preview {
     RootView()
-        .modelContainer(for: [Song.self, AudioTrack.self, TrackGroup.self, OutputRoutingConfig.self, GroupOutputRoute.self, Setlist.self, SetlistEntry.self], inMemory: true)
+        .modelContainer(for: [Song.self, AudioTrack.self, TrackGroup.self, OutputRoutingConfig.self, GroupOutputRoute.self, TimecodeSettings.self, Setlist.self, SetlistEntry.self], inMemory: true)
 }

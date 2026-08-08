@@ -290,6 +290,12 @@ struct LivePlaybackView: View {
             coordinator.groupMixProvider = {
                 GroupMixStore.snapshot(in: modelContext)
             }
+            coordinator.timecodeSettingsProvider = {
+                TimecodeSettingsStore.snapshot(in: modelContext)
+            }
+            coordinator.timecodeGroupIDProvider = {
+                TimecodePlaybackSupport.resolveGroupID(in: modelContext)
+            }
             coordinator.configure(setlist: setlist)
             markSetlistOpened(setlist)
             promptForMissingMediaIfNeeded(in: setlist)

@@ -236,7 +236,7 @@ struct EditView: View {
         }
 
         if trackIDsChanged {
-            viewModel.loadSong()
+            viewModel.loadSong(context: modelContext)
         }
     }
 
@@ -1835,7 +1835,7 @@ struct EditView: View {
             persistProjectState()
             refreshTimelineLayout()
             syncPlayback()
-            viewModel.loadSong()
+            viewModel.loadSong(context: modelContext)
         }
     }
 

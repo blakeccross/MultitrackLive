@@ -72,6 +72,8 @@ final class PlaybackCoordinator {
 
     var routingProvider: (() -> OutputRoutingSnapshot)?
     var groupMixProvider: (() -> GroupMixSnapshot)?
+    var timecodeSettingsProvider: (() -> TimecodeSettingsSnapshot)?
+    var timecodeGroupIDProvider: (() -> UUID?)?
 
     var currentSong: Song? {
         guard songs.indices.contains(currentIndex) else { return nil }
@@ -526,8 +528,14 @@ final class PlaybackCoordinator {
         switch preparationResult {
         case .success(let prepared):
             do {
+                var payloads = prepared
+                try appendTimecodePayloadIfNeeded(
+                    to: &payloads,
+                    song: song,
+                    songIndex: currentIndex
+                )
                 let routing = routingProvider?()
-                try audioEngine.loadPreparedTracks(prepared, routing: routing)
+                try audioEngine.loadPreparedTracks(payloads, routing: routing)
                 applySongEngineState(for: song)
                 applyGroupMixFromProvider()
                 currentWaveformSnapshot = Self.makeWaveformSnapshot(for: song)
@@ -769,8 +777,46 @@ final class PlaybackCoordinator {
 
             guard !Task.isCancelled, prefetchedIncomingSongID == incoming.id else { return }
             if case .success(let payloads) = result {
-                prefetchedIncomingPayloads = payloads
+                var mutablePayloads = payloads
+                let incomingIndex = currentIndex + 1
+                try? appendTimecodePayloadIfNeeded(
+                    to: &mutablePayloads,
+                    song: incoming,
+                    songIndex: incomingIndex
+                )
+                prefetchedIncomingPayloads = mutablePayloads
             }
+        }
+    }
+
+    private func appendTimecodePayloadIfNeeded(
+        to payloads: inout [AudioEngineManager.PreparedTrackPayload],
+        song: Song,
+        songIndex: Int
+    ) throws {
+        let settings = timecodeSettingsProvider?() ?? .default
+        guard settings.isEnabled else { return }
+
+        let duration = waveformSnapshotsBySongID[song.id]?.timelineDuration
+            ?? TimecodePlaybackSupport.timelineDuration(for: song)
+        let priorDurations = priorSongDurations(upTo: songIndex)
+        let groupID = timecodeGroupIDProvider?()
+
+        try TimecodePlaybackSupport.appendPayloadIfNeeded(
+            to: &payloads,
+            settings: settings,
+            songIndex: songIndex,
+            priorSongDurations: priorDurations,
+            duration: duration,
+            groupID: groupID
+        )
+    }
+
+    private func priorSongDurations(upTo songIndex: Int) -> [TimeInterval] {
+        guard songIndex > 0 else { return [] }
+        return songs.prefix(songIndex).map { song in
+            waveformSnapshotsBySongID[song.id]?.timelineDuration
+                ?? TimecodePlaybackSupport.timelineDuration(for: song)
         }
     }
 

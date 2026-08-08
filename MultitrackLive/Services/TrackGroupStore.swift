@@ -16,6 +16,7 @@ enum TrackGroupStore {
         "Other",
         "Click",
         "Cues",
+        "Timecode",
     ]
 
     static func ensureDefaults(in context: ModelContext) {
@@ -266,6 +267,8 @@ enum TrackGroupStore {
             return "darkGray"
         case "cues":
             return "white"
+        case "timecode":
+            return "darkGray"
         default:
             return "gray"
         }
@@ -294,6 +297,8 @@ enum TrackGroupStore {
             return ["click track", "click", "metronome"]
         case "cues":
             return ["cues", "cue"]
+        case "timecode":
+            return ["timecode", "ltc", "smpte"]
         default:
             return []
         }
