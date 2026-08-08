@@ -54,6 +54,13 @@ struct MultitrackLiveApp: App {
             ClipEditorCommands()
         }
         #endif
+
+        #if os(macOS)
+        Settings {
+            AppSettingsView(updater: sparkleUpdater.updater)
+                .modelContainer(modelContainer)
+        }
+        #endif
     }
 }
 

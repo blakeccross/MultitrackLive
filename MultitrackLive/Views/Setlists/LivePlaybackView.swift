@@ -197,12 +197,10 @@ struct LivePlaybackView: View {
         .appLockToolbarDisplayMode()
         #endif
         .appBackground(.primary)
-        .sheet(isPresented: $showingManageOutputs) {
-            ManageOutputsView {
-                coordinator.applyOutputRouting()
-            }
-        }
         #if os(iOS)
+        .sheet(isPresented: $showingManageOutputs) {
+            ManageOutputsView()
+        }
         .sheet(isPresented: $showingSongLibrary) {
             AppSheetContainer {
                 NavigationStack {
@@ -215,6 +213,9 @@ struct LivePlaybackView: View {
             .presentationDetents([.large])
         }
         #endif
+        .onReceive(NotificationCenter.default.publisher(for: .outputRoutingDidChange)) { _ in
+            coordinator.applyOutputRouting()
+        }
         .fileImporter(
             isPresented: $showingSetlistPackageImporter,
             allowedContentTypes: [.folder],
@@ -1488,6 +1489,10 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @Binding var infoPanelHeight: CGFloat
     @Binding var isWaveformFollowing: Bool
 
+    #if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+    #endif
+
     @ToolbarContentBuilder
     var body: some ToolbarContent {
         #if os(macOS)
@@ -1507,7 +1512,7 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         .multitrackHideSharedBackground()
 
         ToolbarItem(placement: .primaryAction) {
-            manageOutputsButton
+            settingsButton
         }
         .multitrackHideSharedBackground()
         #else
@@ -1565,6 +1570,17 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         .help("Songs")
     }
 
+    #if os(macOS)
+    private var settingsButton: some View {
+        Button {
+            openSettings()
+        } label: {
+            Label("Settings", systemImage: "gearshape")
+                .labelStyle(.iconOnly)
+        }
+        .help("Settings")
+    }
+    #else
     private var manageOutputsButton: some View {
         Button {
             showingManageOutputs = true
@@ -1575,6 +1591,7 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         .tint(showingManageOutputs ? AppColors.accent : nil)
         .help("Manage Outputs")
     }
+    #endif
 
     private var mixerButton: some View {
         Button {

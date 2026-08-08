@@ -51,6 +51,8 @@
 		AA0000010000000000000031 /* AudioOutputDeviceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000031 /* AudioOutputDeviceService.swift */; };
 		AA0000010000000000000032 /* OutputRoutingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000032 /* OutputRoutingManager.swift */; };
 		AA0000010000000000000033 /* ManageOutputsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000033 /* ManageOutputsView.swift */; };
+		AA0000010000000000000210 /* OutputRoutingSettingsForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000210 /* OutputRoutingSettingsForm.swift */; };
+		AA0000010000000000000211 /* AppSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000211 /* AppSettingsView.swift */; };
 		AA0000010000000000000034 /* SongFolderImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000034 /* SongFolderImporter.swift */; };
 		AA0000010000000000000035 /* TimeSignatureChange.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000035 /* TimeSignatureChange.swift */; };
 		AA0000010000000000000037 /* ChangeKeyDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000037 /* ChangeKeyDialog.swift */; };
@@ -220,6 +222,8 @@
 		AA0000020000000000000031 /* AudioOutputDeviceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioOutputDeviceService.swift; sourceTree = "<group>"; };
 		AA0000020000000000000032 /* OutputRoutingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputRoutingManager.swift; sourceTree = "<group>"; };
 		AA0000020000000000000033 /* ManageOutputsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageOutputsView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000210 /* OutputRoutingSettingsForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputRoutingSettingsForm.swift; sourceTree = "<group>"; };
+		AA0000020000000000000211 /* AppSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000034 /* SongFolderImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongFolderImporter.swift; sourceTree = "<group>"; };
 		AA0000020000000000000035 /* TimeSignatureChange.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeSignatureChange.swift; sourceTree = "<group>"; };
 		AA0000020000000000000037 /* ChangeKeyDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangeKeyDialog.swift; sourceTree = "<group>"; };
@@ -515,8 +519,18 @@
 				AA000005000000000000000A /* Shared */,
 				AA0000050000000000000008 /* Songs */,
 				AA0000050000000000000009 /* Setlists */,
+				AA0000050000000000000210 /* Settings */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		AA0000050000000000000210 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000020000000000000210 /* OutputRoutingSettingsForm.swift */,
+				AA0000020000000000000211 /* AppSettingsView.swift */,
+			);
+			path = Settings;
 			sourceTree = "<group>";
 		};
 		AA0000050000000000000008 /* Songs */ = {
@@ -869,6 +883,8 @@
 				AA0000010000000000000032 /* OutputRoutingManager.swift in Sources */,
 				AA0000010000000000000034 /* SongFolderImporter.swift in Sources */,
 				AA0000010000000000000033 /* ManageOutputsView.swift in Sources */,
+				AA0000010000000000000210 /* OutputRoutingSettingsForm.swift in Sources */,
+				AA0000010000000000000211 /* AppSettingsView.swift in Sources */,
 				AA0000010000000000000071 /* MediaReference.swift in Sources */,
 				AA0000010000000000000072 /* SongProjectDocument.swift in Sources */,
 				AA0000010000000000000073 /* ShowProjectDocument.swift in Sources */,

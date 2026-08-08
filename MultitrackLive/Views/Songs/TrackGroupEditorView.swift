@@ -2,78 +2,97 @@ import SwiftData
 import SwiftUI
 
 struct TrackGroupEditorView: View {
+    enum Presentation {
+        case sheet
+        case settings
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @Query(sort: [SortDescriptor(\TrackGroup.sortOrder), SortDescriptor(\TrackGroup.name)])
     private var groups: [TrackGroup]
 
+    var presentation: Presentation = .sheet
+
     @State private var newGroupName = ""
     @State private var nameError: String?
     @State private var expandedGroupID: UUID?
 
     var body: some View {
-        AppSheetContainer {
-            NavigationStack {
-                VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                    Text("Manage group names, colors, and track-name keywords used for auto-assign. Tracks on a deleted group become unassigned.")
-                        .font(.caption)
-                        .foregroundStyle(AppColors.textTertiary)
-
-                    List {
-                        ForEach(groups) { group in
-                            TrackGroupEditorRow(
-                                group: group,
-                                isExpanded: expandedGroupID == group.id,
-                                onToggleExpand: {
-                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                        expandedGroupID = expandedGroupID == group.id ? nil : group.id
-                                    }
-                                },
-                                onNameError: { nameError = $0 }
-                            )
+        switch presentation {
+        case .sheet:
+            AppSheetContainer {
+                NavigationStack {
+                    editorContent
+                        .padding(AppSpacing.md)
+                        .navigationTitle("Track Groups")
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") {
+                                    dismiss()
+                                }
+                                .foregroundStyle(AppColors.accent)
+                            }
                         }
-                        .onDelete(perform: deleteGroups)
-                    }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-
-                    HStack(spacing: AppSpacing.xs) {
-                        TextField("New group name", text: $newGroupName)
-                            .textFieldStyle(.plain)
-                            .padding(AppSpacing.sm)
-                            .background(AppColors.surface, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
-                            .onSubmit(addGroup)
-
-                        AppPrimaryButton(
-                            title: "Add Group",
-                            isEnabled: !newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        ) {
-                            addGroup()
-                        }
-                    }
-
-                    if let nameError {
-                        Text(nameError)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-                }
-                .padding(AppSpacing.md)
-                .navigationTitle("Track Groups")
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") {
-                            dismiss()
-                        }
-                        .foregroundStyle(AppColors.accent)
-                    }
                 }
             }
+            #if os(macOS)
+            .frame(minWidth: 440, minHeight: 520)
+            #endif
+        case .settings:
+            editorContent
+                .padding(AppSpacing.lg)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(AppColors.backgroundSecondary)
         }
-        #if os(macOS)
-        .frame(minWidth: 440, minHeight: 520)
-        #endif
+    }
+
+    private var editorContent: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Text("Manage group names, colors, and track-name keywords used for auto-assign. Tracks on a deleted group become unassigned.")
+                .font(.caption)
+                .foregroundStyle(AppColors.textTertiary)
+
+            List {
+                ForEach(groups) { group in
+                    TrackGroupEditorRow(
+                        group: group,
+                        isExpanded: expandedGroupID == group.id,
+                        onToggleExpand: {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                expandedGroupID = expandedGroupID == group.id ? nil : group.id
+                            }
+                        },
+                        onNameError: { nameError = $0 }
+                    )
+                }
+                .onDelete(perform: deleteGroups)
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+
+            HStack(spacing: AppSpacing.xs) {
+                TextField("New group name", text: $newGroupName)
+                    .textFieldStyle(.plain)
+                    .padding(AppSpacing.sm)
+                    .background(AppColors.surface, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                    .onSubmit(addGroup)
+
+                AppPrimaryButton(
+                    title: "Add Group",
+                    isEnabled: !newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ) {
+                    addGroup()
+                }
+            }
+
+            if let nameError {
+                Text(nameError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
     }
 
     private func addGroup() {
