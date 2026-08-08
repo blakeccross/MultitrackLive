@@ -4,18 +4,18 @@ import AppKit
 #endif
 
 enum ArrangementSectionPalette {
-    /// Muted section fills — informative without competing with playback chrome.
+    /// Saturated section fills — clear section identity without overpowering the waveform.
     private static let pairs: [(background: Color, accent: Color)] = [
-        (Color(red: 0.16, green: 0.19, blue: 0.23), Color(red: 0.52, green: 0.60, blue: 0.70)),
-        (Color(red: 0.20, green: 0.19, blue: 0.14), Color(red: 0.62, green: 0.56, blue: 0.38)),
-        (Color(red: 0.22, green: 0.17, blue: 0.13), Color(red: 0.66, green: 0.48, blue: 0.34)),
-        (Color(red: 0.20, green: 0.14, blue: 0.16), Color(red: 0.62, green: 0.42, blue: 0.48)),
-        (Color(red: 0.13, green: 0.19, blue: 0.19), Color(red: 0.40, green: 0.58, blue: 0.54)),
-        (Color(red: 0.16, green: 0.14, blue: 0.21), Color(red: 0.54, green: 0.48, blue: 0.66)),
+        (Color(red: 0.10, green: 0.18, blue: 0.34), Color(red: 0.40, green: 0.68, blue: 1.00)),
+        (Color(red: 0.28, green: 0.20, blue: 0.06), Color(red: 0.95, green: 0.78, blue: 0.28)),
+        (Color(red: 0.30, green: 0.12, blue: 0.06), Color(red: 1.00, green: 0.55, blue: 0.28)),
+        (Color(red: 0.30, green: 0.08, blue: 0.16), Color(red: 1.00, green: 0.42, blue: 0.62)),
+        (Color(red: 0.04, green: 0.22, blue: 0.22), Color(red: 0.22, green: 0.88, blue: 0.78)),
+        (Color(red: 0.16, green: 0.08, blue: 0.32), Color(red: 0.72, green: 0.48, blue: 1.00)),
     ]
 
-    static let backgroundFillOpacity: Double = 0.22
-    static let backgroundCueFillOpacity: Double = 0.40
+    static let backgroundFillOpacity: Double = 0.30
+    static let backgroundCueFillOpacity: Double = 0.48
 
     static func colors(for index: Int) -> (background: Color, accent: Color) {
         pairs[index % pairs.count]
