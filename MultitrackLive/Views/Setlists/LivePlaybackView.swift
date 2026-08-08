@@ -52,6 +52,7 @@ struct LivePlaybackView: View {
     @State private var cueFireTime: TimeInterval?
     @State private var cueFlashPhase = false
     @State private var sectionLoop = SectionLoopController()
+    @State private var groupMixFade = GroupMixFadeController()
     @State private var sectionAnnouncer = SectionAnnouncer()
     @State private var showingSongLibrary = false
     @State private var songToEditID: UUID?
@@ -267,6 +268,7 @@ struct LivePlaybackView: View {
         .onChange(of: coordinator.currentSong?.id) { _, _ in
             clearMarkerCue()
             sectionLoop.reset()
+            groupMixFade.cancel()
             prepareSectionAnnouncements()
         }
         .onChange(of: coordinator.currentSong?.dynamicCuesEnabled ?? false) { _, _ in
@@ -310,6 +312,7 @@ struct LivePlaybackView: View {
             if newValue != nil {
                 clearMarkerCue()
                 sectionLoop.reset()
+                groupMixFade.cancel()
                 coordinator.unbindPlaybackHandlers()
                 coordinator.pause()
             } else if let editedSongID = oldValue {
@@ -385,12 +388,18 @@ struct LivePlaybackView: View {
             },
             coordinator: coordinator,
             sectionLoop: sectionLoop,
+            groupMixFade: groupMixFade,
             isLoaded: coordinator.isLoaded && !coordinator.isLoadingSong,
             canLoop: !loopSections.isEmpty,
             onStop: stopPlayback,
             onPlay: coordinator.play,
             onPause: coordinator.pause,
             onToggleLoop: toggleSectionLoop,
+            onToggleFade: {
+                groupMixFade.toggleFade(context: modelContext) {
+                    coordinator.updateGroupMix(context: modelContext)
+                }
+            },
             showingSongLibrary: $showingSongLibrary,
             showingManageOutputs: $showingManageOutputs,
             mixerDetent: $mixerDetent,
@@ -499,6 +508,7 @@ struct LivePlaybackView: View {
                 if setlist.id == activeSetlistID {
                     clearMarkerCue()
                     sectionLoop.reset()
+                    groupMixFade.cancel()
                     coordinator.stop()
                     markSetlistOpened(setlist)
                     coordinator.configure(setlist: setlist)
@@ -637,6 +647,7 @@ struct LivePlaybackView: View {
 
         clearMarkerCue()
         sectionLoop.reset()
+        groupMixFade.cancel()
         coordinator.stop()
         activeSetlistID = setlist.id
         markSetlistOpened(setlist)
@@ -670,6 +681,9 @@ struct LivePlaybackView: View {
     private func stopPlayback() {
         clearMarkerCue()
         sectionLoop.reset()
+        groupMixFade.clearFade(context: modelContext) {
+            coordinator.updateGroupMix(context: modelContext)
+        }
         coordinator.stop()
     }
 
@@ -1449,12 +1463,14 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @ViewBuilder let setlistSwitcher: Switcher
     let coordinator: PlaybackCoordinator
     @Bindable var sectionLoop: SectionLoopController
+    @Bindable var groupMixFade: GroupMixFadeController
     let isLoaded: Bool
     let canLoop: Bool
     let onStop: () -> Void
     let onPlay: () -> Void
     let onPause: () -> Void
     let onToggleLoop: () -> Void
+    let onToggleFade: () -> Void
     @Binding var showingSongLibrary: Bool
     @Binding var showingManageOutputs: Bool
     @Binding var mixerDetent: LiveGroupMixerDetent
@@ -1514,6 +1530,7 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         LiveSetlistNowPlayingInfoView(
             coordinator: coordinator,
             sectionLoop: sectionLoop,
+            groupMixFade: groupMixFade,
             isLoaded: isLoaded,
             canLoop: canLoop,
             infoPanelHeight: $infoPanelHeight,
@@ -1521,7 +1538,8 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             onStop: onStop,
             onPlay: onPlay,
             onPause: onPause,
-            onToggleLoop: onToggleLoop
+            onToggleLoop: onToggleLoop,
+            onToggleFade: onToggleFade
         )
     }
 

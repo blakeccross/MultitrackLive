@@ -18,6 +18,9 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
     let onPlay: () -> Void
     let onPause: () -> Void
     let onToggleLoop: () -> Void
+    var isFadedOut: Bool = false
+    var isFading: Bool = false
+    var onToggleFade: (() -> Void)? = nil
     var onReadoutHeightChange: ((CGFloat) -> Void)? = nil
     var isFollowing: Bool? = nil
     var onToggleFollow: (() -> Void)? = nil
@@ -30,6 +33,7 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
     private let showsMeterPopover: Bool
 
     private var transportActiveGreen: Color { Color(red: 0.49, green: 0.75, blue: 0.48) }
+    private var transportFadeRed: Color { Color(red: 0.86, green: 0.28, blue: 0.28) }
 
     init(
         snapshot: TransportStatusSnapshot,
@@ -42,6 +46,9 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
         onPlay: @escaping () -> Void,
         onPause: @escaping () -> Void,
         onToggleLoop: @escaping () -> Void,
+        isFadedOut: Bool = false,
+        isFading: Bool = false,
+        onToggleFade: (() -> Void)? = nil,
         onReadoutHeightChange: ((CGFloat) -> Void)? = nil,
         isFollowing: Bool? = nil,
         onToggleFollow: (() -> Void)? = nil,
@@ -60,6 +67,9 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
         self.onPlay = onPlay
         self.onPause = onPause
         self.onToggleLoop = onToggleLoop
+        self.isFadedOut = isFadedOut
+        self.isFading = isFading
+        self.onToggleFade = onToggleFade
         self.onReadoutHeightChange = onReadoutHeightChange
         self.isFollowing = isFollowing
         self.onToggleFollow = onToggleFollow
@@ -121,6 +131,8 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
                     }
                 }
 
+                fadeButton
+
                 AppIconButton(
                     systemImage: "repeat",
                     size: buttonSize,
@@ -157,6 +169,36 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
                     onReadoutHeightChange?(height)
                 }
         }
+    }
+
+    @ViewBuilder
+    private var fadeButton: some View {
+        if isFading {
+            TimelineView(.animation(minimumInterval: 0.35)) { context in
+                let blinkDim = Int(context.date.timeIntervalSinceReferenceDate / 0.35) % 2 == 0
+                fadeButtonContent(opacity: blinkDim ? 0.28 : 1)
+            }
+        } else {
+            fadeButtonContent(opacity: 1)
+        }
+    }
+
+    private func fadeButtonContent(opacity: Double) -> some View {
+        AppIconButton(
+            systemImage: "righttriangle.fill",
+            size: buttonSize,
+            isActive: isFadedOut || isFading,
+            isEnabled: isLoaded,
+            cornerRadius: buttonSize * 0.14,
+            activeBackgroundColor: transportFadeRed,
+            // SF Symbol has the right angle on the bottom-left; mirror for idle (bottom-right).
+            flipsImageHorizontally: !isFadedOut,
+            accessibilityLabel: isFadedOut ? "Fade In" : "Fade Out"
+        ) {
+            onToggleFade?()
+        }
+        .opacity(opacity)
+        .animation(AppAnimation.fadeQuick, value: isFadedOut)
     }
 
     private var transportMetadata: some View {
@@ -233,6 +275,9 @@ extension SharedTransportStrip where BPMPopover == EmptyView, MeterPopover == Em
         onPlay: @escaping () -> Void,
         onPause: @escaping () -> Void,
         onToggleLoop: @escaping () -> Void,
+        isFadedOut: Bool = false,
+        isFading: Bool = false,
+        onToggleFade: (() -> Void)? = nil,
         onReadoutHeightChange: ((CGFloat) -> Void)? = nil,
         isFollowing: Bool? = nil,
         onToggleFollow: (() -> Void)? = nil
@@ -248,6 +293,9 @@ extension SharedTransportStrip where BPMPopover == EmptyView, MeterPopover == Em
             onPlay: onPlay,
             onPause: onPause,
             onToggleLoop: onToggleLoop,
+            isFadedOut: isFadedOut,
+            isFading: isFading,
+            onToggleFade: onToggleFade,
             onReadoutHeightChange: onReadoutHeightChange,
             isFollowing: isFollowing,
             onToggleFollow: onToggleFollow,

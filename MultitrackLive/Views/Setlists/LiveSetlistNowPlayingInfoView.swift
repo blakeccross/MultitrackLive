@@ -3,6 +3,7 @@ import SwiftUI
 struct LiveSetlistNowPlayingInfoView: View {
     let coordinator: PlaybackCoordinator
     @Bindable var sectionLoop: SectionLoopController
+    @Bindable var groupMixFade: GroupMixFadeController
     let isLoaded: Bool
     let canLoop: Bool
     @Binding var infoPanelHeight: CGFloat
@@ -11,6 +12,7 @@ struct LiveSetlistNowPlayingInfoView: View {
     let onPlay: () -> Void
     let onPause: () -> Void
     let onToggleLoop: () -> Void
+    let onToggleFade: () -> Void
 
     var body: some View {
         Group {
@@ -39,6 +41,9 @@ struct LiveSetlistNowPlayingInfoView: View {
             onPlay: onPlay,
             onPause: onPause,
             onToggleLoop: onToggleLoop,
+            isFadedOut: groupMixFade.isFadedOut,
+            isFading: groupMixFade.isFading,
+            onToggleFade: onToggleFade,
             onReadoutHeightChange: { height in
                 infoPanelHeight = height
             },

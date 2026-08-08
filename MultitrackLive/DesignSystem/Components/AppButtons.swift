@@ -55,6 +55,8 @@ struct AppIconButton: View {
     var isEnabled: Bool = true
     var cornerRadius: CGFloat? = nil
     var activeBackgroundColor: Color? = nil
+    var iconColor: Color? = nil
+    var flipsImageHorizontally: Bool = false
     var accessibilityLabel: String? = nil
     let action: () -> Void
 
@@ -67,6 +69,7 @@ struct AppIconButton: View {
     }
 
     private static let defaultActiveBackground = Color(red: 0.24, green: 0.25, blue: 0.27)
+    private static let defaultIconColor = Color(red: 0.78, green: 0.80, blue: 0.82)
 
     private var backgroundColor: Color {
         if isActive {
@@ -79,7 +82,7 @@ struct AppIconButton: View {
         if isActive, let activeBackgroundColor {
             return activeBackgroundColor.darkened(sRGBBy: 0.42)
         }
-        return Color(red: 0.78, green: 0.80, blue: 0.82)
+        return iconColor ?? Self.defaultIconColor
     }
 
     var body: some View {
@@ -87,6 +90,7 @@ struct AppIconButton: View {
             Image(systemName: systemImage)
                 .font(.system(size: size * 0.38, weight: .semibold))
                 .foregroundStyle(foregroundColor)
+                .scaleEffect(x: flipsImageHorizontally ? -1 : 1, y: 1)
                 .frame(width: size, height: size)
                 .background(backgroundColor, in: buttonShape)
         }

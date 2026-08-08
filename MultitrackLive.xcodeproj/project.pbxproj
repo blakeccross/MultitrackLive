@@ -71,6 +71,7 @@
 		AA000001000000000000004A /* ClipRegionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004A /* ClipRegionStore.swift */; };
 		AA000001000000000000004B /* ClipRegionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004B /* ClipRegionStoreTests.swift */; };
 		AA000001000000000000004C /* SectionLoopController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004C /* SectionLoopController.swift */; };
+		AA0000010000000000000203 /* GroupMixFadeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000203 /* GroupMixFadeController.swift */; };
 		AA0000010000000000000103 /* SectionLoopTimingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000103 /* SectionLoopTimingTests.swift */; };
 		AA0000010000000000000104 /* StreamingStemBufferLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000104 /* StreamingStemBufferLoopTests.swift */; };
 		AA000001000000000000004D /* WaveformBarsCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000004D /* WaveformBarsCanvas.swift */; };
@@ -233,6 +234,7 @@
 		AA000002000000000000004A /* ClipRegionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipRegionStore.swift; sourceTree = "<group>"; };
 		AA000002000000000000004B /* ClipRegionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipRegionStoreTests.swift; sourceTree = "<group>"; };
 		AA000002000000000000004C /* SectionLoopController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionLoopController.swift; sourceTree = "<group>"; };
+		AA0000020000000000000203 /* GroupMixFadeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupMixFadeController.swift; sourceTree = "<group>"; };
 		AA0000020000000000000103 /* SectionLoopTimingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionLoopTimingTests.swift; sourceTree = "<group>"; };
 		AA0000020000000000000104 /* StreamingStemBufferLoopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingStemBufferLoopTests.swift; sourceTree = "<group>"; };
 		AA000002000000000000004D /* WaveformBarsCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformBarsCanvas.swift; sourceTree = "<group>"; };
@@ -442,6 +444,7 @@
 				AA000002000000000000004A /* ClipRegionStore.swift */,
 				AA00000200000000000000A0 /* TimelineRippleStore.swift */,
 				AA000002000000000000004C /* SectionLoopController.swift */,
+				AA0000020000000000000203 /* GroupMixFadeController.swift */,
 				AA0000020000000000000016 /* WaveformLoader.swift */,
 				AA0000020000000000000007 /* AudioEngineManager.swift */,
 				AA0000020000000000000021 /* ArrangementTimelineMapper.swift */,
@@ -805,6 +808,7 @@
 				AA000001000000000000004A /* ClipRegionStore.swift in Sources */,
 				AA00000100000000000000A0 /* TimelineRippleStore.swift in Sources */,
 				AA000001000000000000004C /* SectionLoopController.swift in Sources */,
+				AA0000010000000000000203 /* GroupMixFadeController.swift in Sources */,
 				AA000001000000000000001F /* ArrangementEditorMenu.swift in Sources */,
 				AA0000010000000000000037 /* ChangeKeyDialog.swift in Sources */,
 				AA0000010000000000000038 /* PitchShiftBridge.mm in Sources */,

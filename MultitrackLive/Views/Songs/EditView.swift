@@ -2009,7 +2009,9 @@ private struct EditSongToolbarContent: ToolbarContent {
     let registerUndo: (_ actionName: String, _ before: SongEditSnapshot, _ after: SongEditSnapshot) -> Void
 
     @State private var showingTempoToolbarEditor = false
+    @State private var groupMixFade = GroupMixFadeController()
     @Bindable private var audioEngine = AudioEngineManager.shared
+    @Environment(\.modelContext) private var modelContext
 
     @ToolbarContentBuilder
     var body: some ToolbarContent {
@@ -2074,10 +2076,24 @@ private struct EditSongToolbarContent: ToolbarContent {
             isLoaded: viewModel.isLoaded,
             isLooping: sectionLoopIsActive(at: time),
             canLoop: currentSectionAtTime(time) != nil,
-            onStop: onStopTransport,
+            onStop: {
+                groupMixFade.clearFade(context: modelContext) {
+                    audioEngine.applyGroupMix(GroupMixStore.snapshot(in: modelContext))
+                    try? modelContext.save()
+                }
+                onStopTransport()
+            },
             onPlay: viewModel.play,
             onPause: viewModel.pause,
             onToggleLoop: { onToggleLoopAtTime(time) },
+            isFadedOut: groupMixFade.isFadedOut,
+            isFading: groupMixFade.isFading,
+            onToggleFade: {
+                groupMixFade.toggleFade(context: modelContext) {
+                    audioEngine.applyGroupMix(GroupMixStore.snapshot(in: modelContext))
+                    try? modelContext.save()
+                }
+            },
             showingBPMPopover: $showingTempoToolbarEditor,
             showingMeterPopover: $showingTimeSignatureEditor,
             bpmPopover: {
@@ -2229,7 +2245,9 @@ private struct EditTransportBar: View {
     let registerUndo: (_ actionName: String, _ before: SongEditSnapshot, _ after: SongEditSnapshot) -> Void
 
     @State private var showingTempoToolbarEditor = false
+    @State private var groupMixFade = GroupMixFadeController()
     @Bindable private var audioEngine = AudioEngineManager.shared
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         VStack(spacing: 8) {
@@ -2270,10 +2288,24 @@ private struct EditTransportBar: View {
             isLoaded: viewModel.isLoaded,
             isLooping: sectionLoopIsActive(at: time),
             canLoop: currentSectionAtTime(time) != nil,
-            onStop: onStopTransport,
+            onStop: {
+                groupMixFade.clearFade(context: modelContext) {
+                    audioEngine.applyGroupMix(GroupMixStore.snapshot(in: modelContext))
+                    try? modelContext.save()
+                }
+                onStopTransport()
+            },
             onPlay: viewModel.play,
             onPause: viewModel.pause,
             onToggleLoop: { onToggleLoopAtTime(time) },
+            isFadedOut: groupMixFade.isFadedOut,
+            isFading: groupMixFade.isFading,
+            onToggleFade: {
+                groupMixFade.toggleFade(context: modelContext) {
+                    audioEngine.applyGroupMix(GroupMixStore.snapshot(in: modelContext))
+                    try? modelContext.save()
+                }
+            },
             showingBPMPopover: $showingTempoToolbarEditor,
             showingMeterPopover: $showingTimeSignatureEditor,
             bpmPopover: {
