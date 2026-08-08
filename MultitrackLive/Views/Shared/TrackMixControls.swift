@@ -95,7 +95,6 @@ struct LogicStyleVolumeSlider: View {
 }
 
 enum MixerFaderScale {
-    static let attenuationMarks: [Int] = [0, 6, 12, 18, 24, 30, 45, 60]
     static let maxAttenuationDB: Double = 60
 
     static func linearGain(forAttenuationDB db: Double) -> Double {
@@ -133,11 +132,13 @@ struct MixerFaderColumn: View {
     @State private var isDragging = false
     @State private var dragValue: Double = 0
 
-    private let trackWidth: CGFloat = 6
-    private let thumbWidth: CGFloat = 50
-    private let thumbHeight: CGFloat = 30
-    private let scaleWidth: CGFloat = 20
+    private let trackWidth: CGFloat = 4
+    private let thumbWidth: CGFloat = 52
+    private let thumbHeight: CGFloat = 28
     private let meterWidth: CGFloat = 5
+    private let tickCount = 10
+    private let tickWidth: CGFloat = 8
+    private let tickGapFromTrack: CGFloat = 4
 
     private var displayedValue: Double {
         isDragging ? dragValue : value
@@ -146,9 +147,9 @@ struct MixerFaderColumn: View {
     var body: some View {
         HStack(alignment: .top, spacing: 3) {
             faderTrack
-            scaleColumn
             GroupPeakMeterBar(groupID: groupID, width: meterWidth, height: height)
         }
+        .frame(maxWidth: .infinity, alignment: .center)
         .frame(height: height)
     }
 
@@ -157,18 +158,18 @@ struct MixerFaderColumn: View {
             let trackHeight = geometry.size.height
             let travel = max(trackHeight - thumbHeight, 1)
             let thumbCenterY = markY(
-                forDB: MixerFaderScale.normalizedPosition(forLinearGain: displayedValue) * MixerFaderScale.maxAttenuationDB,
+                forNormalized: MixerFaderScale.normalizedPosition(forLinearGain: displayedValue),
                 in: trackHeight
             )
             let thumbY = thumbCenterY - thumbHeight / 2
 
             ZStack(alignment: .top) {
+                scaleTicks(in: trackHeight)
+
                 RoundedRectangle(cornerRadius: trackWidth / 2, style: .continuous)
                     .fill(AppColors.separator)
                     .frame(width: trackWidth)
                     .frame(maxHeight: .infinity)
-
-                scaleTicks(in: trackHeight)
 
                 faderThumb
                     .offset(y: thumbY)
@@ -205,8 +206,18 @@ struct MixerFaderColumn: View {
         RoundedRectangle(cornerRadius: 4, style: .continuous)
             .fill(AppColors.backgroundPrimary)
             .overlay {
+                VStack(spacing: 3) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        Rectangle()
+                            .fill(AppColors.textTertiary.opacity(0.35))
+                            .frame(height: 1)
+                    }
+                }
+                .padding(.horizontal, 6)
+            }
+            .overlay {
                 Rectangle()
-                    .fill(AppColors.textSecondary.opacity(0.55))
+                    .fill(Color.white.opacity(0.9))
                     .frame(height: 2)
                     .padding(.horizontal, 4)
             }
@@ -214,33 +225,33 @@ struct MixerFaderColumn: View {
     }
 
     private func scaleTicks(in trackHeight: CGFloat) -> some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(MixerFaderScale.attenuationMarks, id: \.self) { mark in
-                let y = markY(forDB: Double(mark), in: trackHeight)
+        let centerX = thumbWidth / 2
+        let trackHalf = trackWidth / 2
+        let tickColor = AppColors.textTertiary.opacity(0.6)
+
+        return ZStack(alignment: .topLeading) {
+            ForEach(0..<tickCount, id: \.self) { index in
+                let y = markY(
+                    forNormalized: Double(index) / Double(tickCount - 1),
+                    in: trackHeight
+                )
+
                 Rectangle()
-                    .fill(AppColors.textTertiary.opacity(mark == 0 ? 0.5 : 0.25))
-                    .frame(width: mark == 0 ? thumbWidth : 8, height: 1)
-                    .offset(x: (thumbWidth - (mark == 0 ? thumbWidth : 8)) / 2, y: y)
+                    .fill(tickColor)
+                    .frame(width: tickWidth, height: 1)
+                    .offset(x: centerX - trackHalf - tickGapFromTrack - tickWidth, y: y)
+
+                Rectangle()
+                    .fill(tickColor)
+                    .frame(width: tickWidth, height: 1)
+                    .offset(x: centerX + trackHalf + tickGapFromTrack, y: y)
             }
         }
+        .frame(width: thumbWidth, height: trackHeight, alignment: .topLeading)
     }
 
-    private var scaleColumn: some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(MixerFaderScale.attenuationMarks, id: \.self) { mark in
-                Text("\(mark)")
-                    .font(.system(size: 9, weight: mark == 0 ? .semibold : .regular, design: .monospaced))
-                    .foregroundStyle(mark == 0 ? AppColors.textPrimary : AppColors.textTertiary)
-                    .frame(width: scaleWidth, alignment: .trailing)
-                    .offset(y: markY(forDB: Double(mark), in: height) - 5)
-            }
-        }
-        .frame(width: scaleWidth, height: height, alignment: .topLeading)
-    }
-
-    private func markY(forDB db: Double, in trackHeight: CGFloat) -> CGFloat {
-        let normalized = db / MixerFaderScale.maxAttenuationDB
-        return thumbHeight / 2 + CGFloat(normalized) * max(trackHeight - thumbHeight, 1)
+    private func markY(forNormalized normalized: Double, in trackHeight: CGFloat) -> CGFloat {
+        thumbHeight / 2 + CGFloat(normalized) * max(trackHeight - thumbHeight, 1)
     }
 
     private func setLiveValue(fromCenterY y: CGFloat, trackHeight: CGFloat, travel: CGFloat) {

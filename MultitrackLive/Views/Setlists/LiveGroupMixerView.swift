@@ -300,10 +300,10 @@ struct LiveGroupMixerView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let stripHeight = geometry.size.height - AppSpacing.xs - AppSpacing.sm
+            let stripHeight = geometry.size.height - AppSpacing.xs - AppSpacing.xxs
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: AppSpacing.sm) {
+                HStack(alignment: .top, spacing: AppSpacing.xxs) {
                     ForEach(groups) { group in
                         LiveGroupChannelStrip(
                             title: group.name,
@@ -344,9 +344,9 @@ struct LiveGroupMixerView: View {
                         )
                     }
                 }
-                .padding(.horizontal, AppSpacing.md)
+                .padding(.horizontal, AppSpacing.sm)
                 .padding(.top, AppSpacing.xs)
-                .padding(.bottom, AppSpacing.sm)
+                .padding(.bottom, AppSpacing.xxs)
             }
         }
         .safeAreaPadding(.bottom, 4)
@@ -383,7 +383,7 @@ private struct LiveGroupChannelStrip: View {
     let onMixChange: () -> Void
 
     var body: some View {
-        VStack(spacing: AppSpacing.xs) {
+        VStack(spacing: AppSpacing.xxs) {
             GeometryReader { geometry in
                 MixerFaderColumn(
                     value: $volume,
@@ -394,8 +394,10 @@ private struct LiveGroupChannelStrip: View {
                     },
                     onEditingEnded: onMixChange
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(minHeight: 60)
+            .frame(width: stripWidth)
 
             TrackMixButton(
                 label: "M",
@@ -413,12 +415,13 @@ private struct LiveGroupChannelStrip: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(width: stripWidth, alignment: .center)
-                .frame(minHeight: 28)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
                 .background(titleColor)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
         }
-        .padding(AppSpacing.sm)
+        .frame(width: stripWidth)
+        .padding(.horizontal, AppSpacing.xxs)
+        .padding(.vertical, AppSpacing.xxs)
     }
 }
