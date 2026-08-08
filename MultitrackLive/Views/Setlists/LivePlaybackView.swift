@@ -330,6 +330,9 @@ struct LivePlaybackView: View {
     private var playbackMainLayout: some View {
         LivePlaybackMixerSplitLayout(
             mixerDetent: $mixerDetent,
+            onLiveVolumeChange: { groupID, volume in
+                coordinator.applyProvisionalGroupVolume(groupID: groupID, volume: volume)
+            },
             onMixChange: {
                 coordinator.updateGroupMix(context: modelContext)
             },
@@ -397,6 +400,8 @@ struct LivePlaybackView: View {
             onToggleLoop: toggleSectionLoop,
             onToggleFade: {
                 groupMixFade.toggleFade(context: modelContext) {
+                    coordinator.updateGroupMix(context: modelContext, persist: false)
+                } onComplete: {
                     coordinator.updateGroupMix(context: modelContext)
                 }
             },

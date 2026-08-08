@@ -13,6 +13,26 @@ struct GroupMixSnapshot: Sendable {
         ungroupedVolume: 1,
         ungroupedIsMuted: false
     )
+
+    func replacingVolume(groupID: UUID?, volume: Float) -> GroupMixSnapshot {
+        if let groupID {
+            var volumes = volumeByGroupID
+            volumes[groupID] = volume
+            return GroupMixSnapshot(
+                volumeByGroupID: volumes,
+                mutedGroupIDs: mutedGroupIDs,
+                ungroupedVolume: ungroupedVolume,
+                ungroupedIsMuted: ungroupedIsMuted
+            )
+        }
+
+        return GroupMixSnapshot(
+            volumeByGroupID: volumeByGroupID,
+            mutedGroupIDs: mutedGroupIDs,
+            ungroupedVolume: volume,
+            ungroupedIsMuted: ungroupedIsMuted
+        )
+    }
 }
 
 enum GroupMixStore {

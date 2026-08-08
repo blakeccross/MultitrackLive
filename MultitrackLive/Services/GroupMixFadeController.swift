@@ -70,16 +70,24 @@ final class GroupMixFadeController {
         onMixChange()
     }
 
-    func toggleFade(context: ModelContext, onMixChange: @escaping () -> Void) {
+    func toggleFade(
+        context: ModelContext,
+        onMixChange: @escaping () -> Void,
+        onComplete: (() -> Void)? = nil
+    ) {
         switch phase {
         case .idle, .fadingIn:
-            beginFadeOut(context: context, onMixChange: onMixChange)
+            beginFadeOut(context: context, onMixChange: onMixChange, onComplete: onComplete)
         case .fadingOut, .fadedOut:
-            beginFadeIn(context: context, onMixChange: onMixChange)
+            beginFadeIn(context: context, onMixChange: onMixChange, onComplete: onComplete)
         }
     }
 
-    private func beginFadeOut(context: ModelContext, onMixChange: @escaping () -> Void) {
+    private func beginFadeOut(
+        context: ModelContext,
+        onMixChange: @escaping () -> Void,
+        onComplete: (() -> Void)?
+    ) {
         let groups = nonClickGroups(in: context)
         let routingConfig = OutputRoutingStore.config(in: context)
 
@@ -103,10 +111,15 @@ final class GroupMixFadeController {
         setPhase(.fadingOut)
         startRamp(targets: targets, context: context, onMixChange: onMixChange) { [weak self] in
             self?.setPhase(.fadedOut)
+            onComplete?()
         }
     }
 
-    private func beginFadeIn(context: ModelContext, onMixChange: @escaping () -> Void) {
+    private func beginFadeIn(
+        context: ModelContext,
+        onMixChange: @escaping () -> Void,
+        onComplete: (() -> Void)?
+    ) {
         guard !savedVolumes.isEmpty else {
             setPhase(.idle)
             return
@@ -125,6 +138,7 @@ final class GroupMixFadeController {
         startRamp(targets: targets, context: context, onMixChange: onMixChange) { [weak self] in
             self?.savedVolumes = [:]
             self?.setPhase(.idle)
+            onComplete?()
         }
     }
 

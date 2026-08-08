@@ -714,6 +714,10 @@ final class AudioEngineManager {
         applyAllMixSettings()
     }
 
+    func applyProvisionalGroupVolume(groupID: UUID?, volume: Float) {
+        applyGroupMix(groupMixSnapshot.replacingVolume(groupID: groupID, volume: volume))
+    }
+
     func refreshGroupMeters(decay: Float = 0.55) {
         var groupLevels: [UUID: Float] = [:]
         var trackLevels: [UUID: Float] = [:]

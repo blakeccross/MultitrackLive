@@ -124,11 +124,14 @@ enum MixerFaderScale {
 
 struct MixerFaderColumn: View {
     @Binding var value: Double
-    let meterLevel: Float
+    let groupID: UUID?
     let height: CGFloat
-    let onValueChanged: () -> Void
+    /// Audible mix only — must not write SwiftData (avoids @Query rebuilds mid-drag).
+    let onLiveVolumeChange: (Double) -> Void
+    let onEditingEnded: () -> Void
 
     @State private var isDragging = false
+    @State private var dragValue: Double = 0
 
     private let trackWidth: CGFloat = 6
     private let thumbWidth: CGFloat = 50
@@ -136,11 +139,15 @@ struct MixerFaderColumn: View {
     private let scaleWidth: CGFloat = 20
     private let meterWidth: CGFloat = 5
 
+    private var displayedValue: Double {
+        isDragging ? dragValue : value
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 3) {
             faderTrack
             scaleColumn
-            meterBar
+            GroupPeakMeterBar(groupID: groupID, width: meterWidth, height: height)
         }
         .frame(height: height)
     }
@@ -149,7 +156,10 @@ struct MixerFaderColumn: View {
         GeometryReader { geometry in
             let trackHeight = geometry.size.height
             let travel = max(trackHeight - thumbHeight, 1)
-            let thumbCenterY = markY(forDB: MixerFaderScale.normalizedPosition(forLinearGain: value) * MixerFaderScale.maxAttenuationDB, in: trackHeight)
+            let thumbCenterY = markY(
+                forDB: MixerFaderScale.normalizedPosition(forLinearGain: displayedValue) * MixerFaderScale.maxAttenuationDB,
+                in: trackHeight
+            )
             let thumbY = thumbCenterY - thumbHeight / 2
 
             ZStack(alignment: .top) {
@@ -168,15 +178,27 @@ struct MixerFaderColumn: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { drag in
-                        isDragging = true
-                        setValue(fromCenterY: drag.location.y, trackHeight: trackHeight, travel: travel)
+                        if !isDragging {
+                            dragValue = value
+                            isDragging = true
+                        }
+                        setLiveValue(fromCenterY: drag.location.y, trackHeight: trackHeight, travel: travel)
                     }
                     .onEnded { _ in
+                        if isDragging {
+                            value = dragValue
+                        }
                         isDragging = false
+                        onEditingEnded()
                     }
             )
         }
         .frame(width: thumbWidth)
+        .transaction { transaction in
+            if isDragging {
+                transaction.disablesAnimations = true
+            }
+        }
     }
 
     private var faderThumb: some View {
@@ -216,7 +238,31 @@ struct MixerFaderColumn: View {
         .frame(width: scaleWidth, height: height, alignment: .topLeading)
     }
 
-    private var meterBar: some View {
+    private func markY(forDB db: Double, in trackHeight: CGFloat) -> CGFloat {
+        let normalized = db / MixerFaderScale.maxAttenuationDB
+        return thumbHeight / 2 + CGFloat(normalized) * max(trackHeight - thumbHeight, 1)
+    }
+
+    private func setLiveValue(fromCenterY y: CGFloat, trackHeight: CGFloat, travel: CGFloat) {
+        let clampedCenter = min(max(y, thumbHeight / 2), trackHeight - thumbHeight / 2)
+        let normalized = Double((clampedCenter - thumbHeight / 2) / travel)
+        let newValue = MixerFaderScale.linearGain(forNormalizedPosition: normalized)
+        dragValue = newValue
+        onLiveVolumeChange(newValue)
+    }
+}
+
+/// Reads peak meters in isolation so 30 Hz updates don't rebuild parent fader geometry.
+private struct GroupPeakMeterBar: View {
+    let groupID: UUID?
+    let width: CGFloat
+    let height: CGFloat
+
+    @Bindable private var audioEngine = AudioEngineManager.shared
+
+    var body: some View {
+        let meterLevel = audioEngine.groupMeterLevel(for: groupID)
+
         GeometryReader { geometry in
             ZStack(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
@@ -227,18 +273,6 @@ struct MixerFaderColumn: View {
                     .frame(height: geometry.size.height * MixerFaderScale.meterFillFraction(forPeak: meterLevel))
             }
         }
-        .frame(width: meterWidth, height: height)
-    }
-
-    private func markY(forDB db: Double, in trackHeight: CGFloat) -> CGFloat {
-        let normalized = db / MixerFaderScale.maxAttenuationDB
-        return thumbHeight / 2 + CGFloat(normalized) * max(trackHeight - thumbHeight, 1)
-    }
-
-    private func setValue(fromCenterY y: CGFloat, trackHeight: CGFloat, travel: CGFloat) {
-        let clampedCenter = min(max(y, thumbHeight / 2), trackHeight - thumbHeight / 2)
-        let normalized = Double((clampedCenter - thumbHeight / 2) / travel)
-        value = MixerFaderScale.linearGain(forNormalizedPosition: normalized)
-        onValueChanged()
+        .frame(width: width, height: height)
     }
 }

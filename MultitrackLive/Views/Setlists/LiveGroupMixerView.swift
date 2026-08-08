@@ -174,6 +174,7 @@ struct LivePlaybackSidebarLayout<Sidebar: View, MainContent: View>: View {
 
 struct LivePlaybackMixerSplitLayout<MainContent: View>: View {
     @Binding var mixerDetent: LiveGroupMixerDetent
+    let onLiveVolumeChange: (UUID?, Double) -> Void
     let onMixChange: () -> Void
     @ViewBuilder let mainContent: () -> MainContent
 
@@ -193,7 +194,10 @@ struct LivePlaybackMixerSplitLayout<MainContent: View>: View {
                     mainContent()
                         .frame(minHeight: LiveGroupMixerDetent.minimumMainHeight)
 
-                    LiveGroupMixerPanel(onMixChange: onMixChange)
+                    LiveGroupMixerPanel(
+                        onLiveVolumeChange: onLiveVolumeChange,
+                        onMixChange: onMixChange
+                    )
                         .frame(
                             minHeight: LiveGroupMixerDetent.minimumMixerHeight,
                             idealHeight: geometry.size.height * LiveGroupMixerDetent.heightFraction
@@ -212,7 +216,10 @@ struct LivePlaybackMixerSplitLayout<MainContent: View>: View {
             mainContent()
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if mixerDetent == .visible {
-                        LiveGroupMixerPanel(onMixChange: onMixChange)
+                        LiveGroupMixerPanel(
+                            onLiveVolumeChange: onLiveVolumeChange,
+                            onMixChange: onMixChange
+                        )
                             .frame(height: geometry.size.height * LiveGroupMixerDetent.heightFraction)
                     }
                 }
@@ -222,6 +229,7 @@ struct LivePlaybackMixerSplitLayout<MainContent: View>: View {
 }
 
 struct LiveGroupMixerPanel: View {
+    let onLiveVolumeChange: (UUID?, Double) -> Void
     let onMixChange: () -> Void
 
     var body: some View {
@@ -230,7 +238,10 @@ struct LiveGroupMixerPanel: View {
             drawerHandle
             #endif
 
-            LiveGroupMixerView(onMixChange: onMixChange)
+            LiveGroupMixerView(
+                onLiveVolumeChange: onLiveVolumeChange,
+                onMixChange: onMixChange
+            )
                 .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -276,11 +287,11 @@ struct LiveGroupMixerPanel: View {
 
 struct LiveGroupMixerView: View {
     @Environment(\.modelContext) private var modelContext
-    @Bindable private var audioEngine = AudioEngineManager.shared
 
     @Query(sort: [SortDescriptor(\TrackGroup.sortOrder), SortDescriptor(\TrackGroup.name)])
     private var groups: [TrackGroup]
 
+    let onLiveVolumeChange: (UUID?, Double) -> Void
     let onMixChange: () -> Void
 
     @State private var routingConfig: OutputRoutingConfig?
@@ -297,7 +308,7 @@ struct LiveGroupMixerView: View {
                         LiveGroupChannelStrip(
                             title: group.name,
                             titleColor: TrackGroupPalette.colors(for: group).body,
-                            meterLevel: audioEngine.groupMeterLevel(for: group.id),
+                            groupID: group.id,
                             volume: Binding(
                                 get: { group.volume },
                                 set: { group.volume = $0 }
@@ -308,6 +319,7 @@ struct LiveGroupMixerView: View {
                             ),
                             stripHeight: stripHeight,
                             stripWidth: stripWidth,
+                            onLiveVolumeChange: onLiveVolumeChange,
                             onMixChange: onMixChange
                         )
                     }
@@ -316,7 +328,7 @@ struct LiveGroupMixerView: View {
                         LiveGroupChannelStrip(
                             title: "No Group",
                             titleColor: TrackGroupPalette.colors(forPaletteKey: nil).body,
-                            meterLevel: audioEngine.groupMeterLevel(for: nil),
+                            groupID: nil,
                             volume: Binding(
                                 get: { routingConfig.ungroupedVolume },
                                 set: { routingConfig.ungroupedVolume = $0 }
@@ -327,6 +339,7 @@ struct LiveGroupMixerView: View {
                             ),
                             stripHeight: stripHeight,
                             stripWidth: stripWidth,
+                            onLiveVolumeChange: onLiveVolumeChange,
                             onMixChange: onMixChange
                         )
                     }
@@ -337,23 +350,36 @@ struct LiveGroupMixerView: View {
             }
         }
         .safeAreaPadding(.bottom, 4)
+        .background {
+            GroupMeterRefreshTicker()
+        }
         .onAppear {
             routingConfig = OutputRoutingStore.config(in: modelContext)
         }
-        .onReceive(Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()) { _ in
-            audioEngine.refreshGroupMeters()
-        }
+    }
+}
+
+/// Owns the meter refresh timer so ticks don't invalidate the mixer layout.
+private struct GroupMeterRefreshTicker: View {
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .onReceive(Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()) { _ in
+                AudioEngineManager.shared.refreshGroupMeters()
+            }
     }
 }
 
 private struct LiveGroupChannelStrip: View {
     let title: String
     let titleColor: Color
-    let meterLevel: Float
+    let groupID: UUID?
     @Binding var volume: Double
     @Binding var isMuted: Bool
     let stripHeight: CGFloat
     let stripWidth: CGFloat
+    let onLiveVolumeChange: (UUID?, Double) -> Void
     let onMixChange: () -> Void
 
     var body: some View {
@@ -361,9 +387,12 @@ private struct LiveGroupChannelStrip: View {
             GeometryReader { geometry in
                 MixerFaderColumn(
                     value: $volume,
-                    meterLevel: meterLevel,
+                    groupID: groupID,
                     height: max(60, geometry.size.height),
-                    onValueChanged: onMixChange
+                    onLiveVolumeChange: { liveVolume in
+                        onLiveVolumeChange(groupID, liveVolume)
+                    },
+                    onEditingEnded: onMixChange
                 )
             }
             .frame(minHeight: 60)

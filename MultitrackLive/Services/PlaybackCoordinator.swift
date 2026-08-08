@@ -441,11 +441,20 @@ final class PlaybackCoordinator {
         loadCurrentSong(autoPlay: wasPlaying, preservedTime: preservedTime)
     }
 
-    func updateGroupMix(context: ModelContext) {
+    func updateGroupMix(context: ModelContext, persist: Bool = true) {
         guard let snapshot = groupMixProvider?() else { return }
         audioEngine.applyGroupMix(snapshot)
         incomingAudioEngine?.applyGroupMix(snapshot)
-        try? context.save()
+        if persist {
+            try? context.save()
+        }
+    }
+
+    /// Live fader scrubbing: update audible mix without touching SwiftData.
+    func applyProvisionalGroupVolume(groupID: UUID?, volume: Double) {
+        let gain = Float(volume)
+        audioEngine.applyProvisionalGroupVolume(groupID: groupID, volume: gain)
+        incomingAudioEngine?.applyProvisionalGroupVolume(groupID: groupID, volume: gain)
     }
 
     private func applyGroupMixFromProvider() {

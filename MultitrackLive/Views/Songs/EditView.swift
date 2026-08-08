@@ -2091,6 +2091,7 @@ private struct EditSongToolbarContent: ToolbarContent {
             onToggleFade: {
                 groupMixFade.toggleFade(context: modelContext) {
                     audioEngine.applyGroupMix(GroupMixStore.snapshot(in: modelContext))
+                } onComplete: {
                     try? modelContext.save()
                 }
             },
@@ -2303,6 +2304,7 @@ private struct EditTransportBar: View {
             onToggleFade: {
                 groupMixFade.toggleFade(context: modelContext) {
                     audioEngine.applyGroupMix(GroupMixStore.snapshot(in: modelContext))
+                } onComplete: {
                     try? modelContext.save()
                 }
             },
