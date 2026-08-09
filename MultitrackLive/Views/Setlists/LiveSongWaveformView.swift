@@ -38,6 +38,10 @@ enum LiveSetlistWaveformMetrics {
 
     /// Layout-space scroll target for Ableton-style playhead follow.
     static let followPlayheadScrollID = "live-follow-playhead"
+    /// Named coordinate space for the live waveform horizontal ScrollView.
+    static let scrollCoordinateSpaceName = "live-waveform-scroll"
+    /// Re-enable follow when the playhead is this close to the viewport center.
+    static let followRelatchDistance: CGFloat = 64
 
     static func clampedWaveformHeight(_ height: CGFloat) -> CGFloat {
         min(maximumWaveformHeight, max(minimumWaveformHeight, height))
@@ -771,6 +775,16 @@ struct LiveSongWaveformView: View {
                 Color.clear
                     .frame(width: 1, height: 1)
                     .id(LiveSetlistWaveformMetrics.followPlayheadScrollID)
+                    .background {
+                        GeometryReader { geometry in
+                            Color.clear.preference(
+                                key: LiveSetlistPlayheadViewportXKey.self,
+                                value: geometry.frame(
+                                    in: .named(LiveSetlistWaveformMetrics.scrollCoordinateSpaceName)
+                                ).midX
+                            )
+                        }
+                    }
                 Spacer(minLength: 0)
             }
             .frame(width: contentWidth, height: 1, alignment: .leading)
@@ -839,7 +853,6 @@ struct LiveSetlistWaveformScrollView: View {
     let ensureWaveformSnapshotForSongID: (UUID) -> Void
     let playheadTimeProvider: () -> TimeInterval
     let isPlayingProvider: () -> Bool
-    @Binding var isFollowing: Bool
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
     let onSeek: (TimeInterval) -> Void
@@ -853,6 +866,9 @@ struct LiveSetlistWaveformScrollView: View {
 
     @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
 
+    @State private var isFollowing = true
+    @State private var isUserScrolling = false
+    @State private var playheadViewportX: CGFloat?
     @State private var viewportWidth: CGFloat = 1
     @State private var horizontalZoom = LiveSetlistWaveformMetrics.defaultHorizontalZoom
     @State private var pinchStartZoom: CGFloat?
@@ -884,10 +900,20 @@ struct LiveSetlistWaveformScrollView: View {
             // Keep a single scrollTargetBehavior instance so toggling follow does not
             // recreate the ScrollView (which would jump to defaultScrollAnchor).
             .scrollTargetBehavior(LiveSetlistFollowScrollTargetBehavior(isFollowing: isFollowing))
+            .coordinateSpace(name: LiveSetlistWaveformMetrics.scrollCoordinateSpaceName)
             .modifier(LiveSetlistFollowUserScrollDetector(
                 isFollowing: $isFollowing,
-                isPlayingProvider: isPlayingProvider
+                isUserScrolling: $isUserScrolling
             ))
+            .onPreferenceChange(LiveSetlistPlayheadViewportXKey.self) { playheadX in
+                playheadViewportX = playheadX
+                attemptFollowRelatch()
+            }
+            .onChange(of: isUserScrolling) { _, scrolling in
+                if !scrolling {
+                    attemptFollowRelatch()
+                }
+            }
             .onAppear {
                 if isFollowing {
                     scrollToFollowPlayhead(proxy, requirePlaying: false, deferred: true)
@@ -1047,6 +1073,15 @@ struct LiveSetlistWaveformScrollView: View {
         }
     }
 
+    private func attemptFollowRelatch() {
+        guard !isFollowing, !isUserScrolling, let playheadViewportX else { return }
+        let center = viewportWidth / 2
+        guard abs(playheadViewportX - center) <= LiveSetlistWaveformMetrics.followRelatchDistance else {
+            return
+        }
+        isFollowing = true
+    }
+
     @ViewBuilder
     private func songLane(songID: UUID, playbackIndex: Int) -> some View {
         let isCurrent = playbackIndex == currentPlaybackIndex
@@ -1155,18 +1190,18 @@ struct LiveSetlistFollowScrollDriver: View {
 
 struct LiveSetlistFollowUserScrollDetector: ViewModifier {
     @Binding var isFollowing: Bool
-    let isPlayingProvider: () -> Bool
+    @Binding var isUserScrolling: Bool
 
     func body(content: Content) -> some View {
         if #available(macOS 15.0, iOS 18.0, *) {
             content
                 .onScrollPhaseChange { _, newPhase in
-                    guard isFollowing, isPlayingProvider() else { return }
                     switch newPhase {
                     case .interacting, .decelerating:
+                        isUserScrolling = true
                         isFollowing = false
                     default:
-                        break
+                        isUserScrolling = false
                     }
                 }
         } else {
@@ -1174,10 +1209,23 @@ struct LiveSetlistFollowUserScrollDetector: ViewModifier {
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 6)
                         .onChanged { _ in
-                            guard isFollowing, isPlayingProvider() else { return }
+                            isUserScrolling = true
                             isFollowing = false
                         }
+                        .onEnded { _ in
+                            isUserScrolling = false
+                        }
                 )
+        }
+    }
+}
+
+private struct LiveSetlistPlayheadViewportXKey: PreferenceKey {
+    static var defaultValue: CGFloat? = nil
+
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+        if let next = nextValue() {
+            value = next
         }
     }
 }

@@ -7,7 +7,6 @@ struct LiveSetlistNowPlayingInfoView: View {
     let isLoaded: Bool
     let canLoop: Bool
     @Binding var infoPanelHeight: CGFloat
-    @Binding var isWaveformFollowing: Bool
     let onStop: () -> Void
     let onPlay: () -> Void
     let onPause: () -> Void
@@ -45,8 +44,6 @@ struct LiveSetlistNowPlayingInfoView: View {
             onReadoutHeightChange: { height in
                 infoPanelHeight = height
             },
-            isFollowing: isWaveformFollowing,
-            onToggleFollow: { isWaveformFollowing.toggle() },
             chrome: chrome
         )
     }

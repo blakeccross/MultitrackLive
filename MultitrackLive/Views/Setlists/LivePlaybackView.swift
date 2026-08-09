@@ -69,7 +69,6 @@ struct LivePlaybackView: View {
     @State private var songPendingTrackImport: Song?
     @State private var songImportFeedback: SongImportFeedback?
     @State private var infoPanelHeight: CGFloat = 0
-    @State private var isWaveformFollowing = true
     @State private var mixerDetent: LiveGroupMixerDetent = .hidden
     @State private var headerPendingEdit: SetlistEntry?
     @State private var editHeaderTitle = ""
@@ -450,7 +449,6 @@ struct LivePlaybackView: View {
             isLoaded: coordinator.isLoaded && !coordinator.isLoadingSong,
             canLoop: !loopSections.isEmpty,
             infoPanelHeight: $infoPanelHeight,
-            isWaveformFollowing: $isWaveformFollowing,
             onStop: stopPlayback,
             onPlay: coordinator.play,
             onPause: coordinator.pause,
@@ -529,7 +527,6 @@ struct LivePlaybackView: View {
             showingManageOutputs: $showingManageOutputs,
             mixerDetent: $mixerDetent,
             infoPanelHeight: $infoPanelHeight,
-            isWaveformFollowing: $isWaveformFollowing,
             transportChrome: placesTransportControlsAtBottom ? nil : .full
         )
     }
@@ -922,7 +919,6 @@ struct LivePlaybackView: View {
                 },
                 playheadTimeProvider: { coordinator.currentTime },
                 isPlayingProvider: { coordinator.isPlaying },
-                isFollowing: $isWaveformFollowing,
                 cuedSectionID: cuedSectionID,
                 cueFlashPhase: cueFlashPhase,
                 onSeek: coordinator.seek,
@@ -1463,7 +1459,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @Binding var showingManageOutputs: Bool
     @Binding var mixerDetent: LiveGroupMixerDetent
     @Binding var infoPanelHeight: CGFloat
-    @Binding var isWaveformFollowing: Bool
     var transportChrome: SharedTransportStripChrome? = .full
 
     #if os(macOS)
@@ -1527,7 +1522,6 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             isLoaded: isLoaded,
             canLoop: canLoop,
             infoPanelHeight: $infoPanelHeight,
-            isWaveformFollowing: $isWaveformFollowing,
             onStop: onStop,
             onPlay: onPlay,
             onPause: onPause,

@@ -8,12 +8,10 @@ struct TransportStatusSnapshot {
 }
 
 enum SharedTransportStripChrome: Equatable {
-    /// Follow + metadata + transport buttons + position readout (landscape / macOS toolbar).
+    /// Metadata + transport buttons + position readout (landscape / macOS toolbar).
     case full
     /// Portrait bottom bar: song info above shared transport buttons.
     case portraitBottom
-
-    var showsFollowAndMetadata: Bool { true }
 
     var showsControls: Bool { true }
 
@@ -138,8 +136,6 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
     var isFading: Bool = false
     var onToggleFade: (() -> Void)? = nil
     var onReadoutHeightChange: ((CGFloat) -> Void)? = nil
-    var isFollowing: Bool? = nil
-    var onToggleFollow: (() -> Void)? = nil
     var chrome: SharedTransportStripChrome = .full
 
     @Binding private var showingBPMPopover: Bool
@@ -164,8 +160,6 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
         isFading: Bool = false,
         onToggleFade: (() -> Void)? = nil,
         onReadoutHeightChange: ((CGFloat) -> Void)? = nil,
-        isFollowing: Bool? = nil,
-        onToggleFollow: (() -> Void)? = nil,
         chrome: SharedTransportStripChrome = .full,
         showingBPMPopover: Binding<Bool> = .constant(false),
         showingMeterPopover: Binding<Bool> = .constant(false),
@@ -186,8 +180,6 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
         self.isFading = isFading
         self.onToggleFade = onToggleFade
         self.onReadoutHeightChange = onReadoutHeightChange
-        self.isFollowing = isFollowing
-        self.onToggleFollow = onToggleFollow
         self.chrome = chrome
         _showingBPMPopover = showingBPMPopover
         _showingMeterPopover = showingMeterPopover
@@ -210,7 +202,6 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
             .frame(maxWidth: .infinity)
         } else {
             HStack(alignment: .center, spacing: AppSpacing.sm) {
-                followButton
                 transportMetadata
                 controlButtons
                 positionReadout
@@ -258,29 +249,6 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
             onToggleLoop: onToggleLoop,
             onToggleFade: onToggleFade
         )
-    }
-
-    @ViewBuilder
-    private var followButton: some View {
-        if let isFollowing, let onToggleFollow {
-            Button(action: onToggleFollow) {
-                Image(systemName: "arrow.right")
-                    .font(.system(size: buttonSize * 0.38, weight: .semibold))
-                    .foregroundStyle(
-                        isFollowing
-                            ? Color.white
-                            : Color(red: 0.78, green: 0.80, blue: 0.82)
-                    )
-                    .frame(width: buttonSize, height: buttonSize)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!isLoaded)
-            .opacity(isLoaded ? 1 : 0.4)
-            .accessibilityLabel(
-                isFollowing ? "Stop Following Playhead" : "Follow Playhead"
-            )
-        }
     }
 
     private var transportMetadata: some View {
@@ -361,8 +329,6 @@ extension SharedTransportStrip where BPMPopover == EmptyView, MeterPopover == Em
         isFading: Bool = false,
         onToggleFade: (() -> Void)? = nil,
         onReadoutHeightChange: ((CGFloat) -> Void)? = nil,
-        isFollowing: Bool? = nil,
-        onToggleFollow: (() -> Void)? = nil,
         chrome: SharedTransportStripChrome = .full
     ) {
         self.init(
@@ -380,8 +346,6 @@ extension SharedTransportStrip where BPMPopover == EmptyView, MeterPopover == Em
             isFading: isFading,
             onToggleFade: onToggleFade,
             onReadoutHeightChange: onReadoutHeightChange,
-            isFollowing: isFollowing,
-            onToggleFollow: onToggleFollow,
             chrome: chrome,
             showingBPMPopover: .constant(false),
             showingMeterPopover: .constant(false),

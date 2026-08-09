@@ -15,7 +15,6 @@ struct RemoteLivePlaybackView: View {
     @State private var showingSongLibrary = false
     @State private var showingAddHeaderAlert = false
     @State private var newHeaderTitle = "New Header"
-    @State private var isWaveformFollowing = true
     @State private var workingEntries: [RemoteSetlistEntryDTO] = []
     @State private var draggedSetlistEntryID: UUID?
     @State private var hasPendingSetlistReorder = false
@@ -259,8 +258,6 @@ struct RemoteLivePlaybackView: View {
             isFading: state.isFading,
             onToggleFade: { client.send(.toggleFade) },
             onReadoutHeightChange: { infoPanelHeight = $0 },
-            isFollowing: isWaveformFollowing,
-            onToggleFollow: { isWaveformFollowing.toggle() },
             chrome: chrome
         )
     }
@@ -276,7 +273,6 @@ struct RemoteLivePlaybackView: View {
                     ensureWaveformSnapshotForSongID: { _ in },
                     playheadTimeProvider: { client.state.currentTime },
                     isPlayingProvider: { client.state.isPlaying },
-                    isFollowing: $isWaveformFollowing,
                     cuedSectionID: state.cuedSectionID,
                     cueFlashPhase: cueFlashPhase,
                     onSeek: { client.send(.seek($0)) },
