@@ -125,7 +125,7 @@ private struct LiveSetlistWaveformResizeHandle: View {
             .frame(height: Self.hitAreaHeight)
             .contentShape(Rectangle())
         .highPriorityGesture(
-            DragGesture(minimumDistance: 1, coordinateSpace: .global)
+            DragGesture(minimumDistance: 1)
                 .onChanged { value in
                     if dragStartHeight == nil {
                         dragStartHeight = height
@@ -181,6 +181,8 @@ struct LiveSongWaveformView: View {
     let timeSignatureChanges: [TimeSignatureChange]
     let cuedSectionID: UUID?
     let cueFlashPhase: Bool
+    /// When set, peaks come from the session payload (remote) instead of local audio files.
+    var precomputedSourcePeaks: [Float]? = nil
     var showsPlayhead = true
     var isInteractive = true
     var playheadTimeProvider: (() -> TimeInterval)?
@@ -213,14 +215,25 @@ struct LiveSongWaveformView: View {
         !usesArrangementLayout || !usesArrangedPeakMapping
     }
 
-    private var trackSourcesKey: String {
-        trackSources
+    private var peaksLoadIdentity: String {
+        if let precomputedSourcePeaks {
+            let head = precomputedSourcePeaks.prefix(4).map { String(format: "%.4f", $0) }.joined(separator: ",")
+            return "precomputed:\(precomputedSourcePeaks.count):\(head)"
+        }
+        return trackSources
             .map { "\($0.url.path)|\($0.duration)" }
             .joined(separator: ";")
     }
 
+    private var hasPeakSource: Bool {
+        if let precomputedSourcePeaks {
+            return !precomputedSourcePeaks.isEmpty
+        }
+        return !trackSources.isEmpty
+    }
+
     private var isLoadingWaveform: Bool {
-        !trackSources.isEmpty && cachedDisplayPeaks.isEmpty
+        hasPeakSource && cachedDisplayPeaks.isEmpty
     }
 
     var body: some View {
@@ -250,6 +263,17 @@ struct LiveSongWaveformView: View {
             isEnabled: isInteractive,
             contentWidth: contentWidth,
             duration: safeTimelineDuration,
+            sections: sections.map {
+                WaveformSeekGestureModifier.SectionHitTarget(
+                    id: $0.id,
+                    start: $0.timelineStartSeconds,
+                    end: $0.timelineEndSeconds
+                )
+            },
+            onSectionTap: { sectionID in
+                guard let section = sections.first(where: { $0.id == sectionID }) else { return }
+                onCueSection(section)
+            },
             onSeek: onSeek
         ))
         .onAppear {
@@ -267,9 +291,15 @@ struct LiveSongWaveformView: View {
         .onChange(of: peakSections.map(\.id)) { _, _ in
             refreshDisplayPeaks(contentWidth: contentWidth)
         }
-        .task(id: trackSourcesKey) {
+        .task(id: peaksLoadIdentity) {
+            if let precomputedSourcePeaks {
+                sourcePeaks = precomputedSourcePeaks
+                refreshDisplayPeaks(contentWidth: contentWidth)
+                return
+            }
             guard !trackSources.isEmpty else {
                 sourcePeaks = []
+                cachedDisplayPeaks = []
                 return
             }
             if let cached = WaveformCache.shared.cachedSummedPeaks(for: trackSources) {
@@ -680,9 +710,6 @@ struct LiveSongWaveformView: View {
                     Color.clear
                         .frame(width: segmentWidth, height: waveformHeight)
                         .contentShape(Rectangle())
-                        .onTapGesture {
-                            onCueSection(section)
-                        }
                         .contextMenu {
                             Button("Cue Section") {
                                 onCueSection(section)
@@ -784,6 +811,8 @@ struct SetlistWaveformHeaderMarker: View {
 
     @Environment(\.liveSetlistWaveformHeight) private var waveformHeight
 
+    private let markerWidth: CGFloat = 40
+
     var body: some View {
         RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
             .fill(AppColors.backgroundPrimary)
@@ -792,21 +821,22 @@ struct SetlistWaveformHeaderMarker: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(AppColors.textSecondary)
                     .lineLimit(3)
+                    .minimumScaleFactor(0.7)
                     .multilineTextAlignment(.center)
+                    // Lay out along the vertical axis before rotating into the marker.
+                    .frame(width: max(0, waveformHeight - AppSpacing.md), height: markerWidth)
                     .rotationEffect(.degrees(-90))
-                    .fixedSize()
-                    .frame(width: waveformHeight - AppSpacing.md)
             }
-            .frame(width: 40, height: waveformHeight)
+            .frame(width: markerWidth, height: waveformHeight)
+            .clipped()
     }
 }
 
 struct LiveSetlistWaveformScrollView: View {
     let timelineItems: [LiveSetlistTimelineItem]
     let currentPlaybackIndex: Int
-    let songForID: (UUID) -> Song?
-    let waveformSnapshotForSong: (Song) -> LiveSongWaveformSnapshot?
-    let ensureWaveformSnapshot: (Song) -> Void
+    let waveformSnapshotForSongID: (UUID) -> LiveSongWaveformSnapshot?
+    let ensureWaveformSnapshotForSongID: (UUID) -> Void
     let playheadTimeProvider: () -> TimeInterval
     let isPlayingProvider: () -> Bool
     @Binding var isFollowing: Bool
@@ -815,6 +845,8 @@ struct LiveSetlistWaveformScrollView: View {
     let onSeek: (TimeInterval) -> Void
     let onCueSection: (ArrangementDisplaySection) -> Void
     var onOverlapBadgeTapped: ((Int) -> Void)?
+    /// When set, tapping a non-current song lane selects that song (remote client).
+    var onSelectSong: ((Int) -> Void)?
 
     @AppStorage(LiveSetlistWaveformMetrics.horizontalZoomAppStorageKey)
     private var storedHorizontalZoom = LiveSetlistWaveformMetrics.defaultHorizontalZoomStorageValue
@@ -922,14 +954,12 @@ struct LiveSetlistWaveformScrollView: View {
                 .id(item.id)
 
         case .song(let songID, let playbackIndex, let transitionAfter):
-            if let song = songForID(songID) {
-                HStack(alignment: .center, spacing: laneSpacing) {
-                    songLane(for: song, playbackIndex: playbackIndex)
-                        .id(item.id)
+            HStack(alignment: .center, spacing: laneSpacing) {
+                songLane(songID: songID, playbackIndex: playbackIndex)
+                    .id(item.id)
 
-                    if let transitionAfter {
-                        transitionBadge(transitionAfter, playbackIndex: playbackIndex)
-                    }
+                if let transitionAfter {
+                    transitionBadge(transitionAfter, playbackIndex: playbackIndex)
                 }
             }
         }
@@ -1018,17 +1048,23 @@ struct LiveSetlistWaveformScrollView: View {
     }
 
     @ViewBuilder
-    private func songLane(for song: Song, playbackIndex: Int) -> some View {
+    private func songLane(songID: UUID, playbackIndex: Int) -> some View {
         let isCurrent = playbackIndex == currentPlaybackIndex
 
-        if let snapshot = waveformSnapshotForSong(song) {
-            waveformLane(snapshot: snapshot, isCurrent: isCurrent)
-        } else {
-            LiveSetlistWaveformLanePlaceholder(isCurrent: isCurrent)
-                .task(id: song.id) {
-                    ensureWaveformSnapshot(song)
-                }
+        Group {
+            if let snapshot = waveformSnapshotForSongID(songID) {
+                waveformLane(snapshot: snapshot, isCurrent: isCurrent)
+            } else {
+                LiveSetlistWaveformLanePlaceholder(isCurrent: isCurrent)
+                    .task(id: songID) {
+                        ensureWaveformSnapshotForSongID(songID)
+                    }
+            }
         }
+        .modifier(NonCurrentSongSelectTapModifier(
+            isEnabled: !isCurrent && onSelectSong != nil,
+            onSelect: { onSelectSong?(playbackIndex) }
+        ))
     }
 
     @ViewBuilder
@@ -1050,6 +1086,7 @@ struct LiveSetlistWaveformScrollView: View {
             timeSignatureChanges: snapshot.timeSignatureChanges,
             cuedSectionID: isCurrent ? cuedSectionID : nil,
             cueFlashPhase: isCurrent ? cueFlashPhase : false,
+            precomputedSourcePeaks: snapshot.precomputedSourcePeaks,
             showsPlayhead: isCurrent,
             isInteractive: isCurrent,
             playheadTimeProvider: isCurrent ? playheadTimeProvider : nil,
@@ -1078,10 +1115,23 @@ private struct LiveSetlistWaveformLanePlaceholder: View {
     }
 }
 
+private struct NonCurrentSongSelectTapModifier: ViewModifier {
+    let isEnabled: Bool
+    let onSelect: () -> Void
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.onTapGesture(perform: onSelect)
+        } else {
+            content
+        }
+    }
+}
+
 /// View-aligned snapping while free-scrolling; no-op while following the playhead.
 /// Implemented as `ScrollTargetBehavior` (not a conditional `ViewModifier`) so
 /// enabling/disabling follow does not change ScrollView identity or reset offset.
-private struct LiveSetlistFollowScrollTargetBehavior: ScrollTargetBehavior {
+struct LiveSetlistFollowScrollTargetBehavior: ScrollTargetBehavior {
     var isFollowing: Bool
 
     func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
@@ -1090,7 +1140,7 @@ private struct LiveSetlistFollowScrollTargetBehavior: ScrollTargetBehavior {
     }
 }
 
-private struct LiveSetlistFollowScrollDriver: View {
+struct LiveSetlistFollowScrollDriver: View {
     let date: Date
     let action: () -> Void
 
@@ -1103,7 +1153,7 @@ private struct LiveSetlistFollowScrollDriver: View {
     }
 }
 
-private struct LiveSetlistFollowUserScrollDetector: ViewModifier {
+struct LiveSetlistFollowUserScrollDetector: ViewModifier {
     @Binding var isFollowing: Bool
     let isPlayingProvider: () -> Bool
 
@@ -1132,29 +1182,60 @@ private struct LiveSetlistFollowUserScrollDetector: ViewModifier {
     }
 }
 
-private struct WaveformSeekGestureModifier: ViewModifier {
+/// Tap seeks; drag is left to the parent horizontal ScrollView for panning.
+/// When arrangement sections are provided, a tap inside a section jumps to that
+/// section (via `onSectionTap`) instead of the exact tap time — matching Mac.
+struct WaveformSeekGestureModifier: ViewModifier {
+    struct SectionHitTarget: Identifiable {
+        let id: UUID
+        let start: TimeInterval
+        let end: TimeInterval
+    }
+
     let isEnabled: Bool
     let contentWidth: CGFloat
     let duration: TimeInterval
+    var sections: [SectionHitTarget] = []
+    var onSectionTap: ((UUID) -> Void)? = nil
     let onSeek: (TimeInterval) -> Void
 
     func body(content: Content) -> some View {
         if isEnabled {
             content
                 .contentShape(Rectangle())
-                .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onEnded { value in
-                        let time = TimelineLayout.time(
-                            at: value.location.x,
-                            duration: duration,
-                            contentWidth: contentWidth
-                        )
-                        onSeek(time)
-                    }
-            )
+                .simultaneousGesture(
+                    SpatialTapGesture()
+                        .onEnded { event in
+                            let time = TimelineLayout.time(
+                                at: event.location.x,
+                                duration: duration,
+                                contentWidth: contentWidth
+                            )
+                            if let onSectionTap, let sectionID = sectionID(containing: time) {
+                                onSectionTap(sectionID)
+                            } else {
+                                onSeek(time)
+                            }
+                        }
+                )
         } else {
             content
         }
+    }
+
+    private func sectionID(containing time: TimeInterval) -> UUID? {
+        guard !sections.isEmpty else { return nil }
+
+        for section in sections {
+            if time >= section.start && time < section.end {
+                return section.id
+            }
+        }
+
+        if let last = sections.last, time >= last.start && time <= last.end {
+            return last.id
+        }
+
+        return nil
     }
 }

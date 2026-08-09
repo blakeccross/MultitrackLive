@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import SwiftData
 
-/// Ramps all group faders except Click (plus No Group) between their levels and silence.
+/// Ramps all group faders except Click and Timecode (plus No Group) between their levels and silence.
 @MainActor
 @Observable
 final class GroupMixFadeController {
@@ -55,7 +55,7 @@ final class GroupMixFadeController {
             return
         }
 
-        let groups = nonClickGroups(in: context)
+        let groups = fadeableGroups(in: context)
         for group in groups {
             if let volume = savedVolumes[group.id] {
                 group.volume = volume
@@ -88,7 +88,7 @@ final class GroupMixFadeController {
         onMixChange: @escaping () -> Void,
         onComplete: (() -> Void)?
     ) {
-        let groups = nonClickGroups(in: context)
+        let groups = fadeableGroups(in: context)
         let routingConfig = OutputRoutingStore.config(in: context)
 
         if savedVolumes.isEmpty {
@@ -125,7 +125,7 @@ final class GroupMixFadeController {
             return
         }
 
-        let groups = nonClickGroups(in: context)
+        let groups = fadeableGroups(in: context)
         let routingConfig = OutputRoutingStore.config(in: context)
         var targets: [UUID: Double] = [:]
         targets.reserveCapacity(groups.count + 1)
@@ -150,7 +150,7 @@ final class GroupMixFadeController {
     ) {
         rampGeneration += 1
         let generation = rampGeneration
-        let groups = nonClickGroups(in: context)
+        let groups = fadeableGroups(in: context)
         let routingConfig = OutputRoutingStore.config(in: context)
 
         var starts: [UUID: Double] = [:]
@@ -173,7 +173,7 @@ final class GroupMixFadeController {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let self, self.rampGeneration == generation else { return }
 
-                let liveGroups = self.nonClickGroups(in: context)
+                let liveGroups = self.fadeableGroups(in: context)
                 for group in liveGroups {
                     guard let start = starts[group.id], let target = targets[group.id] else { continue }
                     group.volume = start + (target - start) * t
@@ -193,8 +193,12 @@ final class GroupMixFadeController {
         }
     }
 
-    private func nonClickGroups(in context: ModelContext) -> [TrackGroup] {
-        TrackGroupStore.sortedGroups(from: context).filter { !Self.isClickGroup($0) }
+    private func fadeableGroups(in context: ModelContext) -> [TrackGroup] {
+        TrackGroupStore.sortedGroups(from: context).filter { !Self.isExcludedFromFade($0) }
+    }
+
+    private static func isExcludedFromFade(_ group: TrackGroup) -> Bool {
+        isClickGroup(group) || TimecodePlaybackSupport.isTimecodeGroup(group)
     }
 
     private static func isClickGroup(_ group: TrackGroup) -> Bool {

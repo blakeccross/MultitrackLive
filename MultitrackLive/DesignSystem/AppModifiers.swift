@@ -2,6 +2,9 @@ import SwiftUI
 #if os(macOS)
 import AppKit
 #endif
+#if os(iOS)
+import UIKit
+#endif
 
 enum AppBackgroundLevel {
     case primary
@@ -52,6 +55,13 @@ extension View {
         self
         #endif
     }
+
+    #if os(iOS)
+    /// Restricts interface orientations while this view is visible.
+    func locksInterfaceOrientations(_ mask: UIInterfaceOrientationMask) -> some View {
+        modifier(InterfaceOrientationLockModifier(mask: mask))
+    }
+    #endif
 }
 
 private func backgroundColor(for level: AppBackgroundLevel) -> Color {
@@ -62,6 +72,57 @@ private func backgroundColor(for level: AppBackgroundLevel) -> Color {
     case .elevated: AppColors.surfaceElevated
     }
 }
+
+#if os(iOS)
+enum AppOrientationLock {
+    /// Matches Info.plist supported orientations for iPhone/iPad.
+    static let unlockedMask: UIInterfaceOrientationMask = .all
+
+    private(set) static var mask: UIInterfaceOrientationMask = unlockedMask
+
+    static func set(_ mask: UIInterfaceOrientationMask) {
+        Self.mask = mask
+
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+                ?? UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first
+        else {
+            return
+        }
+
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask))
+        scene.windows.forEach { window in
+            window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        }
+    }
+}
+
+final class MultitrackAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        supportedInterfaceOrientationsFor window: UIWindow?
+    ) -> UIInterfaceOrientationMask {
+        AppOrientationLock.mask
+    }
+}
+
+private struct InterfaceOrientationLockModifier: ViewModifier {
+    let mask: UIInterfaceOrientationMask
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                AppOrientationLock.set(mask)
+            }
+            .onDisappear {
+                AppOrientationLock.set(AppOrientationLock.unlockedMask)
+            }
+    }
+}
+#endif
 
 private struct AppLinkPointerModifier: ViewModifier {
     func body(content: Content) -> some View {

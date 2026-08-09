@@ -23,12 +23,17 @@ struct AppSettingsView: View {
                     Label("Groups", systemImage: "rectangle.3.group")
                 }
 
+            remoteSessionPane
+                .tabItem {
+                    Label("Remote", systemImage: "antenna.radiowaves.left.and.right")
+                }
+
             GeneralSettingsPane(updater: updater)
                 .tabItem {
                     Label("General", systemImage: "gearshape")
                 }
         }
-        .frame(width: 560, height: 520)
+        .frame(width: 560, height: 560)
         .preferredColorScheme(.dark)
     }
 
@@ -46,6 +51,10 @@ struct AppSettingsView: View {
 
     private var groupsPane: some View {
         TrackGroupEditorView(presentation: .settings)
+    }
+
+    private var remoteSessionPane: some View {
+        RemoteSessionSettingsView()
     }
 }
 

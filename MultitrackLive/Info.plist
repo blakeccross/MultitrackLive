@@ -19,5 +19,11 @@
 	<true/>
 	<key>SUEnableInstallerLauncherService</key>
 	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Multitrack Live uses the local network so another device can discover and control a remote session on the same Wi‑Fi.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_mtliveremote._tcp</string>
+	</array>
 </dict>
 </plist>

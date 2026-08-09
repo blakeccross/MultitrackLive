@@ -13,6 +13,7 @@ struct LiveSetlistNowPlayingInfoView: View {
     let onPause: () -> Void
     let onToggleLoop: () -> Void
     let onToggleFade: () -> Void
+    var chrome: SharedTransportStripChrome = .full
 
     var body: some View {
         Group {
@@ -27,12 +28,9 @@ struct LiveSetlistNowPlayingInfoView: View {
     }
 
     private func transportContent(at time: TimeInterval) -> some View {
-        let snapshot = displaySnapshot(at: time)
-        let transportButtonSize = max(infoPanelHeight, 44)
-
-        return SharedTransportStrip(
-            snapshot: snapshot,
-            buttonSize: transportButtonSize,
+        SharedTransportStrip(
+            snapshot: displaySnapshot(at: time),
+            buttonSize: max(infoPanelHeight, 44),
             isPlaying: coordinator.isPlaying,
             isLoaded: isLoaded,
             isLooping: sectionLoop.isLooping,
@@ -48,9 +46,8 @@ struct LiveSetlistNowPlayingInfoView: View {
                 infoPanelHeight = height
             },
             isFollowing: isWaveformFollowing,
-            onToggleFollow: {
-                isWaveformFollowing.toggle()
-            }
+            onToggleFollow: { isWaveformFollowing.toggle() },
+            chrome: chrome
         )
     }
 

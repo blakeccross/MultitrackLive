@@ -16,6 +16,9 @@ struct MultitrackLiveApp: App {
     #if os(macOS)
     private let sparkleUpdater = SparkleUpdater()
     #endif
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(MultitrackAppDelegate.self) private var appDelegate
+    #endif
 
     init() {
         do {

@@ -172,6 +172,7 @@ struct LivePlaybackSidebarLayout<Sidebar: View, MainContent: View>: View {
     }
 }
 
+#if os(macOS)
 struct LivePlaybackMixerSplitLayout<MainContent: View>: View {
     @Binding var mixerDetent: LiveGroupMixerDetent
     let onLiveVolumeChange: (UUID?, Double) -> Void
@@ -179,15 +180,6 @@ struct LivePlaybackMixerSplitLayout<MainContent: View>: View {
     @ViewBuilder let mainContent: () -> MainContent
 
     var body: some View {
-        #if os(macOS)
-        macOSLayout
-        #else
-        iOSLayout
-        #endif
-    }
-
-    #if os(macOS)
-    private var macOSLayout: some View {
         GeometryReader { geometry in
             if mixerDetent == .visible {
                 VSplitView {
@@ -209,23 +201,6 @@ struct LivePlaybackMixerSplitLayout<MainContent: View>: View {
         }
         .animation(AppAnimation.fadeQuick, value: mixerDetent)
     }
-    #endif
-
-    private var iOSLayout: some View {
-        GeometryReader { geometry in
-            mainContent()
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if mixerDetent == .visible {
-                        LiveGroupMixerPanel(
-                            onLiveVolumeChange: onLiveVolumeChange,
-                            onMixChange: onMixChange
-                        )
-                            .frame(height: geometry.size.height * LiveGroupMixerDetent.heightFraction)
-                    }
-                }
-        }
-        .animation(AppAnimation.fadeQuick, value: mixerDetent)
-    }
 }
 
 struct LiveGroupMixerPanel: View {
@@ -233,57 +208,41 @@ struct LiveGroupMixerPanel: View {
     let onMixChange: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            #if os(iOS)
-            drawerHandle
-            #endif
-
-            LiveGroupMixerView(
-                onLiveVolumeChange: onLiveVolumeChange,
-                onMixChange: onMixChange
-            )
-                .frame(maxHeight: .infinity)
-        }
+        LiveGroupMixerView(
+            onLiveVolumeChange: onLiveVolumeChange,
+            onMixChange: onMixChange
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            #if os(iOS)
-            drawerShape
-                .fill(AppColors.backgroundSecondary)
-                .ignoresSafeArea(.all, edges: .bottom)
-            #else
-            AppColors.backgroundSecondary
-            #endif
-        }
+        .background(AppColors.backgroundSecondary)
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(AppColors.separator)
                 .frame(height: 0.5)
         }
     }
-
-    #if os(iOS)
-    private var drawerHandle: some View {
-        Capsule()
-            .fill(AppColors.textTertiary.opacity(0.6))
-            .frame(width: 40, height: 5)
-            .padding(.top, 10)
-            .padding(.bottom, 8)
-            .frame(maxWidth: .infinity)
-    }
-    #endif
-
-    #if os(iOS)
-    private var drawerShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: AppRadius.lg,
-            bottomLeadingRadius: 0,
-            bottomTrailingRadius: 0,
-            topTrailingRadius: AppRadius.lg,
-            style: .continuous
-        )
-    }
-    #endif
 }
+#endif
+
+#if os(iOS)
+struct LiveGroupMixerScreen: View {
+    let onLiveVolumeChange: (UUID?, Double) -> Void
+    let onMixChange: () -> Void
+
+    var body: some View {
+        LiveGroupMixerView(
+            onLiveVolumeChange: onLiveVolumeChange,
+            onMixChange: onMixChange
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .appBackground(.secondary)
+        .navigationTitle("Group Mixer")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(AppColors.backgroundPrimary, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .locksInterfaceOrientations(.landscape)
+    }
+}
+#endif
 
 struct LiveGroupMixerView: View {
     @Environment(\.modelContext) private var modelContext
@@ -298,13 +257,18 @@ struct LiveGroupMixerView: View {
 
     private let stripWidth: CGFloat = 96
 
+    /// Timecode is routed as a dedicated LTC output and is not mixable.
+    private var mixableGroups: [TrackGroup] {
+        groups.filter { !TimecodePlaybackSupport.isTimecodeGroup($0) }
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let stripHeight = geometry.size.height - AppSpacing.xs - AppSpacing.xxs
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: AppSpacing.xxs) {
-                    ForEach(groups) { group in
+                    ForEach(mixableGroups) { group in
                         LiveGroupChannelStrip(
                             title: group.name,
                             titleColor: TrackGroupPalette.colors(for: group).body,
@@ -371,14 +335,14 @@ private struct GroupMeterRefreshTicker: View {
     }
 }
 
-private struct LiveGroupChannelStrip: View {
+struct LiveGroupChannelStrip: View {
     let title: String
     let titleColor: Color
     let groupID: UUID?
     @Binding var volume: Double
     @Binding var isMuted: Bool
     let stripHeight: CGFloat
-    let stripWidth: CGFloat
+    var stripWidth: CGFloat = 96
     let onLiveVolumeChange: (UUID?, Double) -> Void
     let onMixChange: () -> Void
 

@@ -40,6 +40,10 @@ private struct MissingMediaSheetContext: Identifiable {
 
 struct LivePlaybackView: View {
     @Environment(\.modelContext) private var modelContext
+    #if os(iOS)
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     @Query(sort: \Song.name) private var allSongs: [Song]
     @Query(sort: \Setlist.lastOpenedAt, order: .reverse) private var allSetlists: [Setlist]
 
@@ -76,6 +80,19 @@ struct LivePlaybackView: View {
     @State private var missingMediaSheet: MissingMediaSheetContext?
     @State private var ignoredMissingMediaPromptForSetlistID: UUID?
     @State private var mediaHealthRevision = 0
+    @Bindable private var remoteHost = RemoteSessionHostService.shared
+    private var remoteHostController: RemoteHostSessionController { .shared }
+
+    #if os(iOS)
+    private var placesTransportControlsAtBottom: Bool {
+        LiveTransportLayout.placesControlsAtBottom(
+            verticalSizeClass: verticalSizeClass,
+            horizontalSizeClass: horizontalSizeClass
+        )
+    }
+    #else
+    private var placesTransportControlsAtBottom: Bool { false }
+    #endif
 
     private var activeSetlist: Setlist? {
         if let activeSetlistID,
@@ -169,6 +186,16 @@ struct LivePlaybackView: View {
     }
 
     private func playbackBody(for setlist: Setlist) -> some View {
+        playbackBodyLifecycle(
+            for: setlist,
+            content: playbackBodyPresentations(
+                for: setlist,
+                content: playbackBodyChrome(for: setlist)
+            )
+        )
+    }
+
+    private func playbackBodyChrome(for setlist: Setlist) -> some View {
         Group {
             #if os(macOS)
             LivePlaybackSidebarLayout(isVisible: $showingSongLibrary) {
@@ -180,12 +207,13 @@ struct LivePlaybackView: View {
             playbackMainLayout
             #endif
         }
-        .navigationTitle(setlistDisplayName(for: setlist))
         #if os(macOS)
+        .navigationTitle(setlistDisplayName(for: setlist))
         .toolbarTitleMenu {
             setlistSwitcherMenuContent()
         }
         #else
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
@@ -199,7 +227,9 @@ struct LivePlaybackView: View {
         .appBackground(.primary)
         #if os(iOS)
         .sheet(isPresented: $showingManageOutputs) {
-            ManageOutputsView()
+            DeviceSettingsSheet(onRoutingChanged: {
+                coordinator.applyOutputRouting()
+            })
         }
         .sheet(isPresented: $showingSongLibrary) {
             AppSheetContainer {
@@ -213,128 +243,155 @@ struct LivePlaybackView: View {
             .presentationDetents([.large])
         }
         #endif
-        .onReceive(NotificationCenter.default.publisher(for: .outputRoutingDidChange)) { _ in
-            coordinator.applyOutputRouting()
-        }
-        .fileImporter(
-            isPresented: $showingSetlistPackageImporter,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
-            handleSetlistPackageImport(result)
-        }
-        .fileExporter(
-            isPresented: $showingSetlistPackageExporter,
-            document: setlistPackageDocument,
-            contentType: .folder,
-            defaultFilename: setlistPackageExportFileName
-        ) { result in
-            handleSetlistPackageExportResult(result)
-        }
-        .sheet(item: $songPendingTrackImport) { song in
-            TrackImportView(song: song) { error in
-                songImportFeedback = .failure(error)
+    }
+
+    private func playbackBodyPresentations<Content: View>(
+        for setlist: Setlist,
+        content: Content
+    ) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .outputRoutingDidChange)) { _ in
+                coordinator.applyOutputRouting()
             }
-        }
-        .sheet(item: $overlapEditorContext) { context in
-            SetlistOverlapEditorView(
-                context: context,
-                onCommit: { config in
-                    viewModel.setOverlapTransition(config, for: context.entry, context: modelContext)
-                    coordinator.updateTransitions(from: workingSetlist)
+            .modifier(LiveRemoteHostSyncModifier(
+                setlist: setlist,
+                librarySignature: remoteLibrarySignature,
+                coordinator: coordinator,
+                sectionLoop: sectionLoop,
+                groupMixFade: groupMixFade,
+                cuedSectionID: cuedSectionID,
+                cueFireTime: cueFireTime,
+                remoteHostController: remoteHostController,
+                isClientAuthenticated: remoteHost.isClientAuthenticated,
+                sync: { syncRemoteHostSession(for: setlist) }
+            ))
+            .fileImporter(
+                isPresented: $showingSetlistPackageImporter,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false
+            ) { result in
+                handleSetlistPackageImport(result)
+            }
+            .fileExporter(
+                isPresented: $showingSetlistPackageExporter,
+                document: setlistPackageDocument,
+                contentType: .folder,
+                defaultFilename: setlistPackageExportFileName
+            ) { result in
+                handleSetlistPackageExportResult(result)
+            }
+            .sheet(item: $songPendingTrackImport) { song in
+                TrackImportView(song: song) { error in
+                    songImportFeedback = .failure(error)
                 }
-            )
-        }
-        .alert(item: $songImportFeedback) { feedback in
-            Alert(
-                title: Text(feedback.title),
-                message: Text(feedback.message),
-                dismissButton: .cancel(Text("OK"))
-            )
-        }
-        .background {
-            playbackMonitorSupport
-        }
-        .task(id: cuedSectionID) {
-            guard cuedSectionID != nil else {
-                cueFlashPhase = false
-                return
             }
-            cueFlashPhase = true
-            while !Task.isCancelled, cuedSectionID != nil {
-                try? await Task.sleep(for: .milliseconds(350))
-                cueFlashPhase.toggle()
-            }
-        }
-        .onChange(of: coordinator.currentSong?.id) { _, _ in
-            clearMarkerCue()
-            sectionLoop.reset()
-            groupMixFade.cancel()
-            prepareSectionAnnouncements()
-        }
-        .onChange(of: coordinator.currentSong?.dynamicCuesEnabled ?? false) { _, _ in
-            prepareSectionAnnouncements()
-        }
-        .task(id: sectionAnnouncementTaskID) {
-            prepareSectionAnnouncements()
-        }
-        .onAppear {
-            if activeSetlistID == nil {
-                activeSetlistID = setlist.id
-            }
-            coordinator.routingProvider = {
-                let channelCount = AudioOutputDeviceService.channelCount(
-                    for: OutputRoutingStore.config(in: modelContext).selectedDeviceUID
+            .sheet(item: $overlapEditorContext) { context in
+                SetlistOverlapEditorView(
+                    context: context,
+                    onCommit: { config in
+                        viewModel.setOverlapTransition(config, for: context.entry, context: modelContext)
+                        coordinator.updateTransitions(from: workingSetlist)
+                    }
                 )
-                return OutputRoutingStore.snapshot(in: modelContext, channelCount: channelCount)
             }
-            coordinator.groupMixProvider = {
-                GroupMixStore.snapshot(in: modelContext)
+            .alert(item: $songImportFeedback) { feedback in
+                Alert(
+                    title: Text(feedback.title),
+                    message: Text(feedback.message),
+                    dismissButton: .cancel(Text("OK"))
+                )
             }
-            coordinator.timecodeSettingsProvider = {
-                TimecodeSettingsStore.snapshot(in: modelContext)
+            .background {
+                playbackMonitorSupport
             }
-            coordinator.timecodeGroupIDProvider = {
-                TimecodePlaybackSupport.resolveGroupID(in: modelContext)
+    }
+
+    private func playbackBodyLifecycle<Content: View>(
+        for setlist: Setlist,
+        content: Content
+    ) -> some View {
+        content
+            .task(id: cuedSectionID) {
+                guard cuedSectionID != nil else {
+                    cueFlashPhase = false
+                    return
+                }
+                cueFlashPhase = true
+                while !Task.isCancelled, cuedSectionID != nil {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    cueFlashPhase.toggle()
+                }
             }
-            coordinator.configure(setlist: setlist)
-            markSetlistOpened(setlist)
-            promptForMissingMediaIfNeeded(in: setlist)
-        }
-        .onChange(of: activeSetlistID) { _, _ in
-            showingSongLibrary = false
-            songToEditID = nil
-        }
-        #if os(iOS)
-        .onChange(of: showingSongLibrary) { _, isShowing in
-            if !isShowing {
-                songToEditID = nil
-            }
-        }
-        #endif
-        .onDisappear {
-            stopPlayback()
-        }
-        .onChange(of: songToEditID) { oldValue, newValue in
-            if newValue != nil {
+            .onChange(of: coordinator.currentSong?.id) { _, _ in
                 clearMarkerCue()
                 sectionLoop.reset()
                 groupMixFade.cancel()
-                coordinator.unbindPlaybackHandlers()
-                coordinator.pause()
-            } else if let editedSongID = oldValue {
-                coordinator.invalidateWaveformSnapshot(for: editedSongID)
+                prepareSectionAnnouncements()
             }
-            handleSongEditorDismissed(newValue)
-        }
-        #if os(macOS)
-        .navigationDestination(isPresented: songEditorDestination) {
-            songEditorDestinationContent(for: setlist)
-        }
-        #endif
+            .onChange(of: coordinator.currentSong?.dynamicCuesEnabled ?? false) { _, _ in
+                prepareSectionAnnouncements()
+            }
+            .task(id: sectionAnnouncementTaskID) {
+                prepareSectionAnnouncements()
+            }
+            .onAppear {
+                if activeSetlistID == nil {
+                    activeSetlistID = setlist.id
+                }
+                coordinator.routingProvider = {
+                    let channelCount = AudioOutputDeviceService.channelCount(
+                        for: OutputRoutingStore.config(in: modelContext).selectedDeviceUID
+                    )
+                    return OutputRoutingStore.snapshot(in: modelContext, channelCount: channelCount)
+                }
+                coordinator.groupMixProvider = {
+                    GroupMixStore.snapshot(in: modelContext)
+                }
+                coordinator.timecodeSettingsProvider = {
+                    TimecodeSettingsStore.snapshot(in: modelContext)
+                }
+                coordinator.timecodeGroupIDProvider = {
+                    TimecodePlaybackSupport.resolveGroupID(in: modelContext)
+                }
+                coordinator.configure(setlist: setlist)
+                markSetlistOpened(setlist)
+                promptForMissingMediaIfNeeded(in: setlist)
+            }
+            .onChange(of: activeSetlistID) { _, _ in
+                showingSongLibrary = false
+                songToEditID = nil
+            }
+            #if os(iOS)
+            .onChange(of: showingSongLibrary) { _, isShowing in
+                if !isShowing {
+                    songToEditID = nil
+                }
+            }
+            #endif
+            .onDisappear {
+                stopPlayback()
+            }
+            .onChange(of: songToEditID) { oldValue, newValue in
+                if newValue != nil {
+                    clearMarkerCue()
+                    sectionLoop.reset()
+                    groupMixFade.cancel()
+                    coordinator.unbindPlaybackHandlers()
+                    coordinator.pause()
+                } else if let editedSongID = oldValue {
+                    coordinator.invalidateWaveformSnapshot(for: editedSongID)
+                }
+                handleSongEditorDismissed(newValue)
+            }
+            #if os(macOS)
+            .navigationDestination(isPresented: songEditorDestination) {
+                songEditorDestinationContent(for: setlist)
+            }
+            #endif
     }
 
     private var playbackMainLayout: some View {
+        #if os(macOS)
         LivePlaybackMixerSplitLayout(
             mixerDetent: $mixerDetent,
             onLiveVolumeChange: { groupID, volume in
@@ -347,6 +404,68 @@ struct LivePlaybackView: View {
                 playbackMainSection
             }
         )
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if placesTransportControlsAtBottom {
+                LiveTransportBottomBar {
+                    transportStrip(chrome: .portraitBottom)
+                }
+            }
+        }
+        #else
+        playbackMainSection
+            .navigationDestination(isPresented: mixerScreenPresented) {
+                LiveGroupMixerScreen(
+                    onLiveVolumeChange: { groupID, volume in
+                        coordinator.applyProvisionalGroupVolume(groupID: groupID, volume: volume)
+                    },
+                    onMixChange: {
+                        coordinator.updateGroupMix(context: modelContext)
+                    }
+                )
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if placesTransportControlsAtBottom {
+                    LiveTransportBottomBar {
+                        transportStrip(chrome: .portraitBottom)
+                    }
+                }
+            }
+        #endif
+    }
+
+    #if os(iOS)
+    private var mixerScreenPresented: Binding<Bool> {
+        Binding(
+            get: { mixerDetent == .visible },
+            set: { mixerDetent = $0 ? .visible : .hidden }
+        )
+    }
+    #endif
+
+    private func transportStrip(chrome: SharedTransportStripChrome) -> some View {
+        LiveSetlistNowPlayingInfoView(
+            coordinator: coordinator,
+            sectionLoop: sectionLoop,
+            groupMixFade: groupMixFade,
+            isLoaded: coordinator.isLoaded && !coordinator.isLoadingSong,
+            canLoop: !loopSections.isEmpty,
+            infoPanelHeight: $infoPanelHeight,
+            isWaveformFollowing: $isWaveformFollowing,
+            onStop: stopPlayback,
+            onPlay: coordinator.play,
+            onPause: coordinator.pause,
+            onToggleLoop: toggleSectionLoop,
+            onToggleFade: toggleGroupMixFade,
+            chrome: chrome
+        )
+    }
+
+    private func toggleGroupMixFade() {
+        groupMixFade.toggleFade(context: modelContext) {
+            coordinator.updateGroupMix(context: modelContext, persist: false)
+        } onComplete: {
+            coordinator.updateGroupMix(context: modelContext)
+        }
     }
 
     private func songLibraryPanel() -> some View {
@@ -405,18 +524,13 @@ struct LivePlaybackView: View {
             onPlay: coordinator.play,
             onPause: coordinator.pause,
             onToggleLoop: toggleSectionLoop,
-            onToggleFade: {
-                groupMixFade.toggleFade(context: modelContext) {
-                    coordinator.updateGroupMix(context: modelContext, persist: false)
-                } onComplete: {
-                    coordinator.updateGroupMix(context: modelContext)
-                }
-            },
+            onToggleFade: toggleGroupMixFade,
             showingSongLibrary: $showingSongLibrary,
             showingManageOutputs: $showingManageOutputs,
             mixerDetent: $mixerDetent,
             infoPanelHeight: $infoPanelHeight,
-            isWaveformFollowing: $isWaveformFollowing
+            isWaveformFollowing: $isWaveformFollowing,
+            transportChrome: placesTransportControlsAtBottom ? nil : .full
         )
     }
 
@@ -567,6 +681,37 @@ struct LivePlaybackView: View {
         guard let section = loopSections.section(atTimeline: coordinator.currentTime) else { return }
         clearMarkerCue()
         sectionLoop.beginManualLoop(sectionID: section.id)
+    }
+
+    private func syncRemoteHostSession(for setlist: Setlist) {
+        remoteHostController.sync(
+            setlist: setlist,
+            coordinator: coordinator,
+            sectionLoop: sectionLoop,
+            groupMixFade: groupMixFade,
+            modelContext: modelContext,
+            cuedSectionID: cuedSectionID,
+            cueFireTime: cueFireTime,
+            clearMarkerCue: { cancelling in
+                clearMarkerCue(cancellingScheduledTransition: cancelling)
+            },
+            cueSection: { section in
+                cueSection(section)
+            },
+            fireMarkerCue: {
+                fireMarkerCue()
+            },
+            stopPlayback: {
+                stopPlayback()
+            }
+        )
+    }
+
+    private var remoteLibrarySignature: String {
+        allSongs.map { song in
+            "\(song.id.uuidString)|\(song.name)|\(song.tracks.count)|\(song.bpm ?? -1)|\(song.createdAt.timeIntervalSinceReferenceDate)"
+        }
+        .joined(separator: ";")
     }
 
     @ViewBuilder
@@ -767,9 +912,14 @@ struct LivePlaybackView: View {
             LiveSetlistWaveformScrollView(
                 timelineItems: coordinator.timelineItems,
                 currentPlaybackIndex: coordinator.currentIndex,
-                songForID: { coordinator.song(for: $0) },
-                waveformSnapshotForSong: { coordinator.waveformSnapshot(for: $0) },
-                ensureWaveformSnapshot: { coordinator.ensureWaveformSnapshot(for: $0) },
+                waveformSnapshotForSongID: { songID in
+                    guard let song = coordinator.song(for: songID) else { return nil }
+                    return coordinator.waveformSnapshot(for: song)
+                },
+                ensureWaveformSnapshotForSongID: { songID in
+                    guard let song = coordinator.song(for: songID) else { return }
+                    coordinator.ensureWaveformSnapshot(for: song)
+                },
                 playheadTimeProvider: { coordinator.currentTime },
                 isPlayingProvider: { coordinator.isPlaying },
                 isFollowing: $isWaveformFollowing,
@@ -840,7 +990,10 @@ struct LivePlaybackView: View {
 
     private var setlistSection: some View {
         VStack(spacing: 0) {
-            setlistAddMenu
+            LiveSetlistAddMenu(
+                onAddHeader: addHeader,
+                onAddSong: { showingSongLibrary = true }
+            )
 
             Group {
                 if workingSetlist.sortedEntries.isEmpty {
@@ -864,38 +1017,6 @@ struct LivePlaybackView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var setlistAddMenu: some View {
-        HStack {
-            Spacer(minLength: 0)
-
-            Menu {
-                Button {
-                    addHeader()
-                } label: {
-                    Label("Header", systemImage: "text.line.first.and.arrowtriangle.forward")
-                }
-
-                Button {
-                    showingSongLibrary = true
-                } label: {
-                    Label("Song", systemImage: "music.note")
-                }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.body.weight(.semibold))
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
-            }
-            .menuIndicator(.hidden)
-            .accessibilityLabel("Add to setlist")
-            .help("Add to Setlist")
-        }
-        .frame(maxWidth: 720)
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, AppSpacing.md)
-        .padding(.top, AppSpacing.sm)
-    }
-
     @ViewBuilder
     private var addHeaderContextMenu: some View {
         Button {
@@ -908,7 +1029,10 @@ struct LivePlaybackView: View {
     private var setlistList: some View {
         VStack(spacing: 0) {
             setlistEntryList
-            setlistSummaryBar
+            LiveSetlistSummaryBar(
+                songCount: workingSetlist.sortedEntries.filter { !$0.isHeader }.count,
+                totalDurationText: LiveSetlistDurationFormat.text(for: coordinator.totalTimelineDuration)
+            )
         }
         .frame(maxWidth: 720, maxHeight: .infinity)
         .frame(maxWidth: .infinity)
@@ -916,92 +1040,89 @@ struct LivePlaybackView: View {
         .padding(.vertical, AppSpacing.sm)
     }
 
-    private var setlistSummaryBar: some View {
-        HStack(spacing: AppSpacing.xs) {
-            Spacer(minLength: 0)
-
-            if let totalSetlistDurationText {
-                Label("Total setlist length: \(totalSetlistDurationText) · \(workingSetlist.sortedEntries.count) songs", systemImage: "clock")
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(AppColors.textTertiary)
-                    .accessibilityLabel("Total setlist length \(totalSetlistDurationText)")
-            }
-        }
-        .padding(.horizontal, AppSpacing.sm)
-        .padding(.top, AppSpacing.xs)
-    }
-
-    private var totalSetlistDurationText: String? {
-        let total = coordinator.totalTimelineDuration
-        guard total >= 1 else { return nil }
-
-        let totalMinutes = max(1, Int((total / 60).rounded()))
-        let hours = totalMinutes / 60
-        let minutes = totalMinutes % 60
-
-        if hours == 0 {
-            return "\(minutes) min"
-        }
-        return minutes == 0 ? "\(hours) hr" : "\(hours) hr \(minutes) min"
-    }
-
     private var setlistEntryList: some View {
-        GeometryReader { geometry in
-            List {
-                Section {
-                    ForEach(Array(workingSetlist.sortedEntries.enumerated()), id: \.element.id) { _, entry in
-                        if entry.isHeader {
-                            setlistHeaderRow(entry: entry)
-                        } else if let song = entry.song {
-                            setlistEntryRow(song: song, entry: entry)
-                        }
-                    }
-                    .onDelete { indexSet in
-                        let entries = workingSetlist.sortedEntries
-                        for index in indexSet {
-                            viewModel.removeEntry(entries[index], from: workingSetlist, context: modelContext)
-                        }
-                        coordinator.syncSetlist(workingSetlist)
+        List {
+            Section {
+                ForEach(Array(workingSetlist.sortedEntries.enumerated()), id: \.element.id) { _, entry in
+                    if entry.isHeader {
+                        setlistHeaderRow(entry: entry)
+                    } else if let song = entry.song {
+                        setlistEntryRow(song: song, entry: entry)
                     }
                 }
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .frame(minHeight: geometry.size.height)
-            .contentShape(Rectangle())
-            .onDrop(of: [.text], delegate: setlistDropDelegate(targetID: nil))
-            .contextMenu {
-                addHeaderContextMenu
+                .onDelete { indexSet in
+                    let entries = workingSetlist.sortedEntries
+                    for index in indexSet {
+                        viewModel.removeEntry(entries[index], from: workingSetlist, context: modelContext)
+                    }
+                    coordinator.syncSetlist(workingSetlist)
+                }
+                #if os(iOS)
+                .onMove { source, destination in
+                    viewModel.moveEntries(
+                        in: workingSetlist,
+                        from: source,
+                        to: destination,
+                        context: modelContext
+                    )
+                    coordinator.syncSetlist(workingSetlist)
+                }
+                #endif
             }
         }
-        .frame(maxHeight: .infinity)
+        .liveSetlistListChrome()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        #if os(macOS)
+        .onDrop(of: [.text], delegate: setlistDropDelegate(targetID: nil))
+        #endif
+        .contextMenu {
+            addHeaderContextMenu
+        }
+        // Avoid GeometryReader+List: after compact→regular rotation on device the list
+        // can keep a blank content area. Recreate when size class changes.
+        #if os(iOS)
+        .id(verticalSizeClass)
+        #endif
     }
 
     private func setlistHeaderRow(entry: SetlistEntry) -> some View {
         let title = entry.headerTitle ?? ""
 
         return HStack(spacing: 0) {
-            setlistReorderHandle(for: entry)
-            SetlistHeaderRow(title: title)
-        }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .opacity(isBeingDragged(entry) ? 0.3 : 1)
-            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-            .listRowSeparator(.hidden)
-            .listRowBackground(AppColors.backgroundSecondary)
-            .onDrop(of: [.text], delegate: setlistDropDelegate(targetID: entry.id))
-            .contextMenu {
-                Button {
-                    headerPendingEdit = entry
-                    editHeaderTitle = entry.headerTitle ?? ""
-                } label: {
-                    Label("Edit", systemImage: "pencil")
-                }
-
-                Button("Remove from Setlist", role: .destructive) {
-                    removeFromSetlist(entry)
-                }
+            #if os(macOS)
+            LiveSetlistReorderHandle(accessibilityNoun: "header") {
+                commitSetlistReorder()
+                draggedSetlistEntryID = entry.id
+                return NSItemProvider(object: "setlist-entry" as NSString)
             }
+            #endif
+            LiveSetlistHeaderRow(title: title)
+        }
+        .liveSetlistHeaderRowChrome(isDragging: isBeingDragged(entry))
+        #if os(macOS)
+        .onDrop(of: [.text], delegate: setlistDropDelegate(targetID: entry.id))
+        #endif
+        #if os(iOS)
+        .deleteDisabled(true)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button("Remove", role: .destructive) {
+                removeFromSetlist(entry)
+            }
+        }
+        #endif
+        .contextMenu {
+            Button {
+                headerPendingEdit = entry
+                editHeaderTitle = entry.headerTitle ?? ""
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+
+            Button("Remove from Setlist", role: .destructive) {
+                removeFromSetlist(entry)
+            }
+        }
     }
 
     private func setlistEntryRow(song: Song, entry: SetlistEntry) -> some View {
@@ -1009,12 +1130,18 @@ struct LivePlaybackView: View {
         let transition = workingSetlist.hasNextSong(after: entry) ? entry.transition : nil
 
         return HStack(spacing: 0) {
-            setlistReorderHandle(for: entry)
+            #if os(macOS)
+            LiveSetlistReorderHandle(accessibilityNoun: "song") {
+                commitSetlistReorder()
+                draggedSetlistEntryID = entry.id
+                return NSItemProvider(object: "setlist-entry" as NSString)
+            }
+            #endif
 
             Button {
                 coordinator.goToSong(at: playbackIndex, autoPlay: coordinator.isAudiblePlaying)
             } label: {
-                SetlistPlaybackRow(
+                LiveSetlistSongRow(
                     song: song,
                     index: playbackIndex,
                     currentIndex: coordinator.currentIndex,
@@ -1032,15 +1159,21 @@ struct LivePlaybackView: View {
             #endif
             .appLinkPointer()
         }
-        .opacity(isBeingDragged(entry) ? 0.3 : 1)
-        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-        .listRowSeparator(.hidden)
-        .listRowBackground(
-            playbackIndex == coordinator.currentIndex
-                ? AppColors.accent.opacity(0.12)
-                : Color.clear
+        .liveSetlistSongRowChrome(
+            isDragging: isBeingDragged(entry),
+            isCurrent: playbackIndex == coordinator.currentIndex
         )
+        #if os(macOS)
         .onDrop(of: [.text], delegate: setlistDropDelegate(targetID: entry.id))
+        #endif
+        #if os(iOS)
+        .deleteDisabled(true)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button("Remove", role: .destructive) {
+                removeFromSetlist(entry)
+            }
+        }
+        #endif
         .contextMenu {
             Button {
                 coordinator.goToSong(at: playbackIndex, autoPlay: coordinator.isAudiblePlaying)
@@ -1080,31 +1213,12 @@ struct LivePlaybackView: View {
         }
     }
 
-    private func setlistReorderHandle(for entry: SetlistEntry) -> some View {
-        Image(systemName: "line.3.horizontal")
-            .font(.body.weight(.semibold))
-            .foregroundStyle(AppColors.textTertiary)
-            .frame(width: 36)
-            .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .accessibilityLabel("Reorder \(entry.isHeader ? "header" : "song")")
-            .help("Drag to reorder")
-            .onDrag {
-                commitSetlistReorder()
-                draggedSetlistEntryID = entry.id
-                return NSItemProvider(object: "setlist-entry" as NSString)
-            } preview: {
-                // The list reorders in place, so the floating drag image would only be noise.
-                Color.clear.frame(width: 1, height: 1)
-            }
-    }
-
     private func isBeingDragged(_ entry: SetlistEntry) -> Bool {
         draggedSetlistEntryID == entry.id
     }
 
-    private func setlistDropDelegate(targetID: PersistentIdentifier?) -> SetlistEntryDropDelegate {
-        SetlistEntryDropDelegate(
+    private func setlistDropDelegate(targetID: PersistentIdentifier?) -> LiveSetlistEntryDropDelegate<PersistentIdentifier> {
+        LiveSetlistEntryDropDelegate(
             targetID: targetID,
             draggedID: draggedSetlistEntryID,
             onMove: previewSetlistMove,
@@ -1333,144 +1447,6 @@ private struct LivePlaybackMonitorSupport: View {
     }
 }
 
-/// Reorders live as the drag passes over a row. A nil `targetID` marks the list background,
-/// which only needs to commit whatever order the drag left behind.
-private struct SetlistEntryDropDelegate: DropDelegate {
-    let targetID: PersistentIdentifier?
-    let draggedID: PersistentIdentifier?
-    let onMove: (PersistentIdentifier, PersistentIdentifier) -> Void
-    let onCommit: () -> Void
-
-    func validateDrop(info: DropInfo) -> Bool {
-        draggedID != nil
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard let draggedID, let targetID, draggedID != targetID else { return }
-        onMove(draggedID, targetID)
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        onCommit()
-        return true
-    }
-}
-
-private struct SetlistHeaderRow: View {
-    let title: String
-
-    var body: some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
-            .tracking(0.6)
-            .textCase(.uppercase)
-            .foregroundStyle(AppColors.textTertiary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, AppSpacing.sm)
-            .padding(.vertical, AppSpacing.xs)
-            .frame(minHeight: 40, alignment: .leading)
-    }
-}
-
-private struct SetlistPlaybackRow: View {
-    let song: Song
-    let index: Int
-    let currentIndex: Int
-    let isPlaying: Bool
-    var hasMissingMedia: Bool = false
-    var transition: SetlistTransition? = nil
-    var onOverlapBadgeTap: (() -> Void)? = nil
-
-    private var isFinished: Bool {
-        index < currentIndex
-    }
-
-    private var isCurrent: Bool {
-        index == currentIndex
-    }
-
-    private var subtitle: String? {
-        if let bpm = song.bpm {
-            return String(format: "%.0f BPM", bpm.rounded())
-        }
-        return nil
-    }
-
-    var body: some View {
-        HStack(spacing: AppSpacing.sm) {
-            Text("\(index + 1).")
-                .font(.subheadline.monospacedDigit().weight(isCurrent ? .semibold : .regular))
-                .foregroundStyle(isCurrent ? AppColors.textSecondary : AppColors.textTertiary)
-                .frame(width: 28, alignment: .trailing)
-
-            if isCurrent {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(AppColors.accent)
-                    .frame(width: 3, height: 28)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(song.name)
-                    .font(isCurrent ? .headline.weight(.semibold) : .body.weight(.medium))
-                    .foregroundStyle(isFinished ? AppColors.textTertiary : AppColors.textPrimary)
-                    .lineLimit(2)
-
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(AppColors.textTertiary)
-                        .lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            if hasMissingMedia {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .font(.caption)
-                    .accessibilityLabel("Missing audio files")
-                    .help("Missing audio files — use Relink Missing Files in the context menu")
-            }
-
-            if isCurrent {
-                PlayingBadge(isPlaying: isPlaying)
-            } else if isFinished {
-                Image(systemName: "checkmark.circle")
-                    .foregroundStyle(AppColors.textTertiary)
-                    .font(.caption)
-            }
-
-            if let transition {
-                SetlistTransitionBadge(
-                    transition: transition,
-                    size: 24,
-                    onTap: onOverlapBadgeTap
-                )
-            }
-        }
-        .padding(.horizontal, AppSpacing.sm)
-        .padding(.vertical, AppSpacing.sm)
-        .frame(maxWidth: .infinity, minHeight: isCurrent ? 64 : 56, alignment: .leading)
-        .opacity(isFinished ? 0.55 : 1)
-    }
-}
-
-private struct PlayingBadge: View {
-    let isPlaying: Bool
-
-    var body: some View {
-        AppBadge(
-            title: isPlaying ? "Playing" : "Paused",
-            systemImage: isPlaying ? "waveform" : "pause",
-            style: isPlaying ? .accent : .neutral
-        )
-    }
-}
-
 private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @ViewBuilder let setlistSwitcher: Switcher
     let coordinator: PlaybackCoordinator
@@ -1488,6 +1464,7 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
     @Binding var mixerDetent: LiveGroupMixerDetent
     @Binding var infoPanelHeight: CGFloat
     @Binding var isWaveformFollowing: Bool
+    var transportChrome: SharedTransportStripChrome? = .full
 
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
@@ -1516,16 +1493,14 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         }
         .multitrackHideSharedBackground()
         #else
-        ToolbarItem(placement: .navigation) {
-            songsButton
-        }
-
-        ToolbarItem(placement: .navigation) {
+        ToolbarItem(placement: .topBarLeading) {
             setlistSwitcher
         }
 
-        ToolbarItem(placement: .principal) {
-            transportInfoBar
+        if let transportChrome {
+            ToolbarItem(placement: .principal) {
+                transportInfoBar(chrome: transportChrome)
+            }
         }
 
         ToolbarItem(placement: .topBarTrailing) {
@@ -1535,14 +1510,16 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             manageOutputsButton
         }
-
-        ToolbarItem(placement: .topBarTrailing) {
-            EditButton()
-        }
         #endif
     }
 
+    #if os(macOS)
     private var transportInfoBar: some View {
+        transportInfoBar(chrome: .full)
+    }
+    #endif
+
+    private func transportInfoBar(chrome: SharedTransportStripChrome) -> some View {
         LiveSetlistNowPlayingInfoView(
             coordinator: coordinator,
             sectionLoop: sectionLoop,
@@ -1555,7 +1532,8 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             onPlay: onPlay,
             onPause: onPause,
             onToggleLoop: onToggleLoop,
-            onToggleFade: onToggleFade
+            onToggleFade: onToggleFade,
+            chrome: chrome
         )
     }
 
@@ -1585,27 +1563,29 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         Button {
             showingManageOutputs = true
         } label: {
-            Label("Manage Outputs", systemImage: "gearshape")
+            Label("Settings", systemImage: "gearshape")
                 .labelStyle(.iconOnly)
         }
         .tint(showingManageOutputs ? AppColors.accent : nil)
-        .help("Manage Outputs")
+        .help("Settings")
     }
     #endif
 
     private var mixerButton: some View {
         Button {
-            toggleMixerDrawer()
+            #if os(macOS)
+            mixerDetent = mixerDetent == .hidden ? .visible : .hidden
+            #else
+            mixerDetent = .visible
+            #endif
         } label: {
             Label("Group Mixer", systemImage: "slider.vertical.3")
                 .labelStyle(.iconOnly)
         }
+        #if os(macOS)
         .tint(mixerDetent == .visible ? AppColors.accent : nil)
+        #endif
         .help("Group Mixer")
-    }
-
-    private func toggleMixerDrawer() {
-        mixerDetent = mixerDetent == .hidden ? .visible : .hidden
     }
 }
 
@@ -1620,6 +1600,88 @@ private struct LivePlaybackMacToolbarBackgroundVisibilityModifier: ViewModifier 
     }
 }
 #endif
+
+private struct LiveRemoteHostSyncModifier: ViewModifier {
+    let setlist: Setlist
+    let librarySignature: String
+    let coordinator: PlaybackCoordinator
+    let sectionLoop: SectionLoopController
+    let groupMixFade: GroupMixFadeController
+    let cuedSectionID: UUID?
+    let cueFireTime: TimeInterval?
+    let remoteHostController: RemoteHostSessionController
+    let isClientAuthenticated: Bool
+    let sync: () -> Void
+
+    private var setlistStructureSignature: String {
+        setlist.sortedEntries.map { entry in
+            let identity = entry.song?.id.uuidString ?? "header:\(entry.headerTitle ?? "")"
+            return "\(entry.sortOrder)|\(identity)|\(entry.transition.rawValue)"
+        }
+        .joined(separator: ";")
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear(perform: sync)
+            .onChange(of: setlist.id) { _, _ in
+                sync()
+                remoteHostController.notifySnapshotChanged()
+            }
+            .onChange(of: setlist.entries.count) { _, _ in
+                sync()
+                remoteHostController.notifySnapshotChanged()
+            }
+            .onChange(of: setlistStructureSignature) { _, _ in
+                sync()
+                remoteHostController.notifySnapshotChanged()
+            }
+            .onChange(of: librarySignature) { _, _ in
+                sync()
+                remoteHostController.notifySnapshotChanged()
+            }
+            .onChange(of: coordinator.currentIndex) { _, _ in
+                remoteHostController.notifyStateChanged()
+            }
+            .onChange(of: coordinator.isPlaying) { _, _ in
+                remoteHostController.notifyStateChanged()
+            }
+            .onChange(of: sectionLoop.activeSectionID) { _, _ in
+                remoteHostController.notifyStateChanged()
+            }
+            .onChange(of: sectionLoop.manualSectionID) { _, _ in
+                remoteHostController.notifyStateChanged()
+            }
+            .onChange(of: groupMixFade.isFadedOut) { _, _ in
+                remoteHostController.notifyStateChanged()
+            }
+            .onChange(of: groupMixFade.isFading) { _, _ in
+                remoteHostController.notifyStateChanged()
+            }
+            .onChange(of: cuedSectionID) { _, newValue in
+                remoteHostController.updateCue(cuedSectionID: newValue, cueFireTime: cueFireTime)
+            }
+            .onChange(of: cueFireTime) { _, newValue in
+                remoteHostController.updateCue(cuedSectionID: cuedSectionID, cueFireTime: newValue)
+            }
+            .onChange(of: isClientAuthenticated) { _, connected in
+                if connected {
+                    remoteHostController.notifySnapshotChanged()
+                }
+            }
+            .overlay(alignment: .top) {
+                if isClientAuthenticated {
+                    Text("Remote control connected")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(AppColors.accent.opacity(0.85), in: Capsule())
+                        .padding(.top, 4)
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+}
 
 #Preview {
     NavigationStack {

@@ -42,9 +42,14 @@ enum GroupMixStore {
         var mutedGroupIDs = Set<UUID>()
 
         for group in groups {
-            volumeByGroupID[group.id] = Float(group.volume)
-            if group.isMuted {
-                mutedGroupIDs.insert(group.id)
+            if TimecodePlaybackSupport.isTimecodeGroup(group) {
+                // LTC must stay at unity; it has no mixer fader.
+                volumeByGroupID[group.id] = 1
+            } else {
+                volumeByGroupID[group.id] = Float(group.volume)
+                if group.isMuted {
+                    mutedGroupIDs.insert(group.id)
+                }
             }
         }
 

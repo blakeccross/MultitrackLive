@@ -63,12 +63,59 @@ struct SongLibraryPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            #if os(macOS)
             headerBar
+            #endif
             searchBar
             songList
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppColors.backgroundSecondary)
+        #if os(iOS)
+        .navigationTitle("Songs")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showingAddSongOptions = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Add song")
+                .confirmationDialog(
+                    "Add Song",
+                    isPresented: $showingAddSongOptions,
+                    titleVisibility: .visible
+                ) {
+                    Button("New Song") {
+                        newSongName = ""
+                        showingNewSongAlert = true
+                    }
+                    Button("Add Click") {
+                        showingAddClickSheet = true
+                    }
+                    Button("Import from Folder") {
+                        presentFolderImporter()
+                    }
+                    Button("Open Project File…") {
+                        showingProjectImporter = true
+                    }
+                    Button("Cancel", role: .cancel) {}
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                if #available(iOS 26.0, *) {
+                    Button(role: .close) {
+                        onDismiss()
+                    }
+                } else {
+                    Button("Close") {
+                        onDismiss()
+                    }
+                }
+            }
+        }
+        #endif
         .alert("New Song", isPresented: $showingNewSongAlert) {
             TextField("Song name", text: $newSongName)
             Button("Create") {

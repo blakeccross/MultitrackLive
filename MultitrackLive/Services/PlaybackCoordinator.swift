@@ -16,11 +16,39 @@ struct LiveSongWaveformSnapshot: Identifiable {
     let loopSlotIDs: Set<UUID>
     let tempoChanges: [TempoChange]
     let timeSignatureChanges: [TimeSignatureChange]
+    /// When set (e.g. remote session), peaks are used directly and track files are not loaded.
+    let precomputedSourcePeaks: [Float]?
 
     var id: UUID { songID }
 
     var contentWidth: CGFloat {
         TimelineLayout.contentWidth(for: timelineDuration, zoom: 1)
+    }
+
+    init(
+        songID: UUID,
+        songName: String,
+        trackSources: [(url: URL, duration: TimeInterval)],
+        fileDuration: TimeInterval,
+        timelineDuration: TimeInterval,
+        sections: [ArrangementDisplaySection],
+        peakSections: [ArrangementDisplaySection],
+        loopSlotIDs: Set<UUID>,
+        tempoChanges: [TempoChange],
+        timeSignatureChanges: [TimeSignatureChange],
+        precomputedSourcePeaks: [Float]? = nil
+    ) {
+        self.songID = songID
+        self.songName = songName
+        self.trackSources = trackSources
+        self.fileDuration = fileDuration
+        self.timelineDuration = timelineDuration
+        self.sections = sections
+        self.peakSections = peakSections
+        self.loopSlotIDs = loopSlotIDs
+        self.tempoChanges = tempoChanges
+        self.timeSignatureChanges = timeSignatureChanges
+        self.precomputedSourcePeaks = precomputedSourcePeaks
     }
 }
 
@@ -239,6 +267,20 @@ final class PlaybackCoordinator {
 
     func waveformSnapshot(for song: Song) -> LiveSongWaveformSnapshot? {
         waveformSnapshotsBySongID[song.id]
+    }
+
+    /// Returns a cached waveform snapshot, building and storing one synchronously if needed.
+    @discardableResult
+    func resolveWaveformSnapshot(for song: Song) -> LiveSongWaveformSnapshot? {
+        if let cached = waveformSnapshotsBySongID[song.id] {
+            return cached
+        }
+        guard let snapshot = Self.makeWaveformSnapshot(for: song) else { return nil }
+        waveformSnapshotsBySongID[song.id] = snapshot
+        if song.id == currentSong?.id {
+            currentWaveformSnapshot = snapshot
+        }
+        return snapshot
     }
 
     /// Combined timeline length of the setlist. Songs whose arrangements have not been

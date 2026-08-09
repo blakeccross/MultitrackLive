@@ -71,6 +71,12 @@ enum TimecodePlaybackSupport {
         return TrackGroupStore.findOrCreateGroup(named: groupName, in: context)?.id
     }
 
+    static func isTimecodeGroup(_ group: TrackGroup) -> Bool {
+        group.name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare(groupName) == .orderedSame
+    }
+
     static func timelineDuration(for song: Song) -> TimeInterval {
         SongTrackLoader.timelineDuration(for: song) { trackID in
             guard let track = song.sortedTracks.first(where: { $0.id == trackID }),
