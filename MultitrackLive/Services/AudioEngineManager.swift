@@ -89,7 +89,6 @@ final class AudioEngineManager {
         #if os(iOS)
         configureAudioSession()
         #endif
-        AudioOutputDeviceService.applyStableBufferSize()
         applyStableMaximumFramesToRender()
     }
 
@@ -292,7 +291,8 @@ final class AudioEngineManager {
         )
     }
 
-    /// Selects the system/hardware output used by the shared playback engine.
+    /// Binds the shared playback engine to a hardware output without changing
+    /// the Mac's system-wide default device.
     func selectOutputDevice(uid: String?) {
         stopEngineForGraphChanges()
         adoptOutputDevice(uid)
@@ -951,7 +951,6 @@ final class AudioEngineManager {
     }
 
     private func startEngineIfNeeded() throws {
-        AudioOutputDeviceService.applyStableBufferSize()
         applyStableMaximumFramesToRender()
         if !engine.isRunning {
             try engine.start()
@@ -968,9 +967,8 @@ final class AudioEngineManager {
 
     private func adoptOutputDevice(_ deviceUID: String?) {
         guard let deviceUID else { return }
-        _ = AudioOutputDeviceService.setSystemDefaultOutputDevice(uid: deviceUID)
+        // Bind only this engine's output unit — do not change the system default.
         _ = AudioOutputDeviceService.bindOutputDevice(uid: deviceUID, to: engine)
-        AudioOutputDeviceService.applyStableBufferSize()
         applyStableMaximumFramesToRender()
     }
 

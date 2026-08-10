@@ -22,20 +22,9 @@ enum AudioOutputDeviceService {
         #endif
     }
 
-    static func setSystemDefaultOutputDevice(uid: String) -> Bool {
-        #if os(macOS)
-        let didSet = setMacOSDefaultOutputDevice(uid: uid)
-        if didSet {
-            applyStableBufferSize()
-        }
-        return didSet
-        #else
-        return false
-        #endif
-    }
-
-    /// Binds the engine's output unit to a device (macOS). Falls back to the
-    /// Core Audio property API when `setDeviceID` is unavailable.
+    /// Binds the engine's output unit to a device (macOS) without changing the
+    /// system-wide default output. Falls back to the Core Audio property API
+    /// when `setDeviceID` is unavailable.
     @discardableResult
     static func bindOutputDevice(uid: String, to engine: AVAudioEngine) -> Bool {
         #if os(macOS)
@@ -44,7 +33,7 @@ enum AudioOutputDeviceService {
 
         do {
             try engine.outputNode.auAudioUnit.setDeviceID(deviceID)
-            applyStableBufferSize()
+            applyStableBufferSize(to: deviceID)
             return true
         } catch {
             // Fall through to AudioUnitSetProperty.
@@ -62,7 +51,7 @@ enum AudioOutputDeviceService {
             size
         )
         if status == noErr {
-            applyStableBufferSize()
+            applyStableBufferSize(to: deviceID)
             return true
         }
         return false
@@ -99,11 +88,14 @@ enum AudioOutputDeviceService {
     }
 
     /// Prefer a large hardware / session buffer to reduce underruns during multitrack playback.
+    /// On macOS, prefers the given device when provided; otherwise uses the current system default.
     @discardableResult
-    static func applyStableBufferSize() -> Bool {
+    static func applyStableBufferSize(deviceUID: String? = nil) -> Bool {
         #if os(macOS)
-        return applyMacOSStableBufferSize()
+        let deviceID = deviceUID.flatMap { self.deviceID(forUID: $0) }
+        return applyMacOSStableBufferSize(to: deviceID)
         #else
+        _ = deviceUID
         return applyIOSStableBufferSize()
         #endif
     }
@@ -162,27 +154,12 @@ enum AudioOutputDeviceService {
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    private static func setMacOSDefaultOutputDevice(uid: String) -> Bool {
-        guard let deviceID = deviceID(forUID: uid) else { return false }
-        var mutableID = deviceID
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        let size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        return AudioObjectSetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            0,
-            nil,
-            size,
-            &mutableID
-        ) == noErr
+    private static func applyStableBufferSize(to deviceID: AudioDeviceID) {
+        _ = applyMacOSStableBufferSize(to: deviceID)
     }
 
-    private static func applyMacOSStableBufferSize() -> Bool {
-        guard let deviceID = defaultOutputDeviceID() else { return false }
+    private static func applyMacOSStableBufferSize(to deviceID: AudioDeviceID?) -> Bool {
+        guard let deviceID = deviceID ?? defaultOutputDeviceID() else { return false }
         let frames = clampedBufferFrameSize(stableBufferFrameSize, for: deviceID)
         var mutableFrames = frames
         var address = AudioObjectPropertyAddress(

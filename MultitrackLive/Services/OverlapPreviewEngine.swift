@@ -93,8 +93,6 @@ final class OverlapPreviewEngine {
     func play() {
         guard isLoaded, !isPlaying else { return }
 
-        AudioOutputDeviceService.applyStableBufferSize()
-
         outgoingEngine.seek(to: previewStartTime)
         incomingEngine.seek(to: 0)
         incomingEngine.setMasterVolume(0)
