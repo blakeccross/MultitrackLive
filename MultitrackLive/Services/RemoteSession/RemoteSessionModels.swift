@@ -171,6 +171,47 @@ struct RemoteGroupDTO: Codable, Hashable, Identifiable, Sendable {
     var volume: Double
     var isMuted: Bool
     var isMixable: Bool
+    /// Key into `TrackGroupPalette` (e.g. "red", "blue"). Defaults for older hosts.
+    var paletteKey: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case sortOrder
+        case volume
+        case isMuted
+        case isMixable
+        case paletteKey
+    }
+
+    init(
+        id: UUID,
+        name: String,
+        sortOrder: Int,
+        volume: Double,
+        isMuted: Bool,
+        isMixable: Bool,
+        paletteKey: String = "gray"
+    ) {
+        self.id = id
+        self.name = name
+        self.sortOrder = sortOrder
+        self.volume = volume
+        self.isMuted = isMuted
+        self.isMixable = isMixable
+        self.paletteKey = paletteKey
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        sortOrder = try container.decode(Int.self, forKey: .sortOrder)
+        volume = try container.decode(Double.self, forKey: .volume)
+        isMuted = try container.decode(Bool.self, forKey: .isMuted)
+        isMixable = try container.decode(Bool.self, forKey: .isMixable)
+        paletteKey = try container.decodeIfPresent(String.self, forKey: .paletteKey) ?? "gray"
+    }
 }
 
 struct RemoteSessionSnapshot: Codable, Sendable {

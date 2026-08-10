@@ -4,6 +4,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable private var remoteClient = RemoteSessionClientService.shared
+    @State private var showingDisconnectConfirm = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,6 +18,18 @@ struct RootView: View {
         }
         .appBackground(.primary)
         .appLockToolbarDisplayMode()
+        .alert("Disconnect?", isPresented: $showingDisconnectConfirm) {
+            Button("Disconnect", role: .destructive) {
+                remoteClient.disconnect()
+                remoteClient.startBrowsing()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            let hostName = remoteClient.hostDisplayName
+                ?? remoteClient.snapshot?.hostDisplayName
+                ?? "the host"
+            Text("Disconnect from \(hostName)?")
+        }
         .onAppear {
             // Ensure host session bindings exist before any remote client connects.
             _ = RemoteHostSessionController.shared
@@ -32,20 +45,27 @@ struct RootView: View {
         let hostName = remoteClient.hostDisplayName
             ?? remoteClient.snapshot?.hostDisplayName
             ?? "Host"
-        return Text("Connected to: \(hostName)")
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.white)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
-            .padding(.horizontal, AppSpacing.sm)
-            .background(AppColors.accent)
-            // Fill the status-bar / Dynamic Island area without covering the nav toolbar.
-            .background(alignment: .top) {
-                AppColors.accent
-                    .ignoresSafeArea(edges: .top)
-            }
-            .accessibilityAddTraits(.isHeader)
+        return Button {
+            showingDisconnectConfirm = true
+        } label: {
+            Text("Connected to: \(hostName)")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+                .padding(.horizontal, AppSpacing.sm)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(AppColors.accent)
+        // Fill the status-bar / Dynamic Island area without covering the nav toolbar.
+        .background(alignment: .top) {
+            AppColors.accent
+                .ignoresSafeArea(edges: .top)
+        }
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityHint("Disconnect from remote session")
     }
 
     @ViewBuilder

@@ -896,7 +896,6 @@ struct LivePlaybackView: View {
             } else {
                 LiveSetlistWaveformResizablePanel {
                     waveformContent
-                        .padding(.horizontal, AppSpacing.md)
                         .padding(.top, AppSpacing.xs)
                 }
             }
@@ -1026,7 +1025,6 @@ struct LivePlaybackView: View {
         setlistEntryList
             .frame(maxWidth: 720, maxHeight: .infinity)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, AppSpacing.md)
             .padding(.vertical, AppSpacing.sm)
     }
 

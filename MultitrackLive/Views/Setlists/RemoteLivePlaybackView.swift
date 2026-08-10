@@ -284,7 +284,6 @@ struct RemoteLivePlaybackView: View {
                         ))
                     }
                 )
-                .padding(.horizontal, AppSpacing.md)
                 .padding(.top, AppSpacing.xs)
             }
         } else {
@@ -363,7 +362,6 @@ struct RemoteLivePlaybackView: View {
                     #endif
                     .frame(maxWidth: 720, maxHeight: .infinity)
                     .frame(maxWidth: .infinity)
-                    .padding(.horizontal, AppSpacing.md)
                     .padding(.vertical, AppSpacing.sm)
                 }
             }
@@ -624,7 +622,7 @@ struct RemoteGroupMixerView: View {
                     ForEach(groups) { group in
                         LiveGroupChannelStrip(
                             title: group.name,
-                            titleColor: TrackGroupPalette.colors(forPaletteKey: nil).body,
+                            titleColor: TrackGroupPalette.colors(forPaletteKey: group.paletteKey).body,
                             groupID: group.id,
                             volume: volumeBinding(for: group.id),
                             isMuted: muteBinding(for: group.id),
@@ -637,13 +635,8 @@ struct RemoteGroupMixerView: View {
                                     provisional: true
                                 ))
                             },
-                            onMixChange: {
-                                client.send(.setGroupVolume(
-                                    groupID: group.id,
-                                    volume: volumeBinding(for: group.id).wrappedValue,
-                                    provisional: false
-                                ))
-                            }
+                            // Commit happens via the volume binding setter on drag end.
+                            onMixChange: {}
                         )
                     }
 
@@ -668,13 +661,8 @@ struct RemoteGroupMixerView: View {
                         onLiveVolumeChange: { _, liveVolume in
                             client.send(.setGroupVolume(groupID: nil, volume: liveVolume, provisional: true))
                         },
-                        onMixChange: {
-                            client.send(.setGroupVolume(
-                                groupID: nil,
-                                volume: client.state.ungroupedVolume,
-                                provisional: false
-                            ))
-                        }
+                        // Commit happens via the volume binding setter on drag end.
+                        onMixChange: {}
                     )
                 }
                 .padding(.horizontal, AppSpacing.sm)

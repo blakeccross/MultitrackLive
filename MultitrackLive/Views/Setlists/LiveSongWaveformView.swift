@@ -84,14 +84,17 @@ extension EnvironmentValues {
 }
 
 struct LiveSetlistWaveformResizablePanel<Content: View>: View {
+    #if os(macOS)
     @AppStorage(LiveSetlistWaveformMetrics.appStorageKey)
     private var storedWaveformHeight = LiveSetlistWaveformMetrics.defaultWaveformHeightStorageValue
 
     @State private var waveformHeight = LiveSetlistWaveformMetrics.defaultWaveformHeight
+    #endif
 
     @ViewBuilder let content: () -> Content
 
     var body: some View {
+        #if os(macOS)
         VStack(spacing: 0) {
             content()
                 .environment(\.liveSetlistWaveformHeight, waveformHeight)
@@ -105,13 +108,20 @@ struct LiveSetlistWaveformResizablePanel<Content: View>: View {
         .onAppear {
             waveformHeight = LiveSetlistWaveformMetrics.waveformHeight(fromStorage: storedWaveformHeight)
         }
+        #else
+        content()
+            .environment(\.liveSetlistWaveformHeight, LiveSetlistWaveformMetrics.defaultWaveformHeight)
+        #endif
     }
 
+    #if os(macOS)
     private func persistWaveformHeight() {
         storedWaveformHeight = LiveSetlistWaveformMetrics.storageValue(forHeight: waveformHeight)
     }
+    #endif
 }
 
+#if os(macOS)
 private struct LiveSetlistWaveformResizeHandle: View {
     @Binding var height: CGFloat
     let onResizeEnded: () -> Void
@@ -160,7 +170,6 @@ private struct LiveSetlistWaveformResizeHandle: View {
             }
             onResizeEnded()
         }
-        #if os(macOS)
         .onContinuousHover { phase in
             switch phase {
             case .active:
@@ -169,9 +178,9 @@ private struct LiveSetlistWaveformResizeHandle: View {
                 NSCursor.pop()
             }
         }
-        #endif
     }
 }
+#endif
 
 struct LiveSongWaveformView: View {
     let contentWidth: CGFloat

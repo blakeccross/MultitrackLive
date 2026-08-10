@@ -58,7 +58,8 @@ enum RemoteSessionSnapshotBuilder {
                 sortOrder: group.sortOrder,
                 volume: group.volume,
                 isMuted: group.isMuted,
-                isMixable: !TimecodePlaybackSupport.isTimecodeGroup(group)
+                isMixable: !TimecodePlaybackSupport.isTimecodeGroup(group),
+                paletteKey: group.paletteKey
             )
         }
         let state = makeState(
