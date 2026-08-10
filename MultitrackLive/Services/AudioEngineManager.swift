@@ -629,7 +629,20 @@ final class AudioEngineManager {
     }
 
     func clearSectionLoop() {
-        transport.clearLoopRegion()
+        // Fold the unwrapped loop clock onto the audible playhead, re-anchored to
+        // lastRenderTime so UI reads cannot underflow against a newer audio anchor.
+        guard hasActiveSectionLoop else {
+            applyLoopPrefetch()
+            return
+        }
+        let continueFrom = livePlayheadTime()
+        let hostTime = currentHostTime()
+        transport.clearLoopRegion(continuingFrom: continueFrom, hostTime: hostTime)
+        currentTime = continueFrom
+        transport.cancelScheduledTransition()
+        applyTrackPitch(at: continueFrom)
+        prewarmTracks(atTimelineSeconds: continueFrom)
+        midiScheduler.reset(toTimeline: continueFrom)
         applyLoopPrefetch()
     }
 
@@ -1109,16 +1122,7 @@ final class AudioEngineManager {
 
     /// Host-clock playhead position for UI rendering without publishing observable updates.
     func livePlayheadTime() -> TimeInterval {
-        let raw: TimeInterval
-        if let hostTime = currentHostTime() {
-            raw = transport.timelineSeconds(atHostTime: hostTime)
-        } else {
-            raw = transport.pausedTimelineSeconds()
-        }
-        if let loop = transport.currentLoopRegion(), loop.isValid {
-            return AudioPlaybackTransport.wrappedTimeline(raw, loop: loop)
-        }
-        return raw
+        transport.audibleTimelineSeconds(atHostTime: currentHostTime())
     }
 
     private func currentHostTime() -> UInt64? {

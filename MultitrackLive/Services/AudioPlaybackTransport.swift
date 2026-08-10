@@ -148,9 +148,36 @@ final class AudioPlaybackTransport: @unchecked Sendable {
         os_unfair_lock_unlock(&lock)
     }
 
-    func clearLoopRegion() {
+    /// Disarms the loop region.
+    ///
+    /// When `continuingFrom` is provided (the audible/wrapped playhead), the
+    /// transport clock is re-anchored there under the same lock so clearing a
+    /// loop never briefly exposes the unwrapped timeline.
+    ///
+    /// Pass `hostTime` from the same clock the UI reads (`lastRenderTime`) and
+    /// keep `hasAnchor == true` so a later audio callback does not capture a
+    /// newer anchor that would make stale UI host times underflow.
+    func clearLoopRegion(
+        continuingFrom audibleTimeline: TimeInterval? = nil,
+        hostTime: UInt64? = nil
+    ) {
         os_unfair_lock_lock(&lock)
+        let hadActiveLoop = loopRegion?.isValid == true
         loopRegion = nil
+        if hadActiveLoop, let audibleTimeline {
+            let clamped = max(0, min(audibleTimeline, duration))
+            pausedTimeline = clamped
+            if isPlaying {
+                anchorTimeline = clamped
+                if let hostTime {
+                    anchorHostTime = hostTime
+                    hasAnchor = true
+                } else {
+                    // Next render captures a fresh host-time anchor at elapsed = 0.
+                    hasAnchor = false
+                }
+            }
+        }
         os_unfair_lock_unlock(&lock)
     }
 
@@ -170,7 +197,33 @@ final class AudioPlaybackTransport: @unchecked Sendable {
     func renderTimeline(atHostTime hostTime: UInt64, captureAnchor: Bool) -> RenderState {
         os_unfair_lock_lock(&lock)
         defer { os_unfair_lock_unlock(&lock) }
+        return renderTimelineLocked(atHostTime: hostTime, captureAnchor: captureAnchor)
+    }
 
+    func timelineSeconds(atHostTime hostTime: UInt64) -> TimeInterval {
+        renderTimeline(atHostTime: hostTime, captureAnchor: false).timelineSeconds
+    }
+
+    /// Playhead time for UI: wraps into the active loop under the same lock as the
+    /// raw transport read so clearing a loop cannot tear the two apart.
+    func audibleTimelineSeconds(atHostTime hostTime: UInt64?) -> TimeInterval {
+        os_unfair_lock_lock(&lock)
+        defer { os_unfair_lock_unlock(&lock) }
+
+        let raw: TimeInterval
+        if let hostTime {
+            raw = renderTimelineLocked(atHostTime: hostTime, captureAnchor: false).timelineSeconds
+        } else {
+            raw = pausedTimeline
+        }
+        if let loopRegion, loopRegion.isValid {
+            return Self.wrappedTimeline(raw, loop: loopRegion)
+        }
+        return raw
+    }
+
+    /// Must be called while `lock` is held.
+    private func renderTimelineLocked(atHostTime hostTime: UInt64, captureAnchor: Bool) -> RenderState {
         if captureAnchor, isPlaying, !hasAnchor {
             anchorHostTime = hostTime
             hasAnchor = true
@@ -184,6 +237,14 @@ final class AudioPlaybackTransport: @unchecked Sendable {
             return RenderState(timelineSeconds: pausedTimeline, isPlaying: true, playbackRatio: 1.0)
         }
 
+        // UI may read `outputNode.lastRenderTime` behind a freshly captured audio
+        // anchor; unsigned subtraction would underflow and flash the playhead ahead.
+        guard hostTime >= anchorHostTime else {
+            let anchored = positionedTimeline(anchorTimeline)
+            let ratio = usesTempoMap ? tempoPlaybackMap.ratio(at: anchored) : 1.0
+            return RenderState(timelineSeconds: anchored, isPlaying: true, playbackRatio: ratio)
+        }
+
         let elapsed = Self.seconds(fromHostTimeDelta: hostTime &- anchorHostTime)
         let timeline: TimeInterval
         if usesTempoMap {
@@ -194,17 +255,7 @@ final class AudioPlaybackTransport: @unchecked Sendable {
         } else {
             timeline = anchorTimeline + elapsed
         }
-        let mapped = mappedTimeline(fromLinear: timeline)
-
-        // When a section loop is armed, return continuous unwrapped time so the
-        // player can apply integer-frame modulo (DAW-style). Never clamp to
-        // duration here — that froze playback on the downbeat after one pass.
-        let positioned: TimeInterval
-        if loopRegion?.isValid == true {
-            positioned = max(0, mapped)
-        } else {
-            positioned = max(0, min(mapped, duration))
-        }
+        let positioned = positionedTimeline(mappedTimeline(fromLinear: timeline))
 
         let ratio: Double
         if usesTempoMap {
@@ -221,8 +272,13 @@ final class AudioPlaybackTransport: @unchecked Sendable {
         return RenderState(timelineSeconds: positioned, isPlaying: true, playbackRatio: ratio)
     }
 
-    func timelineSeconds(atHostTime hostTime: UInt64) -> TimeInterval {
-        renderTimeline(atHostTime: hostTime, captureAnchor: false).timelineSeconds
+    /// When a section loop is armed, keep continuous unwrapped time so the player
+    /// can apply integer-frame modulo. Otherwise clamp to song duration.
+    private func positionedTimeline(_ mapped: TimeInterval) -> TimeInterval {
+        if loopRegion?.isValid == true {
+            return max(0, mapped)
+        }
+        return max(0, min(mapped, duration))
     }
 
     func playbackRatio(at timeline: TimeInterval) -> Double {

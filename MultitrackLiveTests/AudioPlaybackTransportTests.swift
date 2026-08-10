@@ -177,6 +177,67 @@ final class AudioPlaybackTransportTests: XCTestCase {
         )
     }
 
+    func testClearLoopRegionFoldsOntoAudiblePlayhead() {
+        let transport = AudioPlaybackTransport()
+        transport.setDuration(32)
+        transport.setLoopRegion(start: 4, end: 8)
+        transport.beginPlayback(from: 13.5) // unwrapped: two passes + 1.5s into section
+
+        let audible = AudioPlaybackTransport.wrappedTimeline(
+            13.5,
+            loop: AudioPlaybackTransport.LoopRegion(start: 4, end: 8),
+            sampleRate: DecodedStemBuffer.engineSampleRate
+        )
+        XCTAssertEqual(audible, 5.5, accuracy: 0.0000001)
+
+        transport.clearLoopRegion(continuingFrom: audible, hostTime: 1_000)
+
+        XCTAssertFalse(transport.hasActiveLoopRegion)
+        XCTAssertEqual(transport.pausedTimelineSeconds(), 5.5, accuracy: 0.0000001)
+
+        // Anchored to the UI host time: reading with that same host time stays put.
+        let state = transport.renderTimeline(atHostTime: 1_000, captureAnchor: false)
+        XCTAssertEqual(state.timelineSeconds, 5.5, accuracy: 0.0000001)
+    }
+
+    func testRenderTimelineIgnoresStaleHostTimeBehindAnchor() {
+        let transport = AudioPlaybackTransport()
+        transport.setDuration(32)
+        transport.beginPlayback(from: 5.5)
+        // Simulate an audio-thread anchor capture at a newer host time.
+        _ = transport.renderTimeline(atHostTime: 2_000, captureAnchor: true)
+
+        // UI still holding a stale lastRenderTime behind the anchor must not
+        // underflow unsigned host-time math into a huge playhead.
+        let stale = transport.renderTimeline(atHostTime: 1_000, captureAnchor: false)
+        XCTAssertEqual(stale.timelineSeconds, 5.5, accuracy: 0.0000001)
+    }
+
+    func testAudibleTimelineWrapsUnderOneLock() {
+        let transport = AudioPlaybackTransport()
+        transport.setDuration(32)
+        transport.setLoopRegion(start: 4, end: 8)
+        transport.beginPlayback(from: 13.5)
+        _ = transport.renderTimeline(atHostTime: 1_000, captureAnchor: true)
+
+        XCTAssertEqual(
+            transport.audibleTimelineSeconds(atHostTime: 1_000),
+            5.5,
+            accuracy: 0.0000001
+        )
+    }
+
+    func testClearLoopRegionWithoutContinuingFromLeavesPausedTimeline() {
+        let transport = AudioPlaybackTransport()
+        transport.setDuration(32)
+        transport.setPausedTimeline(5.5)
+        transport.setLoopRegion(start: 4, end: 8)
+        transport.clearLoopRegion()
+
+        XCTAssertFalse(transport.hasActiveLoopRegion)
+        XCTAssertEqual(transport.pausedTimelineSeconds(), 5.5, accuracy: 0.0000001)
+    }
+
     func testTempoMapContinuesPastSongDurationForLooping() {
         let extendingMap = TempoPlaybackMap.build(
             tempoChanges: [TempoChange(startMeasure: 1, bpm: 120)],
