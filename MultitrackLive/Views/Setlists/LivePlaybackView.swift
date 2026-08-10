@@ -1023,17 +1023,11 @@ struct LivePlaybackView: View {
     }
 
     private var setlistList: some View {
-        VStack(spacing: 0) {
-            setlistEntryList
-            LiveSetlistSummaryBar(
-                songCount: workingSetlist.sortedEntries.filter { !$0.isHeader }.count,
-                totalDurationText: LiveSetlistDurationFormat.text(for: coordinator.totalTimelineDuration)
-            )
-        }
-        .frame(maxWidth: 720, maxHeight: .infinity)
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, AppSpacing.md)
-        .padding(.vertical, AppSpacing.sm)
+        setlistEntryList
+            .frame(maxWidth: 720, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.sm)
     }
 
     private var setlistEntryList: some View {

@@ -331,43 +331,36 @@ struct RemoteLivePlaybackView: View {
                         }
                     }
                 } else if let snapshot {
-                    VStack(spacing: 0) {
-                        List {
-                            Section {
-                                ForEach(workingEntries) { entry in
-                                    remoteSetlistRow(entry: entry, snapshot: snapshot)
-                                }
-                                .onDelete(perform: deleteWorkingEntries)
-                                #if os(iOS)
-                                .onMove(perform: moveWorkingEntries)
-                                #endif
+                    List {
+                        Section {
+                            ForEach(workingEntries) { entry in
+                                remoteSetlistRow(entry: entry, snapshot: snapshot)
                             }
+                            .onDelete(perform: deleteWorkingEntries)
+                            #if os(iOS)
+                            .onMove(perform: moveWorkingEntries)
+                            #endif
                         }
-                        .liveSetlistListChrome()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                        #if os(macOS)
-                        .onDrop(of: [.text], delegate: remoteSetlistDropDelegate(targetID: nil))
-                        #endif
-                        .contextMenu {
-                            Button {
-                                newHeaderTitle = "New Header"
-                                showingAddHeaderAlert = true
-                            } label: {
-                                Label("Add Header", systemImage: "text.line.first.and.arrowtriangle.forward")
-                            }
-                        }
-                        // Avoid GeometryReader+List: after compact→regular rotation on device the
-                        // list can keep a blank content area. Recreate when size class changes.
-                        #if os(iOS)
-                        .id(verticalSizeClass)
-                        #endif
-
-                        LiveSetlistSummaryBar(
-                            songCount: workingEntries.filter { $0.songID != nil }.count,
-                            totalDurationText: remoteTotalDurationText(snapshot: snapshot)
-                        )
                     }
+                    .liveSetlistListChrome()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    #if os(macOS)
+                    .onDrop(of: [.text], delegate: remoteSetlistDropDelegate(targetID: nil))
+                    #endif
+                    .contextMenu {
+                        Button {
+                            newHeaderTitle = "New Header"
+                            showingAddHeaderAlert = true
+                        } label: {
+                            Label("Add Header", systemImage: "text.line.first.and.arrowtriangle.forward")
+                        }
+                    }
+                    // Avoid GeometryReader+List: after compact→regular rotation on device the
+                    // list can keep a blank content area. Recreate when size class changes.
+                    #if os(iOS)
+                    .id(verticalSizeClass)
+                    #endif
                     .frame(maxWidth: 720, maxHeight: .infinity)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, AppSpacing.md)
@@ -584,17 +577,6 @@ struct RemoteLivePlaybackView: View {
             return nil
         }
         return SetlistTransition(rawValue: entry.transition)
-    }
-
-    private func remoteTotalDurationText(snapshot: RemoteSessionSnapshot) -> String? {
-        let total = workingEntries.reduce(0.0) { partial, entry in
-            guard let songID = entry.songID,
-                  let song = snapshot.songs.first(where: { $0.id == songID }) else {
-                return partial
-            }
-            return partial + song.timelineDuration
-        }
-        return LiveSetlistDurationFormat.text(for: total)
     }
 
     private func song(atPlaybackIndex index: Int) -> RemoteSongDTO? {

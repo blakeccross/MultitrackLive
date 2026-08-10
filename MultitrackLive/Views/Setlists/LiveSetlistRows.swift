@@ -160,33 +160,6 @@ struct LiveSetlistAddMenu: View {
     }
 }
 
-struct LiveSetlistSummaryBar: View {
-    let songCount: Int
-    var totalDurationText: String? = nil
-
-    var body: some View {
-        HStack(spacing: AppSpacing.xs) {
-            Spacer(minLength: 0)
-
-            if let totalDurationText {
-                Label(
-                    "Total setlist length: \(totalDurationText) · \(songCount) songs",
-                    systemImage: "clock"
-                )
-                .font(.caption.weight(.semibold).monospacedDigit())
-                .foregroundStyle(AppColors.textTertiary)
-                .accessibilityLabel("Total setlist length \(totalDurationText)")
-            } else {
-                Label("\(songCount) songs", systemImage: "music.note.list")
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(AppColors.textTertiary)
-            }
-        }
-        .padding(.horizontal, AppSpacing.sm)
-        .padding(.top, AppSpacing.xs)
-    }
-}
-
 enum LiveSetlistDurationFormat {
     /// Per-song clock like `5:36`, or `1:05:36` when an hour or longer.
     static func clock(for duration: TimeInterval) -> String {
@@ -198,17 +171,6 @@ enum LiveSetlistDurationFormat {
             return String(format: "%d:%02d:%02d", hours, minutes, seconds)
         }
         return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    static func text(for total: TimeInterval) -> String? {
-        guard total >= 1 else { return nil }
-        let totalMinutes = max(1, Int((total / 60).rounded()))
-        let hours = totalMinutes / 60
-        let minutes = totalMinutes % 60
-        if hours == 0 {
-            return "\(minutes) min"
-        }
-        return minutes == 0 ? "\(hours) hr" : "\(hours) hr \(minutes) min"
     }
 }
 

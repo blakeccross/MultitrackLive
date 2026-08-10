@@ -283,14 +283,6 @@ final class PlaybackCoordinator {
         return snapshot
     }
 
-    /// Combined timeline length of the setlist. Songs whose arrangements have not been
-    /// measured yet contribute zero, so this grows as snapshots finish prefetching.
-    var totalTimelineDuration: TimeInterval {
-        songs.reduce(0) { total, song in
-            total + (waveformSnapshotsBySongID[song.id]?.timelineDuration ?? 0)
-        }
-    }
-
     func ensureWaveformSnapshot(for song: Song) {
         guard waveformSnapshotsBySongID[song.id] == nil else { return }
         guard !pendingWaveformSnapshotSongIDs.contains(song.id) else { return }
