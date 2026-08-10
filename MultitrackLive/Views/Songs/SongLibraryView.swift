@@ -19,21 +19,17 @@ struct SongLibraryPanel: View {
     var onEdit: (Song) -> Void
     var onDismiss: () -> Void
     var onFolderSelected: (URL) -> Void
-    var onRequestTrackImport: (Song) -> Void
     var onAddToSetlist: (Song) -> Void
 
     @State private var searchText = ""
     @State private var sortOrder: SongLibrarySortOrder = .newest
-    @State private var showingNewSongAlert = false
     @State private var showingAddSongOptions = false
     @State private var showingAddClickSheet = false
-    @State private var newSongName = ""
     @State private var songPendingRename: Song?
     @State private var renameSongName = ""
     @State private var songPendingDelete: Song?
     @State private var createSongError: String?
     @State private var songActionError: String?
-    @State private var showingProjectImporter = false
     #if !os(macOS)
     @State private var showingFolderImporter = false
     #endif
@@ -87,18 +83,11 @@ struct SongLibraryPanel: View {
                     isPresented: $showingAddSongOptions,
                     titleVisibility: .visible
                 ) {
-                    Button("New Song") {
-                        newSongName = ""
-                        showingNewSongAlert = true
-                    }
                     Button("Add Click") {
                         showingAddClickSheet = true
                     }
                     Button("Import from Folder") {
                         presentFolderImporter()
-                    }
-                    Button("Open Project File…") {
-                        showingProjectImporter = true
                     }
                     Button("Cancel", role: .cancel) {}
                 }
@@ -116,15 +105,6 @@ struct SongLibraryPanel: View {
             }
         }
         #endif
-        .alert("New Song", isPresented: $showingNewSongAlert) {
-            TextField("Song name", text: $newSongName)
-            Button("Create") {
-                createSong()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Enter a name, then import your stem files or choose a song folder.")
-        }
         .alert("Could Not Create Song", isPresented: Binding(
             get: { createSongError != nil },
             set: { if !$0 { createSongError = nil } }
@@ -174,13 +154,6 @@ struct SongLibraryPanel: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(songActionError ?? "")
-        }
-        .fileImporter(
-            isPresented: $showingProjectImporter,
-            allowedContentTypes: [ProjectUTType.songProjectType],
-            allowsMultipleSelection: false
-        ) { result in
-            handleOpenProject(result)
         }
         #if !os(macOS)
         .fileImporter(
@@ -241,18 +214,11 @@ struct SongLibraryPanel: View {
                     isPresented: $showingAddSongOptions,
                     titleVisibility: .visible
                 ) {
-                    Button("New Song") {
-                        newSongName = ""
-                        showingNewSongAlert = true
-                    }
                     Button("Add Click") {
                         showingAddClickSheet = true
                     }
                     Button("Import from Folder") {
                         presentFolderImporter()
-                    }
-                    Button("Open Project File…") {
-                        showingProjectImporter = true
                     }
                     Button("Cancel", role: .cancel) {}
                 }
@@ -307,7 +273,7 @@ struct SongLibraryPanel: View {
             AppEmptyState(
                 title: "No Songs Yet",
                 systemImage: "music.note",
-                description: "Create a song or import a folder with multitrack stems and an Ableton file."
+                description: "Import a folder with multitrack stems and an Ableton file, or add a click track."
             )
             .padding(.top, AppSpacing.sm)
             Spacer(minLength: 0)
@@ -370,23 +336,6 @@ struct SongLibraryPanel: View {
         Divider()
         Button("Remove", role: .destructive) {
             songPendingDelete = song
-        }
-    }
-
-    private func createSong() {
-        let trimmed = newSongName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        let song = Song(name: trimmed)
-        modelContext.insert(song)
-
-        do {
-            try modelContext.save()
-            _ = try SongProjectBridge.ensureProjectFile(for: song, context: modelContext)
-            onRequestTrackImport(song)
-        } catch {
-            modelContext.delete(song)
-            createSongError = error.localizedDescription
         }
     }
 
@@ -557,20 +506,6 @@ struct SongLibraryPanel: View {
         #else
         showingFolderImporter = true
         #endif
-    }
-
-    private func handleOpenProject(_ result: Result<[URL], Error>) {
-        switch result {
-        case .failure(let error):
-            songActionError = error.localizedDescription
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            do {
-                _ = try SongProjectBridge.importProject(from: url, into: modelContext)
-            } catch {
-                songActionError = error.localizedDescription
-            }
-        }
     }
 
     #if !os(macOS)
@@ -793,7 +728,6 @@ private struct AddClickSongSheet: View {
         onEdit: { _ in },
         onDismiss: {},
         onFolderSelected: { _ in },
-        onRequestTrackImport: { _ in },
         onAddToSetlist: { _ in }
     )
         .frame(width: 300, height: 600)

@@ -66,7 +66,6 @@ struct LivePlaybackView: View {
     @State private var showingSetlistPackageImporter = false
     @State private var showingSetlistPackageExporter = false
     @State private var setlistPackageDocument: SetlistPackageFileDocument?
-    @State private var songPendingTrackImport: Song?
     @State private var songImportFeedback: SongImportFeedback?
     @State private var infoPanelHeight: CGFloat = 0
     @State private var mixerDetent: LiveGroupMixerDetent = .hidden
@@ -279,11 +278,6 @@ struct LivePlaybackView: View {
             ) { result in
                 handleSetlistPackageExportResult(result)
             }
-            .sheet(item: $songPendingTrackImport) { song in
-                TrackImportView(song: song) { error in
-                    songImportFeedback = .failure(error)
-                }
-            }
             .sheet(item: $overlapEditorContext) { context in
                 SetlistOverlapEditorView(
                     context: context,
@@ -476,12 +470,6 @@ struct LivePlaybackView: View {
             },
             onFolderSelected: { folderURL in
                 importSong(from: folderURL)
-            },
-            onRequestTrackImport: { song in
-                #if os(iOS)
-                showingSongLibrary = false
-                #endif
-                songPendingTrackImport = song
             },
             onAddToSetlist: { song in
                 addSong(song, at: workingSetlist.sortedEntries.count)

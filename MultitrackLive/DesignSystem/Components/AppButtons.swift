@@ -93,6 +93,7 @@ struct AppIconButton: View {
                 .scaleEffect(x: flipsImageHorizontally ? -1 : 1, y: 1)
                 .frame(width: size, height: size)
                 .background(backgroundColor, in: buttonShape)
+                .contentShape(buttonShape)
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)

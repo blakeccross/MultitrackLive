@@ -54,7 +54,6 @@ struct SongDetailView: View {
     @State private var undoController = SongUndoController()
     @State private var selectedSongID: UUID?
     @State private var showingSongLibrary = false
-    @State private var songPendingTrackImport: Song?
     @State private var songImportFeedback: SongImportFeedback?
 
     var body: some View {
@@ -156,11 +155,6 @@ struct SongDetailView: View {
                 .presentationDetents([.large])
             }
             #endif
-            .sheet(item: $songPendingTrackImport) { song in
-                TrackImportView(song: song) { error in
-                    songImportFeedback = .failure(error)
-                }
-            }
             .alert(item: $songImportFeedback) { feedback in
                 Alert(
                     title: Text(feedback.title),
@@ -399,12 +393,6 @@ struct SongDetailView: View {
             },
             onFolderSelected: { folderURL in
                 importSong(from: folderURL)
-            },
-            onRequestTrackImport: { song in
-                #if os(iOS)
-                showingSongLibrary = false
-                #endif
-                songPendingTrackImport = song
             },
             onAddToSetlist: { _ in }
         )

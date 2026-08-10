@@ -902,6 +902,7 @@ struct LiveSetlistWaveformScrollView: View {
                     }
                 }
                 .fixedSize(horizontal: true, vertical: false)
+                .padding(.leading, AppSpacing.md)
                 .padding(.vertical, 2)
                 .frame(minWidth: viewportWidth, alignment: .leading)
             }
