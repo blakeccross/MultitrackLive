@@ -15,6 +15,7 @@ final class SongEditSnapshotTests: XCTestCase {
 
         let song = Song(name: "Undo Test")
         song.bpm = 128
+        song.baseKeyRaw = "Bb"
         song.transposeSemitones = 2
 
         let track = AudioTrack(displayName: "Kick", relativeFilePath: "kick.wav", sortOrder: 0)
@@ -49,6 +50,7 @@ final class SongEditSnapshotTests: XCTestCase {
         )
 
         song.bpm = 90
+        song.baseKeyRaw = "G"
         song.transposeSemitones = -1
         track.volume = 1.0
         track.isMuted = false
@@ -66,6 +68,9 @@ final class SongEditSnapshotTests: XCTestCase {
         midiEvents = snapshot.midiEvents
         snapshot.applyMetadata(to: song)
         snapshot.applyTracks(to: song, context: context)
+
+        XCTAssertEqual(song.baseKeyRaw, "Bb")
+        XCTAssertEqual(song.displayedKeyText, "C")
 
         let restored = SongEditSnapshot.capture(
             song: song,

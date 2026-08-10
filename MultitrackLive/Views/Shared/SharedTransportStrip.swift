@@ -121,7 +121,7 @@ struct SharedTransportControlButtons: View {
     }
 }
 
-struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
+struct SharedTransportStrip<BPMPopover: View, MeterPopover: View, KeyPopover: View>: View {
     let snapshot: TransportStatusSnapshot
     let buttonSize: CGFloat
     let isPlaying: Bool
@@ -140,10 +140,13 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
 
     @Binding private var showingBPMPopover: Bool
     @Binding private var showingMeterPopover: Bool
+    @Binding private var showingKeyPopover: Bool
     private let bpmPopover: () -> BPMPopover
     private let meterPopover: () -> MeterPopover
+    private let keyPopover: () -> KeyPopover
     private let showsBPMPopover: Bool
     private let showsMeterPopover: Bool
+    private let showsKeyPopover: Bool
 
     init(
         snapshot: TransportStatusSnapshot,
@@ -163,8 +166,10 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
         chrome: SharedTransportStripChrome = .full,
         showingBPMPopover: Binding<Bool> = .constant(false),
         showingMeterPopover: Binding<Bool> = .constant(false),
+        showingKeyPopover: Binding<Bool> = .constant(false),
         @ViewBuilder bpmPopover: @escaping () -> BPMPopover,
-        @ViewBuilder meterPopover: @escaping () -> MeterPopover
+        @ViewBuilder meterPopover: @escaping () -> MeterPopover,
+        @ViewBuilder keyPopover: @escaping () -> KeyPopover
     ) {
         self.snapshot = snapshot
         self.buttonSize = buttonSize
@@ -183,10 +188,13 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
         self.chrome = chrome
         _showingBPMPopover = showingBPMPopover
         _showingMeterPopover = showingMeterPopover
+        _showingKeyPopover = showingKeyPopover
         self.bpmPopover = bpmPopover
         self.meterPopover = meterPopover
+        self.keyPopover = keyPopover
         self.showsBPMPopover = BPMPopover.self != EmptyView.self
         self.showsMeterPopover = MeterPopover.self != EmptyView.self
+        self.showsKeyPopover = KeyPopover.self != EmptyView.self
     }
 
     var body: some View {
@@ -291,8 +299,22 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
 
             metadataDivider
 
-            metadataText(snapshot.key)
-                .accessibilityLabel("Key \(snapshot.key)")
+            Group {
+                if showsKeyPopover {
+                    Button {
+                        showingKeyPopover = true
+                    } label: {
+                        metadataText(snapshot.key)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showingKeyPopover, arrowEdge: .bottom) {
+                        keyPopover()
+                    }
+                } else {
+                    metadataText(snapshot.key)
+                }
+            }
+            .accessibilityLabel("Key \(snapshot.key)")
         }
         .fixedSize()
     }
@@ -307,13 +329,13 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View>: View {
 
     private var metadataDivider: some View {
         Rectangle()
-            .fill(Color.secondary.opacity(0.45))
-            .frame(width: 0.5, height: 12)
+            .fill(AppColors.separator)
+            .frame(width: 1, height: 12)
             .accessibilityHidden(true)
     }
 }
 
-extension SharedTransportStrip where BPMPopover == EmptyView, MeterPopover == EmptyView {
+extension SharedTransportStrip where BPMPopover == EmptyView, MeterPopover == EmptyView, KeyPopover == EmptyView {
     init(
         snapshot: TransportStatusSnapshot,
         buttonSize: CGFloat,
@@ -349,8 +371,10 @@ extension SharedTransportStrip where BPMPopover == EmptyView, MeterPopover == Em
             chrome: chrome,
             showingBPMPopover: .constant(false),
             showingMeterPopover: .constant(false),
+            showingKeyPopover: .constant(false),
             bpmPopover: { EmptyView() },
-            meterPopover: { EmptyView() }
+            meterPopover: { EmptyView() },
+            keyPopover: { EmptyView() }
         )
     }
 }

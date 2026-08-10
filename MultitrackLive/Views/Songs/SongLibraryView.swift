@@ -433,6 +433,7 @@ struct SongLibraryPanel: View {
         copy.bpm = source.bpm
         copy.timeSignatureNumerator = source.timeSignatureNumerator
         copy.timeSignatureDenominator = source.timeSignatureDenominator
+        copy.baseKeyRaw = source.baseKeyRaw
         copy.transposeSemitones = source.transposeSemitones
         copy.transposeHighQuality = source.transposeHighQuality
         copy.dynamicCuesEnabled = source.dynamicCuesEnabled

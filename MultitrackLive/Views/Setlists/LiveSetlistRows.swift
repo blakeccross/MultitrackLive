@@ -5,24 +5,33 @@ struct LiveSetlistHeaderRow: View {
     let title: String
 
     var body: some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
-            .tracking(0.6)
-            .textCase(.uppercase)
-            .foregroundStyle(AppColors.textTertiary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, AppSpacing.sm)
-            .padding(.vertical, AppSpacing.xs)
-            .frame(minHeight: 40, alignment: .leading)
+        HStack(spacing: AppSpacing.sm) {
+            Text("0:00")
+                .font(.subheadline.monospaced())
+                .foregroundStyle(AppColors.textTertiary)
+                .frame(width: 52, alignment: .trailing)
+                .accessibilityHidden(true)
+
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .tracking(0.6)
+                .textCase(.uppercase)
+                .foregroundStyle(AppColors.textTertiary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.vertical, AppSpacing.xs)
+        .frame(minHeight: 40, alignment: .leading)
     }
 }
 
 struct LiveSetlistSongRow: View {
     let title: String
+    let durationText: String
     let index: Int
     let currentIndex: Int
-    let isPlaying: Bool
-    var subtitle: String? = nil
+    var keyText: String? = nil
+    var bpmText: String? = nil
     var hasMissingMedia: Bool = false
     var transition: SetlistTransition? = nil
     var onOverlapBadgeTap: (() -> Void)? = nil
@@ -37,28 +46,22 @@ struct LiveSetlistSongRow: View {
 
     var body: some View {
         HStack(spacing: AppSpacing.sm) {
-            Text("\(index + 1).")
-                .font(.subheadline.monospacedDigit().weight(isCurrent ? .semibold : .regular))
+            Text(durationText)
+                .font(.subheadline.monospaced().weight(isCurrent ? .semibold : .regular))
                 .foregroundStyle(isCurrent ? AppColors.textSecondary : AppColors.textTertiary)
-                .frame(width: 28, alignment: .trailing)
+                .frame(width: 52, alignment: .trailing)
+                .accessibilityLabel("Duration \(durationText)")
 
-            if isCurrent {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(AppColors.accent)
-                    .frame(width: 3, height: 28)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: AppSpacing.xs) {
                 Text(title)
                     .font(isCurrent ? .headline.weight(.semibold) : .body.weight(.medium))
                     .foregroundStyle(isFinished ? AppColors.textTertiary : AppColors.textPrimary)
                     .lineLimit(2)
+                    .layoutPriority(1)
 
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(AppColors.textTertiary)
-                        .lineLimit(1)
+                if let keyText {
+                    AppBadge(title: keyText, style: .neutral)
+                        .accessibilityLabel("Key \(keyText)")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -71,13 +74,12 @@ struct LiveSetlistSongRow: View {
                     .help("Missing audio files — use Relink Missing Files in the context menu")
             }
 
-            if isCurrent {
-                LiveSetlistPlayingBadge(isPlaying: isPlaying)
-            } else if isFinished {
-                Image(systemName: "checkmark.circle")
-                    .foregroundStyle(AppColors.textTertiary)
-                    .font(.caption)
-            }
+            Text(bpmText ?? "")
+                .font(.caption.monospaced().weight(.medium))
+                .foregroundStyle(AppColors.textTertiary)
+                .frame(width: 64, alignment: .trailing)
+                .accessibilityLabel(bpmText.map { "\($0)" } ?? "")
+                .accessibilityHidden(bpmText == nil)
 
             if let transition {
                 SetlistTransitionBadge(
@@ -97,38 +99,27 @@ struct LiveSetlistSongRow: View {
 extension LiveSetlistSongRow {
     init(
         song: Song,
+        duration: TimeInterval,
         index: Int,
         currentIndex: Int,
-        isPlaying: Bool,
         hasMissingMedia: Bool = false,
         transition: SetlistTransition? = nil,
         onOverlapBadgeTap: (() -> Void)? = nil
     ) {
-        let subtitle: String? = {
+        let bpmText: String? = {
             guard let bpm = song.bpm else { return nil }
             return String(format: "%.0f BPM", bpm.rounded())
         }()
         self.init(
             title: song.name,
+            durationText: LiveSetlistDurationFormat.clock(for: duration),
             index: index,
             currentIndex: currentIndex,
-            isPlaying: isPlaying,
-            subtitle: subtitle,
+            keyText: song.displayedKeyText,
+            bpmText: bpmText,
             hasMissingMedia: hasMissingMedia,
             transition: transition,
             onOverlapBadgeTap: onOverlapBadgeTap
-        )
-    }
-}
-
-struct LiveSetlistPlayingBadge: View {
-    let isPlaying: Bool
-
-    var body: some View {
-        AppBadge(
-            title: isPlaying ? "Playing" : "Paused",
-            systemImage: isPlaying ? "waveform" : "pause",
-            style: isPlaying ? .accent : .neutral
         )
     }
 }
@@ -196,6 +187,18 @@ struct LiveSetlistSummaryBar: View {
 }
 
 enum LiveSetlistDurationFormat {
+    /// Per-song clock like `5:36`, or `1:05:36` when an hour or longer.
+    static func clock(for duration: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(duration.rounded()))
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
     static func text(for total: TimeInterval) -> String? {
         guard total >= 1 else { return nil }
         let totalMinutes = max(1, Int((total / 60).rounded()))
@@ -208,7 +211,7 @@ enum LiveSetlistDurationFormat {
     }
 }
 
-struct LiveSetlistReorderHandle: View {
+private struct LiveSetlistReorderHandle: View {
     let accessibilityNoun: String
     let onDragBegan: () -> NSItemProvider
 
@@ -228,6 +231,26 @@ struct LiveSetlistReorderHandle: View {
     }
 }
 
+/// Keeps a stable HStack row root on both platforms (needed so iOS List reorder
+/// isn't fighting a Button as the row's root). Trailing grip is macOS-only;
+/// iOS uses the native edit-mode control in the same trailing slot.
+private struct LiveSetlistTrailingReorderHandleModifier: ViewModifier {
+    let accessibilityNoun: String
+    let onDragBegan: () -> NSItemProvider
+
+    func body(content: Content) -> some View {
+        HStack(spacing: 0) {
+            content
+            #if os(macOS)
+            LiveSetlistReorderHandle(
+                accessibilityNoun: accessibilityNoun,
+                onDragBegan: onDragBegan
+            )
+            #endif
+        }
+    }
+}
+
 /// Shared list styling used by local and remote live setlist panes.
 struct LiveSetlistListChromeModifier: ViewModifier {
     func body(content: Content) -> some View {
@@ -238,7 +261,7 @@ struct LiveSetlistListChromeModifier: ViewModifier {
             #if os(iOS)
             .listSectionSpacing(0)
             .contentMargins(.vertical, 0, for: .scrollContent)
-            // Native List reorder (custom onDrag/onDrop is unreliable inside iOS List).
+            // Native trailing reorder control (custom onDrag/onDrop is unreliable in iOS List).
             .environment(\.editMode, .constant(.active))
             #endif
     }
@@ -247,6 +270,18 @@ struct LiveSetlistListChromeModifier: ViewModifier {
 extension View {
     func liveSetlistListChrome() -> some View {
         modifier(LiveSetlistListChromeModifier())
+    }
+
+    func liveSetlistTrailingReorderHandle(
+        accessibilityNoun: String,
+        onDragBegan: @escaping () -> NSItemProvider
+    ) -> some View {
+        modifier(
+            LiveSetlistTrailingReorderHandleModifier(
+                accessibilityNoun: accessibilityNoun,
+                onDragBegan: onDragBegan
+            )
+        )
     }
 
     func liveSetlistHeaderRowChrome(isDragging: Bool) -> some View {

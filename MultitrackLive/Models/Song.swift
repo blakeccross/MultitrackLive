@@ -9,6 +9,8 @@ final class Song {
     var bpm: Double?
     var timeSignatureNumerator: Int?
     var timeSignatureDenominator: Int?
+    /// User-selected root pitch class (`SongMusicalKey.rawValue`). Displayed key applies `transposeSemitones`.
+    var baseKeyRaw: String?
     var transposeSemitones: Int
     var transposeHighQuality: Bool
     var dynamicCuesEnabled: Bool = false
@@ -27,6 +29,7 @@ final class Song {
         bpm = nil
         timeSignatureNumerator = nil
         timeSignatureDenominator = nil
+        baseKeyRaw = nil
         transposeSemitones = 0
         transposeHighQuality = false
         dynamicCuesEnabled = false

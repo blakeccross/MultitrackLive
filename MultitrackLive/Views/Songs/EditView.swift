@@ -124,6 +124,15 @@ struct EditView: View {
         }
     }
 
+    private func applyBaseKey(_ keyRaw: String?) {
+        guard song.baseKeyRaw != keyRaw else { return }
+        performUndoableChange("Edit Key") {
+            song.baseKeyRaw = keyRaw
+            try? modelContext.save()
+            persistProjectState()
+        }
+    }
+
     private func persistTimeSignatureChanges() {
         let normalized = normalizedTimeSignatureChanges
         timeSignatureChanges = normalized
@@ -703,6 +712,7 @@ struct EditView: View {
                 tempoChanges: $tempoChanges,
                 normalizedTempoChanges: normalizedTempoChanges,
                 onApplyTempo: applyReferenceTempo,
+                onApplyBaseKey: applyBaseKey,
                 showingChangeKey: $showingChangeKey,
                 arrangementSlots: $arrangementSlots,
                 clipTrims: $clipTrims,
@@ -1368,6 +1378,7 @@ struct EditView: View {
             tempoChanges: $tempoChanges,
             normalizedTempoChanges: normalizedTempoChanges,
             onApplyTempo: applyReferenceTempo,
+            onApplyBaseKey: applyBaseKey,
             showingChangeKey: $showingChangeKey,
             arrangementSlots: $arrangementSlots,
             clipTrims: $clipTrims,
@@ -1988,6 +1999,7 @@ private struct EditSongToolbarContent: ToolbarContent {
     @Binding var tempoChanges: [TempoChange]
     let normalizedTempoChanges: [TempoChange]
     let onApplyTempo: (Double) -> Void
+    let onApplyBaseKey: (String?) -> Void
     @Binding var showingChangeKey: Bool
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
@@ -2009,6 +2021,7 @@ private struct EditSongToolbarContent: ToolbarContent {
     let registerUndo: (_ actionName: String, _ before: SongEditSnapshot, _ after: SongEditSnapshot) -> Void
 
     @State private var showingTempoToolbarEditor = false
+    @State private var showingKeyToolbarEditor = false
     @State private var groupMixFade = GroupMixFadeController()
     @Bindable private var audioEngine = AudioEngineManager.shared
     @Environment(\.modelContext) private var modelContext
@@ -2097,6 +2110,7 @@ private struct EditSongToolbarContent: ToolbarContent {
             },
             showingBPMPopover: $showingTempoToolbarEditor,
             showingMeterPopover: $showingTimeSignatureEditor,
+            showingKeyPopover: $showingKeyToolbarEditor,
             bpmPopover: {
                 TempoEditorMenu(
                     currentBPM: normalizedTempoChanges.referenceBPM,
@@ -2109,6 +2123,12 @@ private struct EditSongToolbarContent: ToolbarContent {
                     timeSignatureChanges: $timeSignatureChanges,
                     normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
                     onPersist: onPersistTimeSignatureChanges
+                )
+            },
+            keyPopover: {
+                SongKeyEditorMenu(
+                    baseKeyRaw: song.baseKeyRaw,
+                    onApply: onApplyBaseKey
                 )
             }
         )
@@ -2153,7 +2173,7 @@ private struct EditSongToolbarContent: ToolbarContent {
             position: MeasureTiming.formatTransportPosition(position),
             bpm: String(format: "%.1f", bpm),
             meter: "\(signature.numerator)/\(signature.denominator)",
-            key: "-"
+            key: song.transportKeyText
         )
     }
 
@@ -2226,6 +2246,7 @@ private struct EditTransportBar: View {
     @Binding var tempoChanges: [TempoChange]
     let normalizedTempoChanges: [TempoChange]
     let onApplyTempo: (Double) -> Void
+    let onApplyBaseKey: (String?) -> Void
     @Binding var showingChangeKey: Bool
     @Binding var arrangementSlots: [ArrangementSlot]
     @Binding var clipTrims: [ArrangementClipTrim]
@@ -2246,6 +2267,7 @@ private struct EditTransportBar: View {
     let registerUndo: (_ actionName: String, _ before: SongEditSnapshot, _ after: SongEditSnapshot) -> Void
 
     @State private var showingTempoToolbarEditor = false
+    @State private var showingKeyToolbarEditor = false
     @State private var groupMixFade = GroupMixFadeController()
     @Bindable private var audioEngine = AudioEngineManager.shared
     @Environment(\.modelContext) private var modelContext
@@ -2310,6 +2332,7 @@ private struct EditTransportBar: View {
             },
             showingBPMPopover: $showingTempoToolbarEditor,
             showingMeterPopover: $showingTimeSignatureEditor,
+            showingKeyPopover: $showingKeyToolbarEditor,
             bpmPopover: {
                 TempoEditorMenu(
                     currentBPM: normalizedTempoChanges.referenceBPM,
@@ -2322,6 +2345,12 @@ private struct EditTransportBar: View {
                     timeSignatureChanges: $timeSignatureChanges,
                     normalizedTimeSignatureChanges: normalizedTimeSignatureChanges,
                     onPersist: onPersistTimeSignatureChanges
+                )
+            },
+            keyPopover: {
+                SongKeyEditorMenu(
+                    baseKeyRaw: song.baseKeyRaw,
+                    onApply: onApplyBaseKey
                 )
             }
         )
@@ -2376,7 +2405,7 @@ private struct EditTransportBar: View {
             position: MeasureTiming.formatTransportPosition(position),
             bpm: String(format: "%.1f", bpm),
             meter: "\(signature.numerator)/\(signature.denominator)",
-            key: "-"
+            key: song.transportKeyText
         )
     }
 
@@ -2467,6 +2496,61 @@ private struct EditTransportBar: View {
         .help("Songs")
     }
 
+}
+
+private struct SongKeyEditorMenu: View {
+    let baseKeyRaw: String?
+    let onApply: (String?) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            Text("Key")
+                .font(.headline)
+
+            Text("Sets the song’s root key. Transpose updates the live key.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 0) {
+                keyRow(title: "None", isSelected: baseKeyRaw == nil) {
+                    onApply(nil)
+                    dismiss()
+                }
+
+                ForEach(SongMusicalKey.chromaticOrder, id: \.self) { key in
+                    Divider()
+                    keyRow(title: key.displayName, isSelected: baseKeyRaw == key.rawValue) {
+                        onApply(key.rawValue)
+                        dismiss()
+                    }
+                }
+            }
+            .background(AppColors.surfaceElevated, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .padding(AppSpacing.md)
+        .frame(minWidth: 180)
+    }
+
+    private func keyRow(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                    .font(.body.monospaced())
+                    .foregroundStyle(AppColors.textPrimary)
+                Spacer(minLength: 0)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(AppColors.accent)
+                }
+            }
+            .padding(.horizontal, AppSpacing.sm)
+            .padding(.vertical, AppSpacing.sm)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 private struct TimeSignatureEditorMenu: View {

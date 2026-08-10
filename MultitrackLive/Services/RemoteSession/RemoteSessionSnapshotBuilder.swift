@@ -195,7 +195,7 @@ enum RemoteSessionSnapshotBuilder {
             name: song.name,
             fileDuration: snapshot?.fileDuration ?? fallbackDuration,
             timelineDuration: duration,
-            key: "-",
+            key: song.transportKeyText,
             sections: sections,
             peakSections: peakSections,
             loopSlotIDs: loopSlotIDs,
@@ -287,7 +287,7 @@ enum RemoteSessionSnapshotBuilder {
             position: MeasureTiming.formatTransportPosition(position),
             bpm: String(format: "%.1f", bpm),
             meter: "\(signature.numerator)/\(signature.denominator)",
-            key: "-"
+            key: song.transportKeyText
         )
     }
 }

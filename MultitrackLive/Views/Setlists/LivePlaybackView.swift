@@ -1085,75 +1085,66 @@ struct LivePlaybackView: View {
     private func setlistHeaderRow(entry: SetlistEntry) -> some View {
         let title = entry.headerTitle ?? ""
 
-        return HStack(spacing: 0) {
-            #if os(macOS)
-            LiveSetlistReorderHandle(accessibilityNoun: "header") {
+        return LiveSetlistHeaderRow(title: title)
+            .liveSetlistTrailingReorderHandle(accessibilityNoun: "header") {
                 commitSetlistReorder()
                 draggedSetlistEntryID = entry.id
                 return NSItemProvider(object: "setlist-entry" as NSString)
             }
+            .liveSetlistHeaderRowChrome(isDragging: isBeingDragged(entry))
+            #if os(macOS)
+            .onDrop(of: [.text], delegate: setlistDropDelegate(targetID: entry.id))
             #endif
-            LiveSetlistHeaderRow(title: title)
-        }
-        .liveSetlistHeaderRowChrome(isDragging: isBeingDragged(entry))
-        #if os(macOS)
-        .onDrop(of: [.text], delegate: setlistDropDelegate(targetID: entry.id))
-        #endif
-        #if os(iOS)
-        .deleteDisabled(true)
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button("Remove", role: .destructive) {
-                removeFromSetlist(entry)
+            #if os(iOS)
+            .deleteDisabled(true)
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button("Remove", role: .destructive) {
+                    removeFromSetlist(entry)
+                }
             }
-        }
-        #endif
-        .contextMenu {
-            Button {
-                headerPendingEdit = entry
-                editHeaderTitle = entry.headerTitle ?? ""
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
+            #endif
+            .contextMenu {
+                Button {
+                    headerPendingEdit = entry
+                    editHeaderTitle = entry.headerTitle ?? ""
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
 
-            Button("Remove from Setlist", role: .destructive) {
-                removeFromSetlist(entry)
+                Button("Remove from Setlist", role: .destructive) {
+                    removeFromSetlist(entry)
+                }
             }
-        }
     }
 
     private func setlistEntryRow(song: Song, entry: SetlistEntry) -> some View {
         let playbackIndex = workingSetlist.playbackIndex(for: entry) ?? 0
         let transition = workingSetlist.hasNextSong(after: entry) ? entry.transition : nil
 
-        return HStack(spacing: 0) {
-            #if os(macOS)
-            LiveSetlistReorderHandle(accessibilityNoun: "song") {
-                commitSetlistReorder()
-                draggedSetlistEntryID = entry.id
-                return NSItemProvider(object: "setlist-entry" as NSString)
-            }
-            #endif
-
-            Button {
-                coordinator.goToSong(at: playbackIndex, autoPlay: coordinator.isAudiblePlaying)
-            } label: {
-                LiveSetlistSongRow(
-                    song: song,
-                    index: playbackIndex,
-                    currentIndex: coordinator.currentIndex,
-                    isPlaying: coordinator.isPlaying,
-                    hasMissingMedia: songHasMissingMedia(song),
-                    transition: transition,
-                    onOverlapBadgeTap: transition == .overlap
-                        ? { presentOverlapEditor(for: entry) }
-                        : nil
-                )
-            }
-            .buttonStyle(.plain)
-            #if os(macOS)
-            .focusEffectDisabled()
-            #endif
-            .appLinkPointer()
+        return Button {
+            coordinator.goToSong(at: playbackIndex, autoPlay: coordinator.isAudiblePlaying)
+        } label: {
+            LiveSetlistSongRow(
+                song: song,
+                duration: songTimelineDuration(for: song),
+                index: playbackIndex,
+                currentIndex: coordinator.currentIndex,
+                hasMissingMedia: songHasMissingMedia(song),
+                transition: transition,
+                onOverlapBadgeTap: transition == .overlap
+                    ? { presentOverlapEditor(for: entry) }
+                    : nil
+            )
+        }
+        .buttonStyle(.plain)
+        #if os(macOS)
+        .focusEffectDisabled()
+        #endif
+        .appLinkPointer()
+        .liveSetlistTrailingReorderHandle(accessibilityNoun: "song") {
+            commitSetlistReorder()
+            draggedSetlistEntryID = entry.id
+            return NSItemProvider(object: "setlist-entry" as NSString)
         }
         .liveSetlistSongRowChrome(
             isDragging: isBeingDragged(entry),
@@ -1232,7 +1223,7 @@ struct LivePlaybackView: View {
 
         let destination = targetIndex > sourceIndex ? targetIndex + 1 : targetIndex
         hasPendingSetlistReorder = true
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+        withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.9)) {
             viewModel.previewMoveEntries(
                 in: workingSetlist,
                 from: IndexSet(integer: sourceIndex),
@@ -1261,6 +1252,11 @@ struct LivePlaybackView: View {
     private func songHasMissingMedia(_ song: Song) -> Bool {
         _ = mediaHealthRevision
         return SongMediaHealth.hasMissingMedia(song)
+    }
+
+    private func songTimelineDuration(for song: Song) -> TimeInterval {
+        coordinator.waveformSnapshot(for: song)?.timelineDuration
+            ?? TimecodePlaybackSupport.timelineDuration(for: song)
     }
 
     private func removeFromSetlist(_ entry: SetlistEntry) {

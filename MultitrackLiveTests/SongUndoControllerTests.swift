@@ -26,6 +26,7 @@ final class SongUndoControllerTests: XCTestCase {
                 bpm: 120,
                 timeSignatureNumerator: 4,
                 timeSignatureDenominator: 4,
+                baseKeyRaw: nil,
                 transposeSemitones: 0,
                 transposeHighQuality: false,
                 dynamicCuesEnabled: false

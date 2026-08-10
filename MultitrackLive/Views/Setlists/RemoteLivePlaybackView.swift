@@ -392,66 +392,58 @@ struct RemoteLivePlaybackView: View {
         snapshot: RemoteSessionSnapshot
     ) -> some View {
         if let header = entry.headerTitle, entry.songID == nil {
-            HStack(spacing: 0) {
-                #if os(macOS)
-                LiveSetlistReorderHandle(accessibilityNoun: "header") {
+            LiveSetlistHeaderRow(title: header)
+                .liveSetlistTrailingReorderHandle(accessibilityNoun: "header") {
                     commitRemoteSetlistReorder()
                     draggedSetlistEntryID = entry.id
                     return NSItemProvider(object: "setlist-entry" as NSString)
                 }
+                .liveSetlistHeaderRowChrome(isDragging: isBeingDragged(entry))
+                #if os(macOS)
+                .onDrop(of: [.text], delegate: remoteSetlistDropDelegate(targetID: entry.id))
                 #endif
-                LiveSetlistHeaderRow(title: header)
-            }
-            .liveSetlistHeaderRowChrome(isDragging: isBeingDragged(entry))
-            #if os(macOS)
-            .onDrop(of: [.text], delegate: remoteSetlistDropDelegate(targetID: entry.id))
-            #endif
-            #if os(iOS)
-            .deleteDisabled(true)
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                Button("Remove", role: .destructive) {
-                    removeWorkingEntry(entry)
+                #if os(iOS)
+                .deleteDisabled(true)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button("Remove", role: .destructive) {
+                        removeWorkingEntry(entry)
+                    }
                 }
-            }
-            #endif
-            .contextMenu {
-                Button("Remove from Setlist", role: .destructive) {
-                    removeWorkingEntry(entry)
+                #endif
+                .contextMenu {
+                    Button("Remove from Setlist", role: .destructive) {
+                        removeWorkingEntry(entry)
+                    }
                 }
-            }
         } else if let songID = entry.songID,
                   let song = snapshot.songs.first(where: { $0.id == songID }),
                   let playbackIndex = entry.playbackIndex {
             let transition = remoteTransition(for: entry, in: workingEntries)
-            HStack(spacing: 0) {
-                #if os(macOS)
-                LiveSetlistReorderHandle(accessibilityNoun: "song") {
-                    commitRemoteSetlistReorder()
-                    draggedSetlistEntryID = entry.id
-                    return NSItemProvider(object: "setlist-entry" as NSString)
-                }
-                #endif
-
-                Button {
-                    client.send(.goToSong(
-                        index: playbackIndex,
-                        autoPlay: state.isAudiblePlaying
-                    ))
-                } label: {
-                    LiveSetlistSongRow(
-                        title: song.name,
-                        index: playbackIndex,
-                        currentIndex: state.currentIndex,
-                        isPlaying: state.isPlaying,
-                        subtitle: remoteSongSubtitle(song),
-                        transition: transition
-                    )
-                }
-                .buttonStyle(.plain)
-                #if os(macOS)
-                .focusEffectDisabled()
-                #endif
-                .appLinkPointer()
+            Button {
+                client.send(.goToSong(
+                    index: playbackIndex,
+                    autoPlay: state.isAudiblePlaying
+                ))
+            } label: {
+                LiveSetlistSongRow(
+                    title: song.name,
+                    durationText: LiveSetlistDurationFormat.clock(for: song.timelineDuration),
+                    index: playbackIndex,
+                    currentIndex: state.currentIndex,
+                    keyText: remoteSongKeyText(song),
+                    bpmText: remoteSongBPMText(song),
+                    transition: transition
+                )
+            }
+            .buttonStyle(.plain)
+            #if os(macOS)
+            .focusEffectDisabled()
+            #endif
+            .appLinkPointer()
+            .liveSetlistTrailingReorderHandle(accessibilityNoun: "song") {
+                commitRemoteSetlistReorder()
+                draggedSetlistEntryID = entry.id
+                return NSItemProvider(object: "setlist-entry" as NSString)
             }
             .liveSetlistSongRowChrome(
                 isDragging: isBeingDragged(entry),
@@ -507,7 +499,7 @@ struct RemoteLivePlaybackView: View {
 
         let destination = targetIndex > sourceIndex ? targetIndex + 1 : targetIndex
         hasPendingSetlistReorder = true
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+        withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.9)) {
             workingEntries.move(fromOffsets: IndexSet(integer: sourceIndex), toOffset: destination)
             recomputeWorkingEntryIndices()
         }
@@ -566,10 +558,15 @@ struct RemoteLivePlaybackView: View {
         }
     }
 
-    private func remoteSongSubtitle(_ song: RemoteSongDTO) -> String? {
-        let bpm = song.tempoChanges.first?.bpm
-        guard let bpm else { return nil }
+    private func remoteSongBPMText(_ song: RemoteSongDTO) -> String? {
+        guard let bpm = song.tempoChanges.first?.bpm else { return nil }
         return String(format: "%.0f BPM", bpm.rounded())
+    }
+
+    private func remoteSongKeyText(_ song: RemoteSongDTO) -> String? {
+        let trimmed = song.key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "—", trimmed != "-" else { return nil }
+        return trimmed
     }
 
     private func remoteTransition(

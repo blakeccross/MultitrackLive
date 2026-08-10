@@ -22,6 +22,7 @@ struct SongMetadataSnapshot: Equatable, Hashable {
     var bpm: Double?
     var timeSignatureNumerator: Int?
     var timeSignatureDenominator: Int?
+    var baseKeyRaw: String?
     var transposeSemitones: Int
     var transposeHighQuality: Bool
     var dynamicCuesEnabled: Bool
@@ -69,6 +70,7 @@ struct SongEditSnapshot: Equatable {
                 bpm: song.bpm,
                 timeSignatureNumerator: song.timeSignatureNumerator,
                 timeSignatureDenominator: song.timeSignatureDenominator,
+                baseKeyRaw: song.baseKeyRaw,
                 transposeSemitones: song.transposeSemitones,
                 transposeHighQuality: song.transposeHighQuality,
                 dynamicCuesEnabled: song.dynamicCuesEnabled
@@ -98,6 +100,7 @@ struct SongEditSnapshot: Equatable {
         song.bpm = songMetadata.bpm
         song.timeSignatureNumerator = songMetadata.timeSignatureNumerator
         song.timeSignatureDenominator = songMetadata.timeSignatureDenominator
+        song.baseKeyRaw = songMetadata.baseKeyRaw
         song.transposeSemitones = songMetadata.transposeSemitones
         song.transposeHighQuality = songMetadata.transposeHighQuality
         song.dynamicCuesEnabled = songMetadata.dynamicCuesEnabled

@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		AA0000010000000000000001 /* MultitrackLiveApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000001 /* MultitrackLiveApp.swift */; };
 		AA0000010000000000000002 /* Song.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000002 /* Song.swift */; };
+		AA000001000000000000012A /* SongMusicalKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000012A /* SongMusicalKey.swift */; };
+		AA000001000000000000012B /* SongMusicalKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000012B /* SongMusicalKeyTests.swift */; };
 		AA0000010000000000000003 /* AudioTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000003 /* AudioTrack.swift */; };
 		AA0000010000000000000004 /* Setlist.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000004 /* Setlist.swift */; };
 		AA0000010000000000000005 /* SetlistEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000005 /* SetlistEntry.swift */; };
@@ -192,6 +194,8 @@
 /* Begin PBXFileReference section */
 		AA0000020000000000000001 /* MultitrackLiveApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultitrackLiveApp.swift; sourceTree = "<group>"; };
 		AA0000020000000000000002 /* Song.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Song.swift; sourceTree = "<group>"; };
+		AA000002000000000000012A /* SongMusicalKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongMusicalKey.swift; sourceTree = "<group>"; };
+		AA000002000000000000012B /* SongMusicalKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongMusicalKeyTests.swift; sourceTree = "<group>"; };
 		AA0000020000000000000003 /* AudioTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioTrack.swift; sourceTree = "<group>"; };
 		AA0000020000000000000004 /* Setlist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Setlist.swift; sourceTree = "<group>"; };
 		AA0000020000000000000005 /* SetlistEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetlistEntry.swift; sourceTree = "<group>"; };
@@ -440,6 +444,7 @@
 				AA0000050000000000000012 /* Project */,
 				AA00000500000000000000D6 /* Editing */,
 				AA0000020000000000000002 /* Song.swift */,
+				AA000002000000000000012A /* SongMusicalKey.swift */,
 				AA0000020000000000000003 /* AudioTrack.swift */,
 				AA0000020000000000000060 /* MIDITrack.swift */,
 				AA0000020000000000000061 /* MIDIEvent.swift */,
@@ -647,6 +652,7 @@
 				AA00000200000000000000C8 /* AudioPlaybackTransportTests.swift */,
 				AA00000200000000000000D5 /* SongBakeFingerprintTests.swift */,
 				AA00000200000000000000D8 /* SongEditSnapshotTests.swift */,
+				AA000002000000000000012B /* SongMusicalKeyTests.swift */,
 				AA00000200000000000000D9 /* SongUndoControllerTests.swift */,
 				AA00000200000000000000F5 /* SongSectionNameNormalizerTests.swift */,
 				AA00000200000000000000F6 /* AbletonProjectImporterTests.swift */,
@@ -840,6 +846,7 @@
 			files = (
 				AA0000010000000000000001 /* MultitrackLiveApp.swift in Sources */,
 				AA0000010000000000000002 /* Song.swift in Sources */,
+				AA000001000000000000012A /* SongMusicalKey.swift in Sources */,
 				AA0000010000000000000047 /* ClickTrackSubdivision.swift in Sources */,
 				AA0000010000000000000003 /* AudioTrack.swift in Sources */,
 				AA0000010000000000000060 /* MIDITrack.swift in Sources */,
@@ -1003,6 +1010,7 @@
 				AA00000100000000000000C8 /* AudioPlaybackTransportTests.swift in Sources */,
 				AA00000100000000000000D5 /* SongBakeFingerprintTests.swift in Sources */,
 				AA00000100000000000000D8 /* SongEditSnapshotTests.swift in Sources */,
+				AA000001000000000000012B /* SongMusicalKeyTests.swift in Sources */,
 				AA00000100000000000000D9 /* SongUndoControllerTests.swift in Sources */,
 				AA00000100000000000000F5 /* SongSectionNameNormalizerTests.swift in Sources */,
 				AA00000100000000000000F6 /* AbletonProjectImporterTests.swift in Sources */,

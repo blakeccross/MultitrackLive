@@ -5,6 +5,7 @@ struct SongProjectMetadata: Codable, Hashable {
     var bpm: Double?
     var timeSignatureNumerator: Int?
     var timeSignatureDenominator: Int?
+    var baseKeyRaw: String?
     var transposeSemitones: Int
     var transposeHighQuality: Bool
     var dynamicCuesEnabled: Bool
@@ -13,6 +14,7 @@ struct SongProjectMetadata: Codable, Hashable {
         case bpm
         case timeSignatureNumerator
         case timeSignatureDenominator
+        case baseKeyRaw
         case transposeSemitones
         case transposeHighQuality
         case dynamicCuesEnabled
@@ -22,6 +24,7 @@ struct SongProjectMetadata: Codable, Hashable {
         bpm = song.bpm
         timeSignatureNumerator = song.timeSignatureNumerator
         timeSignatureDenominator = song.timeSignatureDenominator
+        baseKeyRaw = song.baseKeyRaw
         transposeSemitones = song.transposeSemitones
         transposeHighQuality = song.transposeHighQuality
         dynamicCuesEnabled = song.dynamicCuesEnabled
@@ -32,6 +35,7 @@ struct SongProjectMetadata: Codable, Hashable {
         bpm = try container.decodeIfPresent(Double.self, forKey: .bpm)
         timeSignatureNumerator = try container.decodeIfPresent(Int.self, forKey: .timeSignatureNumerator)
         timeSignatureDenominator = try container.decodeIfPresent(Int.self, forKey: .timeSignatureDenominator)
+        baseKeyRaw = try container.decodeIfPresent(String.self, forKey: .baseKeyRaw)
         transposeSemitones = try container.decodeIfPresent(Int.self, forKey: .transposeSemitones) ?? 0
         transposeHighQuality = try container.decodeIfPresent(Bool.self, forKey: .transposeHighQuality) ?? false
         dynamicCuesEnabled = try container.decodeIfPresent(Bool.self, forKey: .dynamicCuesEnabled) ?? false
@@ -42,6 +46,7 @@ struct SongProjectMetadata: Codable, Hashable {
         try container.encodeIfPresent(bpm, forKey: .bpm)
         try container.encodeIfPresent(timeSignatureNumerator, forKey: .timeSignatureNumerator)
         try container.encodeIfPresent(timeSignatureDenominator, forKey: .timeSignatureDenominator)
+        try container.encodeIfPresent(baseKeyRaw, forKey: .baseKeyRaw)
         try container.encode(transposeSemitones, forKey: .transposeSemitones)
         try container.encode(transposeHighQuality, forKey: .transposeHighQuality)
         try container.encode(dynamicCuesEnabled, forKey: .dynamicCuesEnabled)
@@ -51,6 +56,7 @@ struct SongProjectMetadata: Codable, Hashable {
         song.bpm = bpm
         song.timeSignatureNumerator = timeSignatureNumerator
         song.timeSignatureDenominator = timeSignatureDenominator
+        song.baseKeyRaw = baseKeyRaw
         song.transposeSemitones = transposeSemitones
         song.transposeHighQuality = transposeHighQuality
         song.dynamicCuesEnabled = dynamicCuesEnabled
