@@ -13,6 +13,7 @@ final class RemoteSessionSettingsStore {
         static let hostingEnabled = "remoteSession.hostingEnabled"
         static let pin = "remoteSession.pin"
         static let displayName = "remoteSession.displayName"
+        static let instanceID = "remoteSession.instanceID"
     }
 
     private let defaults: UserDefaults
@@ -28,6 +29,9 @@ final class RemoteSessionSettingsStore {
     var displayName: String {
         didSet { defaults.set(displayName, forKey: Keys.displayName) }
     }
+
+    /// Stable per-install ID advertised over Bonjour so this device can ignore itself while browsing.
+    let instanceID: String
 
     private init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -48,8 +52,17 @@ final class RemoteSessionSettingsStore {
             defaults.set(resolvedName, forKey: Keys.displayName)
         }
 
+        let resolvedInstanceID: String
+        if let storedID = defaults.string(forKey: Keys.instanceID), !storedID.isEmpty {
+            resolvedInstanceID = storedID
+        } else {
+            resolvedInstanceID = UUID().uuidString
+            defaults.set(resolvedInstanceID, forKey: Keys.instanceID)
+        }
+
         pin = resolvedPIN
         displayName = resolvedName
+        instanceID = resolvedInstanceID
         isHostingEnabled = defaults.bool(forKey: Keys.hostingEnabled)
     }
 

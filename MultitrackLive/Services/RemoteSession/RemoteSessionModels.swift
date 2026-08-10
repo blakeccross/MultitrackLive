@@ -5,6 +5,8 @@ enum RemoteSessionBonjour {
     static let serviceType = "_mtliveremote._tcp"
     static let protocolVersion = 1
     static let pinLength = 4
+    /// Bonjour TXT key for a stable per-install ID used to hide this device from its own browse list.
+    static let instanceIDTXTKey = "iid"
 }
 
 struct RemoteSessionPeer: Identifiable, Hashable, Sendable {

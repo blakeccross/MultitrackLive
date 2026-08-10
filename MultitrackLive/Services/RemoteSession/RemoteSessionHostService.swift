@@ -27,6 +27,7 @@ final class RemoteSessionHostService {
     private var reader: RemoteSessionConnectionReader?
     private var expectedPIN = ""
     private var displayName = ""
+    private var instanceID = ""
     private var statePushTask: Task<Void, Never>?
     private var pendingConnection: NWConnection?
     private var authTimeoutTask: Task<Void, Never>?
@@ -40,11 +41,12 @@ final class RemoteSessionHostService {
 
     private init() {}
 
-    func startAdvertising(pin: String, displayName: String) {
+    func startAdvertising(pin: String, displayName: String, instanceID: String) {
         // Keep an active client session alive — restarting the listener drops TCP.
         if listener != nil, isAdvertising {
             expectedPIN = pin
             self.displayName = displayName
+            self.instanceID = instanceID
             if !isClientConnected {
                 statusMessage = "Waiting for a client…"
             }
@@ -54,14 +56,18 @@ final class RemoteSessionHostService {
         stopAdvertising()
         expectedPIN = pin
         self.displayName = displayName
+        self.instanceID = instanceID
         statusMessage = nil
 
         do {
             let parameters = RemoteSessionFraming.makeTCPParameters()
             let listener = try NWListener(using: parameters)
+            var txtRecord = NWTXTRecord()
+            txtRecord[RemoteSessionBonjour.instanceIDTXTKey] = instanceID
             listener.service = NWListener.Service(
                 name: displayName,
-                type: RemoteSessionBonjour.serviceType
+                type: RemoteSessionBonjour.serviceType,
+                txtRecord: txtRecord
             )
             listener.stateUpdateHandler = { [weak self] state in
                 Task { @MainActor in

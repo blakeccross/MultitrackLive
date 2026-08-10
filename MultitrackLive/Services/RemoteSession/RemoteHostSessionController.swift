@@ -66,7 +66,11 @@ final class RemoteHostSessionController {
         if settings.isHostingEnabled {
             // startAdvertising is a no-op restart when already advertising,
             // so this is safe to call from frequent live UI syncs.
-            host.startAdvertising(pin: settings.pin, displayName: settings.displayName)
+            host.startAdvertising(
+                pin: settings.pin,
+                displayName: settings.displayName,
+                instanceID: settings.instanceID
+            )
         } else if host.isAdvertising {
             // Intentionally end the session when hosting is turned off.
             host.stopAdvertising()

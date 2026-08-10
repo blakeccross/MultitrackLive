@@ -62,7 +62,7 @@ final class RemoteSessionClientService {
         lastError = nil
         discoveredPeers = []
 
-        let descriptor = NWBrowser.Descriptor.bonjour(
+        let descriptor = NWBrowser.Descriptor.bonjourWithTXTRecord(
             type: RemoteSessionBonjour.serviceType,
             domain: nil
         )
@@ -252,8 +252,26 @@ final class RemoteSessionClientService {
     }
 
     private func handleBrowseResults(_ results: Set<NWBrowser.Result>) {
+        let settings = RemoteSessionSettingsStore.shared
+        let localInstanceID = settings.instanceID
+        let localName = settings.displayName
+        let hostingLocally = settings.isHostingEnabled && RemoteSessionHostService.shared.isAdvertising
+
         discoveredPeers = results.compactMap { result in
             guard case .service(let name, _, _, _) = result.endpoint else { return nil }
+
+            // Prefer the advertised instance ID so we never list this device as a join target.
+            if case .bonjour(let txtRecord) = result.metadata,
+               let peerInstanceID = txtRecord[RemoteSessionBonjour.instanceIDTXTKey],
+               peerInstanceID == localInstanceID {
+                return nil
+            }
+
+            // Fallback for hosts that predate the TXT instance ID (same display name while hosting).
+            if hostingLocally, name == localName {
+                return nil
+            }
+
             return RemoteSessionPeer(
                 id: String(describing: result.endpoint),
                 name: name,
