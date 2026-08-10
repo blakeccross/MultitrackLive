@@ -80,13 +80,12 @@ struct SharedTransportControlButtons: View {
                 onToggleLoop()
             }
         }
-        .padding(.horizontal, 3)
         .frame(height: buttonSize)
         .background {
-            RoundedRectangle(cornerRadius: buttonSize * 0.16, style: .continuous)
+            RoundedRectangle(cornerRadius: buttonSize * 0.14, style: .continuous)
                 .fill(Color.black.opacity(0.30))
                 .overlay {
-                    RoundedRectangle(cornerRadius: buttonSize * 0.16, style: .continuous)
+                    RoundedRectangle(cornerRadius: buttonSize * 0.14, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.055), lineWidth: 0.5)
                 }
         }
