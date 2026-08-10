@@ -76,7 +76,7 @@ struct LiveSetlistSongRow: View {
 
             Text(bpmText ?? "")
                 .font(.caption.monospaced().weight(.medium))
-                .foregroundStyle(AppColors.textTertiary)
+                .foregroundStyle(isCurrent ? AppColors.textSecondary : AppColors.textTertiary)
                 .frame(width: 64, alignment: .trailing)
                 .accessibilityLabel(bpmText.map { "\($0)" } ?? "")
                 .accessibilityHidden(bpmText == nil)
@@ -92,6 +92,7 @@ struct LiveSetlistSongRow: View {
         .padding(.horizontal, AppSpacing.sm)
         .padding(.vertical, AppSpacing.sm)
         .frame(maxWidth: .infinity, minHeight: isCurrent ? 64 : 56, alignment: .leading)
+        .contentShape(Rectangle())
         .opacity(isFinished ? 0.55 : 1)
     }
 }
@@ -213,12 +214,13 @@ enum LiveSetlistDurationFormat {
 
 private struct LiveSetlistReorderHandle: View {
     let accessibilityNoun: String
+    var isCurrent: Bool = false
     let onDragBegan: () -> NSItemProvider
 
     var body: some View {
         Image(systemName: "line.3.horizontal")
             .font(.body.weight(.semibold))
-            .foregroundStyle(AppColors.textTertiary)
+            .foregroundStyle(isCurrent ? AppColors.textSecondary : AppColors.textTertiary)
             .frame(width: 36)
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
@@ -236,6 +238,7 @@ private struct LiveSetlistReorderHandle: View {
 /// iOS uses the native edit-mode control in the same trailing slot.
 private struct LiveSetlistTrailingReorderHandleModifier: ViewModifier {
     let accessibilityNoun: String
+    var isCurrent: Bool = false
     let onDragBegan: () -> NSItemProvider
 
     func body(content: Content) -> some View {
@@ -244,6 +247,7 @@ private struct LiveSetlistTrailingReorderHandleModifier: ViewModifier {
             #if os(macOS)
             LiveSetlistReorderHandle(
                 accessibilityNoun: accessibilityNoun,
+                isCurrent: isCurrent,
                 onDragBegan: onDragBegan
             )
             #endif
@@ -267,6 +271,31 @@ struct LiveSetlistListChromeModifier: ViewModifier {
     }
 }
 
+private struct LiveSetlistSongRowChromeModifier: ViewModifier {
+    let isDragging: Bool
+    let isCurrent: Bool
+    @State private var isHovered = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isDragging ? 0.3 : 1)
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            .listRowSeparator(.hidden)
+            .listRowBackground(rowBackground)
+            .onHover { isHovered = $0 }
+    }
+
+    private var rowBackground: Color {
+        if isCurrent {
+            return AppColors.accent
+        }
+        if isHovered {
+            return AppColors.surface
+        }
+        return Color.clear
+    }
+}
+
 extension View {
     func liveSetlistListChrome() -> some View {
         modifier(LiveSetlistListChromeModifier())
@@ -274,11 +303,13 @@ extension View {
 
     func liveSetlistTrailingReorderHandle(
         accessibilityNoun: String,
+        isCurrent: Bool = false,
         onDragBegan: @escaping () -> NSItemProvider
     ) -> some View {
         modifier(
             LiveSetlistTrailingReorderHandleModifier(
                 accessibilityNoun: accessibilityNoun,
+                isCurrent: isCurrent,
                 onDragBegan: onDragBegan
             )
         )
@@ -294,13 +325,12 @@ extension View {
     }
 
     func liveSetlistSongRowChrome(isDragging: Bool, isCurrent: Bool) -> some View {
-        self
-            .opacity(isDragging ? 0.3 : 1)
-            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-            .listRowSeparator(.hidden)
-            .listRowBackground(
-                isCurrent ? AppColors.accent.opacity(0.12) : Color.clear
+        modifier(
+            LiveSetlistSongRowChromeModifier(
+                isDragging: isDragging,
+                isCurrent: isCurrent
             )
+        )
     }
 }
 

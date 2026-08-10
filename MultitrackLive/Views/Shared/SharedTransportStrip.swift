@@ -37,6 +37,7 @@ struct SharedTransportControlButtons: View {
 
     private var transportActiveGreen: Color { Color(red: 0.49, green: 0.75, blue: 0.48) }
     private var transportFadeRed: Color { Color(red: 0.86, green: 0.28, blue: 0.28) }
+    private var transportLoopPurple: Color { Color(red: 0.72, green: 0.48, blue: 1.00) }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -73,6 +74,7 @@ struct SharedTransportControlButtons: View {
                 isActive: isLooping,
                 isEnabled: isLoaded && canLoop,
                 cornerRadius: buttonSize * 0.14,
+                activeBackgroundColor: transportLoopPurple,
                 accessibilityLabel: isLooping ? "End Loop" : "Loop Section"
             ) {
                 onToggleLoop()

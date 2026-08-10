@@ -57,6 +57,7 @@ struct SetlistTransitionBadge: View {
                 badgeContent
             }
             .buttonStyle(.plain)
+            .appLinkPointer()
         } else {
             badgeContent
         }

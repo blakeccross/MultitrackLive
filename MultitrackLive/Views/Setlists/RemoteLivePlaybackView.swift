@@ -419,28 +419,32 @@ struct RemoteLivePlaybackView: View {
                   let song = snapshot.songs.first(where: { $0.id == songID }),
                   let playbackIndex = entry.playbackIndex {
             let transition = remoteTransition(for: entry, in: workingEntries)
-            Button {
+            let selectSong = {
                 client.send(.goToSong(
                     index: playbackIndex,
                     autoPlay: state.isAudiblePlaying
                 ))
-            } label: {
-                LiveSetlistSongRow(
-                    title: song.name,
-                    durationText: LiveSetlistDurationFormat.clock(for: song.timelineDuration),
-                    index: playbackIndex,
-                    currentIndex: state.currentIndex,
-                    keyText: remoteSongKeyText(song),
-                    bpmText: remoteSongBPMText(song),
-                    transition: transition
-                )
             }
-            .buttonStyle(.plain)
-            #if os(macOS)
-            .focusEffectDisabled()
-            #endif
+
+            LiveSetlistSongRow(
+                title: song.name,
+                durationText: LiveSetlistDurationFormat.clock(for: song.timelineDuration),
+                index: playbackIndex,
+                currentIndex: state.currentIndex,
+                keyText: remoteSongKeyText(song),
+                bpmText: remoteSongBPMText(song),
+                transition: transition
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: selectSong)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(named: "Play", selectSong)
             .appLinkPointer()
-            .liveSetlistTrailingReorderHandle(accessibilityNoun: "song") {
+            .liveSetlistTrailingReorderHandle(
+                accessibilityNoun: "song",
+                isCurrent: playbackIndex == state.currentIndex
+            ) {
                 commitRemoteSetlistReorder()
                 draggedSetlistEntryID = entry.id
                 return NSItemProvider(object: "setlist-entry" as NSString)

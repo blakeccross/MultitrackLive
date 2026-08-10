@@ -1121,27 +1121,31 @@ struct LivePlaybackView: View {
         let playbackIndex = workingSetlist.playbackIndex(for: entry) ?? 0
         let transition = workingSetlist.hasNextSong(after: entry) ? entry.transition : nil
 
-        return Button {
+        let selectSong = {
             coordinator.goToSong(at: playbackIndex, autoPlay: coordinator.isAudiblePlaying)
-        } label: {
-            LiveSetlistSongRow(
-                song: song,
-                duration: songTimelineDuration(for: song),
-                index: playbackIndex,
-                currentIndex: coordinator.currentIndex,
-                hasMissingMedia: songHasMissingMedia(song),
-                transition: transition,
-                onOverlapBadgeTap: transition == .overlap
-                    ? { presentOverlapEditor(for: entry) }
-                    : nil
-            )
         }
-        .buttonStyle(.plain)
-        #if os(macOS)
-        .focusEffectDisabled()
-        #endif
+
+        return LiveSetlistSongRow(
+            song: song,
+            duration: songTimelineDuration(for: song),
+            index: playbackIndex,
+            currentIndex: coordinator.currentIndex,
+            hasMissingMedia: songHasMissingMedia(song),
+            transition: transition,
+            onOverlapBadgeTap: transition == .overlap
+                ? { presentOverlapEditor(for: entry) }
+                : nil
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: selectSong)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(named: "Play", selectSong)
         .appLinkPointer()
-        .liveSetlistTrailingReorderHandle(accessibilityNoun: "song") {
+        .liveSetlistTrailingReorderHandle(
+            accessibilityNoun: "song",
+            isCurrent: playbackIndex == coordinator.currentIndex
+        ) {
             commitSetlistReorder()
             draggedSetlistEntryID = entry.id
             return NSItemProvider(object: "setlist-entry" as NSString)
