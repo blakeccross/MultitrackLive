@@ -369,9 +369,7 @@ struct OutputRoutingSettingsForm: View {
         channelCount = AudioOutputDeviceService.channelCount(for: uid)
 
         scheduleRoutingChange {
-            if let uid {
-                _ = AudioOutputDeviceService.setSystemDefaultOutputDevice(uid: uid)
-            }
+            AudioEngineManager.shared.selectOutputDevice(uid: uid)
         }
     }
 

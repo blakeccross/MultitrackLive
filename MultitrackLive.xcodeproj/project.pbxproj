@@ -158,6 +158,7 @@
 		AA0000010000000000000116 /* TimecodeStartCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000116 /* TimecodeStartCalculatorTests.swift */; };
 		AA0000010000000000000117 /* LTCFrameEncoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000117 /* LTCFrameEncoderTests.swift */; };
 		AA0000010000000000000118 /* LTCGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000118 /* LTCGeneratorTests.swift */; };
+		AA0000010000000000000119 /* OutputRoutingManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000119 /* OutputRoutingManagerTests.swift */; };
 		AA0000010000000000000200 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; platformFilters = (macos, ); productRef = AA0000E20000000000000200 /* Sparkle */; };
 		AA0000010000000000000201 /* SparkleUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000201 /* SparkleUpdater.swift */; };
 		AA0000010000000000000202 /* ToolbarSharedBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000202 /* ToolbarSharedBackground.swift */; };
@@ -344,6 +345,7 @@
 		AA0000020000000000000116 /* TimecodeStartCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimecodeStartCalculatorTests.swift; sourceTree = "<group>"; };
 		AA0000020000000000000117 /* LTCFrameEncoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LTCFrameEncoderTests.swift; sourceTree = "<group>"; };
 		AA0000020000000000000118 /* LTCGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LTCGeneratorTests.swift; sourceTree = "<group>"; };
+		AA0000020000000000000119 /* OutputRoutingManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputRoutingManagerTests.swift; sourceTree = "<group>"; };
 		AA0000020000000000000200 /* MultitrackLive.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MultitrackLive.entitlements; sourceTree = "<group>"; };
 		AA0000020000000000000201 /* SparkleUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkleUpdater.swift; sourceTree = "<group>"; };
 		AA0000020000000000000202 /* ToolbarSharedBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolbarSharedBackground.swift; sourceTree = "<group>"; };
@@ -632,6 +634,7 @@
 				AA0000020000000000000116 /* TimecodeStartCalculatorTests.swift */,
 				AA0000020000000000000117 /* LTCFrameEncoderTests.swift */,
 				AA0000020000000000000118 /* LTCGeneratorTests.swift */,
+				AA0000020000000000000119 /* OutputRoutingManagerTests.swift */,
 				AA0000020000000000000050 /* ClickTrackSchedulerTests.swift */,
 				AA00000200000000000000FE /* ClickSongCreatorTests.swift */,
 				AA0000020000000000000103 /* SectionLoopTimingTests.swift */,
@@ -987,6 +990,7 @@
 				AA0000010000000000000116 /* TimecodeStartCalculatorTests.swift in Sources */,
 				AA0000010000000000000117 /* LTCFrameEncoderTests.swift in Sources */,
 				AA0000010000000000000118 /* LTCGeneratorTests.swift in Sources */,
+				AA0000010000000000000119 /* OutputRoutingManagerTests.swift in Sources */,
 				AA0000010000000000000050 /* ClickTrackSchedulerTests.swift in Sources */,
 				AA00000100000000000000FE /* ClickSongCreatorTests.swift in Sources */,
 				AA0000010000000000000103 /* SectionLoopTimingTests.swift in Sources */,

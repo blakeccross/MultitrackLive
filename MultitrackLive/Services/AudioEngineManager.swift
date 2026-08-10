@@ -44,7 +44,6 @@ final class AudioEngineManager {
     private let masterMixer = AVAudioMixerNode()
     private let announcementPlayer = AVAudioPlayerNode()
     private var isAnnouncementPlayerWired = false
-    private let outputRoutingManager = OutputRoutingManager()
     private let transport = AudioPlaybackTransport()
     private let midiScheduler: MIDIScheduler
     private var tracks: [UUID: TrackState] = [:]
@@ -61,7 +60,6 @@ final class AudioEngineManager {
     private var arrangementRemovedClips: [ArrangementRemovedClip] = []
     private var routingSnapshot: OutputRoutingSnapshot?
     private var groupMixSnapshot = GroupMixSnapshot.default
-    private var usesOutputRouting = false
     private var tempoChanges: [TempoChange] = []
     private var referenceBPM: Double = 0
     private var timeSignatureChanges: [TimeSignatureChange] = []
@@ -168,12 +166,10 @@ final class AudioEngineManager {
         stop()
         stopEngineForGraphChanges()
         teardownTracks()
-        outputRoutingManager.teardown(in: engine)
         masterArrangementSections = []
         arrangementSectionsByTrack = [:]
         arrangementRemovedClips = []
         routingSnapshot = routing
-        usesOutputRouting = routing != nil
 
         var loadedTracks: [UUID: TrackState] = [:]
         do {
@@ -182,7 +178,7 @@ final class AudioEngineManager {
             }
             tracks = loadedTracks
 
-            if usesOutputRouting, let routing {
+            if let routing {
                 try wireTrackOutputs(routing: routing)
             } else {
                 connectTracksToMasterMixer()
@@ -296,41 +292,10 @@ final class AudioEngineManager {
         )
     }
 
-    func applyOutputRouting(_ routing: OutputRoutingSnapshot) {
-        routingSnapshot = routing
-        usesOutputRouting = true
-
-        guard !tracks.isEmpty else {
-            if let uid = routing.deviceUID {
-                _ = AudioOutputDeviceService.setSystemDefaultOutputDevice(uid: uid)
-            }
-            return
-        }
-
-        let wasPlaying = isPlaying
-        let preservedTime = currentTime
-
-        if wasPlaying {
-            pause()
-        }
-
+    /// Selects the system/hardware output used by the shared playback engine.
+    func selectOutputDevice(uid: String?) {
         stopEngineForGraphChanges()
-
-        do {
-            try wireTrackOutputs(routing: routing)
-            duration = calculateEffectiveDuration()
-            transport.setDuration(duration)
-            syncTransportTempoMap()
-            currentTime = min(preservedTime, duration)
-            transport.setPausedTimeline(currentTime)
-
-            if wasPlaying {
-                play()
-            }
-        } catch {
-            isPlaying = false
-            stopTimer()
-        }
+        adoptOutputDevice(uid)
     }
 
     func setArrangement(
@@ -453,6 +418,8 @@ final class AudioEngineManager {
     /// between two engines.
     func setMasterVolume(_ volume: Float) {
         masterMixer.outputVolume = volume
+        // Multi-channel routing bypasses `masterMixer`; keep main mixer in sync.
+        engine.mainMixerNode.outputVolume = volume
     }
 
     /// Updates the transport timeline without swapping the audio graph.
@@ -959,8 +926,6 @@ final class AudioEngineManager {
             engine.detach(track.timePitchNode)
         }
         tracks.removeAll()
-        outputRoutingManager.teardown(in: engine)
-        usesOutputRouting = false
         routingSnapshot = nil
     }
 
@@ -981,41 +946,46 @@ final class AudioEngineManager {
     }
 
     private func wireTrackOutputs(routing: OutputRoutingSnapshot) throws {
-        if let uid = routing.deviceUID {
-            _ = AudioOutputDeviceService.setSystemDefaultOutputDevice(uid: uid)
-        }
-
-        let effectiveChannelCount = effectiveOutputChannelCount(routing: routing)
         stopEngineForGraphChanges()
-
+        adoptOutputDevice(routing.deviceUID)
         disconnectTrackOutputs()
-        connectTrackOutputs(routing: routing, effectiveChannelCount: effectiveChannelCount)
-
+        connectTrackOutputs(routing: routing, channelCount: outputChannelCount(for: routing))
         try startEngineIfNeeded()
     }
 
+    private func adoptOutputDevice(_ deviceUID: String?) {
+        guard let deviceUID else { return }
+        _ = AudioOutputDeviceService.setSystemDefaultOutputDevice(uid: deviceUID)
+        _ = AudioOutputDeviceService.bindOutputDevice(uid: deviceUID, to: engine)
+        AudioOutputDeviceService.applyStableBufferSize()
+        applyStableMaximumFramesToRender()
+    }
+
     private func disconnectTrackOutputs() {
-        outputRoutingManager.teardown(in: engine)
         for track in tracks.values {
-            engine.disconnectNodeOutput(track.playbackOutputNode)
+            engine.disconnectNodeOutput(track.memoryPlayer.sourceNode)
+            engine.disconnectNodeOutput(track.timePitchNode)
         }
     }
 
-    private func connectTrackOutputs(routing: OutputRoutingSnapshot, effectiveChannelCount: Int) {
-        if effectiveChannelCount > 2 {
+    private func connectTrackOutputs(routing: OutputRoutingSnapshot, channelCount: Int) {
+        restoreFullOutputGain()
+
+        if channelCount > 2 {
             let routeTracks = tracks.values.map { track in
                 (
-                    sourceNode: track.playbackOutputNode,
-                    format: track.sourceFormat,
+                    sourceNode: track.memoryPlayer.sourceNode as AVAudioNode,
                     destination: OutputRoutingStore.destination(for: track.groupID, snapshot: routing)
                 )
             }
 
-            if outputRoutingManager.applyChannelMapRouting(
+            if OutputRoutingManager.applyChannelMapRouting(
                 engine: engine,
                 tracks: routeTracks,
-                outputChannelCount: effectiveChannelCount
+                outputChannelCount: channelCount
             ) {
+                isAnnouncementPlayerWired = false
+                wireAnnouncementPlayerIfNeeded()
                 return
             }
         }
@@ -1024,7 +994,7 @@ final class AudioEngineManager {
     }
 
     private func connectTracksToMasterMixer() {
-        outputRoutingManager.teardown(in: engine)
+        restoreFullOutputGain()
 
         engine.disconnectNodeOutput(engine.mainMixerNode)
         let outputFormat = engine.outputNode.outputFormat(forBus: 0)
@@ -1038,41 +1008,22 @@ final class AudioEngineManager {
     }
 
     private func connectTrackToMasterMixer(_ track: TrackState) {
-        engine.disconnectNodeOutput(track.playbackOutputNode)
-        OutputRoutingManager.clearChannelMap(on: track.playbackOutputNode)
-        engine.connect(track.playbackOutputNode, to: masterMixer, format: track.sourceFormat)
+        engine.disconnectNodeOutput(track.memoryPlayer.sourceNode)
+        engine.disconnectNodeOutput(track.timePitchNode)
+        OutputRoutingManager.clearChannelMap(on: track.memoryPlayer.sourceNode)
+        OutputRoutingManager.clearChannelMap(on: track.timePitchNode)
+        engine.connect(track.memoryPlayer.sourceNode, to: track.timePitchNode, format: track.sourceFormat)
+        engine.connect(track.timePitchNode, to: masterMixer, format: track.sourceFormat)
     }
 
-    private func connectTrackToRoutedOutput(
-        _ track: TrackState,
-        routing: OutputRoutingSnapshot,
-        effectiveChannelCount: Int
-    ) {
-        let sampleRate = engine.outputNode.outputFormat(forBus: 0).sampleRate
-        guard let outputFormat = AVAudioFormat(
-            standardFormatWithSampleRate: sampleRate,
-            channels: AVAudioChannelCount(effectiveChannelCount)
-        ) else {
-            connectTrackToMasterMixer(track)
-            return
-        }
-
-        let destination = OutputRoutingStore.destination(for: track.groupID, snapshot: routing)
-        let map = OutputRoutingManager.channelMap(for: destination, outputChannelCount: effectiveChannelCount)
-        guard map.contains(where: { $0.intValue >= 0 }) else {
-            connectTrackToMasterMixer(track)
-            return
-        }
-
-        track.playbackOutputNode.auAudioUnit.channelMap = map
-        engine.disconnectNodeOutput(track.playbackOutputNode)
-        engine.connect(track.playbackOutputNode, to: engine.mainMixerNode, format: outputFormat)
+    private func restoreFullOutputGain() {
+        masterMixer.outputVolume = 1
+        engine.mainMixerNode.outputVolume = 1
     }
 
-    private func effectiveOutputChannelCount(routing: OutputRoutingSnapshot) -> Int {
-        let engineCount = Int(engine.outputNode.outputFormat(forBus: 0).channelCount)
+    private func outputChannelCount(for routing: OutputRoutingSnapshot) -> Int {
         let deviceCount = AudioOutputDeviceService.channelCount(for: routing.deviceUID)
-        return max(engineCount, routing.channelCount, deviceCount, 2)
+        return max(routing.channelCount, deviceCount, 2)
     }
 
     private func quantizeTimelineTime(_ time: TimeInterval) -> TimeInterval {

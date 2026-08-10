@@ -1,36 +1,40 @@
 import AVFoundation
 import Foundation
 
-final class OutputRoutingManager {
-    func teardown(in engine: AVAudioEngine) {
-        _ = engine
-    }
-
-    /// Routes each track to specific hardware outputs via AU channel maps on the main mixer.
-    /// Returns false when the device only supports stereo, so the caller can use the master-mixer path.
-    func applyChannelMapRouting(
+enum OutputRoutingManager {
+    /// Routes stereo source nodes to hardware outs via AU channel maps.
+    ///
+    /// Maps are applied on each `AVAudioSourceNode` after connecting with a
+    /// multi-channel format at the stem/engine sample rate. Returns `false` when
+    /// the device is stereo-only so the caller can use the master-mixer path.
+    @discardableResult
+    static func applyChannelMapRouting(
         engine: AVAudioEngine,
-        tracks: [(sourceNode: AVAudioNode, format: AVAudioFormat, destination: OutputDestination)],
+        tracks: [(sourceNode: AVAudioNode, destination: OutputDestination)],
         outputChannelCount: Int
     ) -> Bool {
-        guard outputChannelCount > 2 else { return false }
+        let channelCount = max(outputChannelCount, 2)
+        guard channelCount > 2 else { return false }
 
-        let sampleRate = engine.outputNode.outputFormat(forBus: 0).sampleRate
-        guard let outputFormat = AVAudioFormat(
-            standardFormatWithSampleRate: sampleRate,
-            channels: AVAudioChannelCount(outputChannelCount)
-        ) else { return false }
+        guard let multiChannelFormat = AudioOutputDeviceService.multiChannelFormat(
+            sampleRate: DecodedStemBuffer.engineSampleRate,
+            channelCount: channelCount
+        ) else {
+            return false
+        }
 
         engine.disconnectNodeOutput(engine.mainMixerNode)
-        engine.connect(engine.mainMixerNode, to: engine.outputNode, format: outputFormat)
+        engine.connect(engine.mainMixerNode, to: engine.outputNode, format: multiChannelFormat)
 
         var connectedTracks = 0
         for track in tracks {
-            let map = Self.channelMap(for: track.destination, outputChannelCount: outputChannelCount)
+            let map = channelMap(for: track.destination, outputChannelCount: channelCount)
             guard map.contains(where: { $0.intValue >= 0 }) else { continue }
 
+            engine.disconnectNodeOutput(track.sourceNode)
+            track.sourceNode.auAudioUnit.channelMap = nil
+            engine.connect(track.sourceNode, to: engine.mainMixerNode, format: multiChannelFormat)
             track.sourceNode.auAudioUnit.channelMap = map
-            engine.connect(track.sourceNode, to: engine.mainMixerNode, format: outputFormat)
             connectedTracks += 1
         }
 
@@ -43,12 +47,16 @@ final class OutputRoutingManager {
         case .stereoPair(let start):
             let left = start - 1
             let right = start
-            guard left >= 0, right < outputChannelCount else { return defaultStereoMap(outputChannelCount) }
+            guard left >= 0, right < outputChannelCount else {
+                return defaultStereoMap(outputChannelCount)
+            }
             map[left] = 0
             map[right] = 1
         case .mono(let channel):
             let index = channel - 1
-            guard index >= 0, index < outputChannelCount else { return defaultStereoMap(outputChannelCount) }
+            guard index >= 0, index < outputChannelCount else {
+                return defaultStereoMap(outputChannelCount)
+            }
             map[index] = 0
         }
         return map

@@ -34,6 +34,70 @@ enum AudioOutputDeviceService {
         #endif
     }
 
+    /// Binds the engine's output unit to a device (macOS). Falls back to the
+    /// Core Audio property API when `setDeviceID` is unavailable.
+    @discardableResult
+    static func bindOutputDevice(uid: String, to engine: AVAudioEngine) -> Bool {
+        #if os(macOS)
+        guard let deviceID = deviceID(forUID: uid) else { return false }
+        engine.prepare()
+
+        do {
+            try engine.outputNode.auAudioUnit.setDeviceID(deviceID)
+            applyStableBufferSize()
+            return true
+        } catch {
+            // Fall through to AudioUnitSetProperty.
+        }
+
+        guard let audioUnit = engine.outputNode.audioUnit else { return false }
+        var mutableID = deviceID
+        let size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &mutableID,
+            size
+        )
+        if status == noErr {
+            applyStableBufferSize()
+            return true
+        }
+        return false
+        #else
+        _ = (uid, engine)
+        return false
+        #endif
+    }
+
+    /// Multi-channel PCM format for the engine graph (standard layout, discrete fallback).
+    static func multiChannelFormat(sampleRate: Double, channelCount: Int) -> AVAudioFormat? {
+        let channels = max(channelCount, 2)
+        let rate = sampleRate > 0 ? sampleRate : DecodedStemBuffer.engineSampleRate
+
+        if let standard = AVAudioFormat(
+            standardFormatWithSampleRate: rate,
+            channels: AVAudioChannelCount(channels)
+        ) {
+            return standard
+        }
+
+        guard let layout = AVAudioChannelLayout(
+            layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | UInt32(channels)
+        ) else {
+            return nil
+        }
+
+        return AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: rate,
+            interleaved: false,
+            channelLayout: layout
+        )
+    }
+
     /// Prefer a large hardware / session buffer to reduce underruns during multitrack playback.
     @discardableResult
     static func applyStableBufferSize() -> Bool {
