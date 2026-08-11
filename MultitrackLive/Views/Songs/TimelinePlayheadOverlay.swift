@@ -22,7 +22,7 @@ struct TimelinePlayheadTimeReader<Content: View>: View {
 
     var body: some View {
         if audioEngine.isPlaying {
-            TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { _ in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { _ in
                 content(audioEngine.livePlayheadTime())
             }
         } else {
@@ -34,6 +34,7 @@ struct TimelinePlayheadTimeReader<Content: View>: View {
 // MARK: - Playhead layer
 
 /// Pins timeline content under a single playhead overlay so the handle and line stay in sync.
+/// Timeline content stays outside the display-link clock so the DAW lanes are not rebuilt every frame.
 struct TimelinePlayheadLayer<Content: View>: View {
     let duration: TimeInterval
     let contentWidth: CGFloat
@@ -42,9 +43,9 @@ struct TimelinePlayheadLayer<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        TimelinePlayheadTimeReader { playheadTime in
-            ZStack(alignment: .topLeading) {
-                content()
+        ZStack(alignment: .topLeading) {
+            content()
+            TimelinePlayheadTimeReader { playheadTime in
                 TimelinePlayheadOverlay(
                     playheadTime: playheadTime,
                     duration: duration,
@@ -52,8 +53,8 @@ struct TimelinePlayheadLayer<Content: View>: View {
                     height: height
                 )
             }
-            .frame(width: displayWidth, alignment: .leading)
         }
+        .frame(width: displayWidth, alignment: .leading)
     }
 }
 

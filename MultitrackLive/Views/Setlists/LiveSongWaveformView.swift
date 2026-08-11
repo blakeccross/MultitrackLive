@@ -250,8 +250,12 @@ struct LiveSongWaveformView: View {
     }
 
     var body: some View {
+        let waveformSegments = makeWaveformSegments(contentWidth: contentWidth)
+
         ZStack(alignment: .leading) {
-            sectionBackgrounds(contentWidth: contentWidth)
+            sectionColorBackgrounds(contentWidth: contentWidth)
+
+            animatedPlaybackOverlay(segments: waveformSegments, contentWidth: contentWidth)
 
             measureGrid(contentWidth: contentWidth)
 
@@ -259,10 +263,6 @@ struct LiveSongWaveformView: View {
 
             if isInteractive {
                 sectionTapTargets(contentWidth: contentWidth)
-            }
-
-            if showsPlayhead {
-                playhead(contentWidth: contentWidth)
             }
         }
         .frame(width: contentWidth, height: waveformHeight)
@@ -325,7 +325,7 @@ struct LiveSongWaveformView: View {
     }
 
     @ViewBuilder
-    private func sectionBackgrounds(contentWidth: CGFloat) -> some View {
+    private func sectionColorBackgrounds(contentWidth: CGFloat) -> some View {
         if usesArrangementLayout {
             ZStack(alignment: .leading) {
                 Rectangle()
@@ -347,29 +347,22 @@ struct LiveSongWaveformView: View {
                     let palette = ArrangementSectionPalette.colors(for: index)
                     let isCued = cuedSectionID == section.id
 
-                    ZStack(alignment: .topLeading) {
-                        Rectangle()
-                            .fill(
-                                palette.background.opacity(
-                                    isCued && cueFlashPhase
-                                        ? ArrangementSectionPalette.backgroundCueFillOpacity
-                                        : ArrangementSectionPalette.backgroundFillOpacity
-                                )
+                    Rectangle()
+                        .fill(
+                            palette.background.opacity(
+                                isCued && cueFlashPhase
+                                    ? ArrangementSectionPalette.backgroundCueFillOpacity
+                                    : ArrangementSectionPalette.backgroundFillOpacity
                             )
-
-                        sectionWaveform(
-                            for: section,
-                            segmentWidth: segmentWidth
                         )
-                    }
-                    .frame(width: segmentWidth, height: waveformHeight)
-                    .overlay {
-                        if isCued {
-                            Rectangle()
-                                .stroke(AppColors.accent.opacity(cueFlashPhase ? 1 : 0.35), lineWidth: 2)
+                        .frame(width: segmentWidth, height: waveformHeight)
+                        .overlay {
+                            if isCued {
+                                Rectangle()
+                                    .stroke(AppColors.accent.opacity(cueFlashPhase ? 1 : 0.35), lineWidth: 2)
+                            }
                         }
-                    }
-                    .offset(x: startX)
+                        .offset(x: startX)
                 }
 
                 ForEach(sections) { section in
@@ -385,21 +378,134 @@ struct LiveSongWaveformView: View {
                 }
             }
         } else {
-            ZStack {
-                Rectangle()
-                    .fill(Color.liveVoiceMemosBackground)
+            Rectangle()
+                .fill(Color.liveVoiceMemosBackground)
+                .frame(width: contentWidth, height: waveformHeight)
+        }
+    }
 
-                if !cachedDisplayPeaks.isEmpty || isLoadingWaveform {
-                    playbackAwareWaveform(
-                        bars: cachedDisplayPeaks,
-                        showsEmptyBaseline: isLoadingWaveform || showsFullSourceWaveform,
-                        width: contentWidth,
-                        timelineStart: 0,
-                        timelineEnd: safeTimelineDuration
+    private struct WaveformSegment: Identifiable {
+        let id: String
+        let bars: [Float]
+        let showsEmptyBaseline: Bool
+        let width: CGFloat
+        let offsetX: CGFloat
+        let timelineStart: TimeInterval
+        let timelineEnd: TimeInterval
+    }
+
+    private func makeWaveformSegments(contentWidth: CGFloat) -> [WaveformSegment] {
+        guard !cachedDisplayPeaks.isEmpty || isLoadingWaveform else { return [] }
+
+        // One full-width canvas (not one per arrangement section) so playback
+        // only redraws a single waveform pass on the display-link clock.
+        return [
+            WaveformSegment(
+                id: "full",
+                bars: cachedDisplayPeaks,
+                showsEmptyBaseline: isLoadingWaveform || showsFullSourceWaveform,
+                width: contentWidth,
+                offsetX: 0,
+                timelineStart: 0,
+                timelineEnd: safeTimelineDuration
+            )
+        ]
+    }
+
+    @ViewBuilder
+    private func animatedPlaybackOverlay(
+        segments: [WaveformSegment],
+        contentWidth: CGFloat
+    ) -> some View {
+        ZStack(alignment: .leading) {
+            ForEach(segments) { segment in
+                // Dim + bright canvases stay outside the display-link clock.
+                WaveformBarsCanvas(
+                    bars: segment.bars,
+                    showsEmptyBaseline: segment.showsEmptyBaseline,
+                    fillColor: .white.opacity(Self.unplayedWaveformOpacity),
+                    style: .voiceMemosBars
+                )
+                .frame(width: segment.width, height: waveformHeight)
+                .offset(x: segment.offsetX)
+
+                if showsPlayhead {
+                    WaveformBarsCanvas(
+                        bars: segment.bars,
+                        showsEmptyBaseline: segment.showsEmptyBaseline,
+                        fillColor: .white,
+                        style: .voiceMemosBars
+                    )
+                    .frame(width: segment.width, height: waveformHeight)
+                    .mask(alignment: .leading) {
+                        progressMask(
+                            segment: segment,
+                            animates: resolvedIsPlaying
+                        )
+                    }
+                    .offset(x: segment.offsetX)
+                }
+            }
+
+            if showsPlayhead {
+                if resolvedIsPlaying {
+                    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { _ in
+                        playheadMarker(
+                            at: resolvedPlayheadTime(live: true),
+                            contentWidth: contentWidth
+                        )
+                    }
+                } else {
+                    playheadMarker(
+                        at: resolvedPlayheadTime(live: false),
+                        contentWidth: contentWidth
                     )
                 }
             }
         }
+        .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func progressMask(segment: WaveformSegment, animates: Bool) -> some View {
+        if animates {
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { _ in
+                playedMaskRect(
+                    width: playedWidth(
+                        timelineStart: segment.timelineStart,
+                        timelineEnd: segment.timelineEnd,
+                        segmentWidth: segment.width,
+                        time: resolvedPlayheadTime(live: true)
+                    )
+                )
+            }
+        } else {
+            playedMaskRect(
+                width: playedWidth(
+                    timelineStart: segment.timelineStart,
+                    timelineEnd: segment.timelineEnd,
+                    segmentWidth: segment.width,
+                    time: resolvedPlayheadTime(live: false)
+                )
+            )
+        }
+    }
+
+    private func playedMaskRect(width: CGFloat) -> some View {
+        Rectangle()
+            .frame(width: max(0, width))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    private func playedWidth(
+        timelineStart: TimeInterval,
+        timelineEnd: TimeInterval,
+        segmentWidth: CGFloat,
+        time: TimeInterval
+    ) -> CGFloat {
+        let span = max(0.0001, timelineEnd - timelineStart)
+        let fraction = (time - timelineStart) / span
+        return min(max(0, CGFloat(fraction)), 1) * segmentWidth
     }
 
     @ViewBuilder
@@ -444,132 +550,6 @@ struct LiveSongWaveformView: View {
             }
             .allowsHitTesting(false)
         }
-    }
-
-    @ViewBuilder
-    private func sectionWaveform(
-        for section: ArrangementDisplaySection,
-        segmentWidth: CGFloat
-    ) -> some View {
-        if !cachedDisplayPeaks.isEmpty || isLoadingWaveform {
-            playbackAwareWaveform(
-                bars: sectionDisplayPeaks(
-                    timelineStart: section.timelineStartSeconds,
-                    timelineEnd: section.timelineEndSeconds
-                ),
-                showsEmptyBaseline: isLoadingWaveform || showsFullSourceWaveform,
-                width: segmentWidth,
-                timelineStart: section.timelineStartSeconds,
-                timelineEnd: section.timelineEndSeconds
-            )
-        }
-    }
-
-    private func sectionDisplayPeaks(
-        timelineStart: TimeInterval,
-        timelineEnd: TimeInterval
-    ) -> [Float] {
-        WaveformPeakResampler.peaksSlice(
-            from: cachedDisplayPeaks,
-            timelineStart: timelineStart,
-            timelineEnd: timelineEnd,
-            timelineDuration: safeTimelineDuration
-        )
-    }
-    /// Draws the waveform bars with a Voice Memos–style progress treatment: the
-    /// unplayed portion is dimmed and the played portion (left of the playhead)
-    /// is revealed at full opacity via an animated mask.
-    @ViewBuilder
-    private func playbackAwareWaveform(
-        bars: [Float],
-        showsEmptyBaseline: Bool,
-        width: CGFloat,
-        timelineStart: TimeInterval,
-        timelineEnd: TimeInterval
-    ) -> some View {
-        ZStack(alignment: .leading) {
-            waveformBarsLayer(
-                bars: bars,
-                showsEmptyBaseline: showsEmptyBaseline,
-                fillColor: .white.opacity(Self.unplayedWaveformOpacity)
-            )
-
-            if showsPlayhead {
-                waveformBarsLayer(
-                    bars: bars,
-                    showsEmptyBaseline: showsEmptyBaseline,
-                    fillColor: .white
-                )
-                .mask(alignment: .leading) {
-                    playedProgressMask(
-                        timelineStart: timelineStart,
-                        timelineEnd: timelineEnd,
-                        width: width
-                    )
-                }
-            }
-        }
-        .frame(width: width, height: waveformHeight)
-        .allowsHitTesting(false)
-    }
-
-    private func waveformBarsLayer(
-        bars: [Float],
-        showsEmptyBaseline: Bool,
-        fillColor: Color
-    ) -> some View {
-        WaveformBarsCanvas(
-            bars: bars,
-            showsEmptyBaseline: showsEmptyBaseline,
-            fillColor: fillColor,
-            style: .voiceMemosBars
-        )
-    }
-
-    @ViewBuilder
-    private func playedProgressMask(
-        timelineStart: TimeInterval,
-        timelineEnd: TimeInterval,
-        width: CGFloat
-    ) -> some View {
-        if resolvedIsPlaying {
-            TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { _ in
-                playedMaskRect(
-                    width: playedWidth(
-                        timelineStart: timelineStart,
-                        timelineEnd: timelineEnd,
-                        segmentWidth: width,
-                        time: resolvedPlayheadTime(live: true)
-                    )
-                )
-            }
-        } else {
-            playedMaskRect(
-                width: playedWidth(
-                    timelineStart: timelineStart,
-                    timelineEnd: timelineEnd,
-                    segmentWidth: width,
-                    time: resolvedPlayheadTime(live: false)
-                )
-            )
-        }
-    }
-
-    private func playedMaskRect(width: CGFloat) -> some View {
-        Rectangle()
-            .frame(width: max(0, width))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-    }
-
-    private func playedWidth(
-        timelineStart: TimeInterval,
-        timelineEnd: TimeInterval,
-        segmentWidth: CGFloat,
-        time: TimeInterval
-    ) -> CGFloat {
-        let span = max(0.0001, timelineEnd - timelineStart)
-        let fraction = (time - timelineStart) / span
-        return min(max(0, CGFloat(fraction)), 1) * segmentWidth
     }
 
     private func measureGrid(contentWidth: CGFloat) -> some View {
@@ -735,40 +715,6 @@ struct LiveSongWaveformView: View {
     }
 
     @ViewBuilder
-    private func playhead(contentWidth: CGFloat) -> some View {
-        Group {
-            if resolvedIsPlaying {
-                TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { _ in
-                    playheadMarker(
-                        at: resolvedPlayheadTime(live: true),
-                        contentWidth: contentWidth
-                    )
-                }
-            } else {
-                playheadMarker(
-                    at: resolvedPlayheadTime(live: false),
-                    contentWidth: contentWidth
-                )
-            }
-        }
-        .allowsHitTesting(false)
-    }
-
-    private func resolvedPlayheadTime(live: Bool) -> TimeInterval {
-        if let playheadTimeProvider {
-            return playheadTimeProvider()
-        }
-        return live ? audioEngine.livePlayheadTime() : audioEngine.currentTime
-    }
-
-    private var resolvedIsPlaying: Bool {
-        if let isPlayingProvider {
-            return isPlayingProvider()
-        }
-        return audioEngine.isPlaying
-    }
-
-    @ViewBuilder
     private func playheadMarker(at time: TimeInterval, contentWidth: CGFloat) -> some View {
         let x = TimelineLayout.xPosition(
             for: min(time, safeTimelineDuration),
@@ -805,6 +751,21 @@ struct LiveSongWaveformView: View {
                 .offset(x: clampedX - 1)
         }
         .frame(width: contentWidth, height: waveformHeight, alignment: .leading)
+        .allowsHitTesting(false)
+    }
+
+    private func resolvedPlayheadTime(live: Bool) -> TimeInterval {
+        if let playheadTimeProvider {
+            return playheadTimeProvider()
+        }
+        return live ? audioEngine.livePlayheadTime() : audioEngine.currentTime
+    }
+
+    private var resolvedIsPlaying: Bool {
+        if let isPlayingProvider {
+            return isPlayingProvider()
+        }
+        return audioEngine.isPlaying
     }
 
     private func refreshDisplayPeaks(contentWidth: CGFloat) {
@@ -916,6 +877,14 @@ struct LiveSetlistWaveformScrollView: View {
                 isUserScrolling: $isUserScrolling
             ))
             .onPreferenceChange(LiveSetlistPlayheadViewportXKey.self) { playheadX in
+                guard let playheadX else {
+                    playheadViewportX = nil
+                    return
+                }
+                // Avoid rebuilding scroll state on sub-pixel preference chatter.
+                if let playheadViewportX, abs(playheadViewportX - playheadX) < 1 {
+                    return
+                }
                 playheadViewportX = playheadX
                 attemptFollowRelatch()
             }
@@ -945,7 +914,7 @@ struct LiveSetlistWaveformScrollView: View {
             }
             .background {
                 if isFollowing {
-                    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+                    TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { context in
                         LiveSetlistFollowScrollDriver(date: context.date) {
                             guard isPlayingProvider() else { return }
                             scrollToFollowPlayhead(proxy, requirePlaying: true)

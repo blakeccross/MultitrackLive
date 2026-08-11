@@ -51,7 +51,6 @@ struct LivePlaybackView: View {
     @State private var didBootstrap = false
     @State private var coordinator = PlaybackCoordinator()
     @State private var viewModel = SetlistViewModel()
-    @Bindable private var audioEngine = AudioEngineManager.shared
     @State private var cuedSectionID: UUID?
     @State private var cueFireTime: TimeInterval?
     @State private var cueFlashPhase = false
@@ -904,7 +903,7 @@ struct LivePlaybackView: View {
                     guard let song = coordinator.song(for: songID) else { return }
                     coordinator.ensureWaveformSnapshot(for: song)
                 },
-                playheadTimeProvider: { coordinator.currentTime },
+                playheadTimeProvider: { coordinator.livePlayheadTime() },
                 isPlayingProvider: { coordinator.isPlaying },
                 cuedSectionID: cuedSectionID,
                 cueFlashPhase: cueFlashPhase,

@@ -20,10 +20,16 @@ struct WaveformBarsCanvas: View, Equatable {
     private let voiceMemosMinBarHeight: CGFloat = 2.0
 
     var body: some View {
-        Canvas { context, size in
+        let canvas = Canvas { context, size in
             drawWaveform(in: &context, size: size)
         }
-        .drawingGroup()
+        // `drawingGroup()` helps static waveforms, but forces a Metal offscreen
+        // pass every frame while `playheadFraction` animates during playback.
+        if playheadFraction == nil {
+            canvas.drawingGroup()
+        } else {
+            canvas
+        }
     }
 
     private func drawWaveform(in context: inout GraphicsContext, size: CGSize) {
