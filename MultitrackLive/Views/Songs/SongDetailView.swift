@@ -419,19 +419,21 @@ struct SongDetailView: View {
             do {
                 let importResult = try AbletonProjectImporter.importFrom(url: url)
                 let markers = AbletonProjectImporter.makeMarkers(from: importResult).sortedByTime
-                arrangementMarkers = markers
+                if !markers.isEmpty {
+                    arrangementMarkers = markers
+                    arrangementSlots = SongArrangementStore.defaultSlots(from: markers)
+                    clipTrims = []
+                    removedClips = []
+                    clipGaps = []
+                    clipRegions = []
+                    loopSlotIDs = []
+                }
                 try AbletonProjectImporter.apply(
                     importResult,
                     markers: markers,
                     to: activeSong,
                     context: modelContext
                 )
-                arrangementSlots = SongArrangementStore.defaultSlots(from: markers)
-                clipTrims = []
-                removedClips = []
-                clipGaps = []
-                clipRegions = []
-                loopSlotIDs = []
                 tempoChanges = [TempoChange(startMeasure: 1, bpm: importResult.bpm, sortOrder: 0)]
                 timeSignatureChanges = importResult.timeSignatures
                 persistSongState()
@@ -446,11 +448,12 @@ struct SongDetailView: View {
 
     private func importSummary(for result: AbletonProjectImporter.ImportResult) -> String {
         let bpmText = String(format: "%.1f BPM", result.bpm)
-        let sectionLines = result.sections.prefix(4).map { section in
-            "\(section.name) at \(formatMarkerTime(section.startSeconds))"
+        var message: String
+        if result.sections.isEmpty {
+            message = "Imported tempo at \(bpmText)."
+        } else {
+            message = "Imported \(result.sections.count) sections at \(bpmText)."
         }
-        let extraCount = max(0, result.sections.count - 4)
-        var message = "Imported \(result.sections.count) sections at \(bpmText)."
         let signatures = result.timeSignatures.sortedByMeasure
         if signatures.count == 1, let initial = signatures.first {
             message += " Time signature: \(initial.displayName)."
@@ -467,10 +470,16 @@ struct SongDetailView: View {
             }
             message += "."
         }
-        message += "\n"
-        message += sectionLines.joined(separator: "\n")
-        if extraCount > 0 {
-            message += "\n…and \(extraCount) more."
+        if !result.sections.isEmpty {
+            let sectionLines = result.sections.prefix(4).map { section in
+                "\(section.name) at \(formatMarkerTime(section.startSeconds))"
+            }
+            let extraCount = max(0, result.sections.count - 4)
+            message += "\n"
+            message += sectionLines.joined(separator: "\n")
+            if extraCount > 0 {
+                message += "\n…and \(extraCount) more."
+            }
         }
         return message
     }

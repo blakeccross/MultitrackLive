@@ -19,12 +19,20 @@ enum SongFolderImporter {
         var lines = [
             "Created \"\(result.song.name)\" with \(result.trackCount) track\(result.trackCount == 1 ? "" : "s")."
         ]
-        if result.sectionCount > 0, let bpm = result.bpm {
-            var line = "Imported \(result.sectionCount) sections from Ableton at \(String(format: "%.1f", bpm)) BPM."
-            if let timeSignature = result.song.timeSignatureDisplay {
-                line += " Time signature: \(timeSignature)."
+        if let bpm = result.bpm {
+            if result.sectionCount > 0 {
+                var line = "Imported \(result.sectionCount) sections from Ableton at \(String(format: "%.1f", bpm)) BPM."
+                if let timeSignature = result.song.timeSignatureDisplay {
+                    line += " Time signature: \(timeSignature)."
+                }
+                lines.append(line)
+            } else {
+                var line = "Imported Ableton tempo at \(String(format: "%.1f", bpm)) BPM."
+                if let timeSignature = result.song.timeSignatureDisplay {
+                    line += " Time signature: \(timeSignature)."
+                }
+                lines.append(line)
             }
-            lines.append(line)
         }
         return lines.joined(separator: "\n")
     }
@@ -191,22 +199,31 @@ enum SongFolderImporter {
                 to: song,
                 context: context
             )
-            let slots = SongArrangementStore.defaultSlots(from: markers)
-            let arrangement = SongArrangement(
-                slots: slots,
-                clipTrims: [],
-                removedClips: [],
-                clipGaps: [],
-                clipRegions: []
-            )
-            try SongProjectBridge.syncProjectFile(
-                for: song,
-                context: context,
-                markers: markers,
-                arrangement: arrangement,
-                tempoChanges: [TempoChange(startMeasure: 1, bpm: importResult.bpm, sortOrder: 0)],
-                timeSignatureChanges: importResult.timeSignatures
-            )
+            if markers.isEmpty {
+                try SongProjectBridge.syncProjectFile(
+                    for: song,
+                    context: context,
+                    tempoChanges: [TempoChange(startMeasure: 1, bpm: importResult.bpm, sortOrder: 0)],
+                    timeSignatureChanges: importResult.timeSignatures
+                )
+            } else {
+                let slots = SongArrangementStore.defaultSlots(from: markers)
+                let arrangement = SongArrangement(
+                    slots: slots,
+                    clipTrims: [],
+                    removedClips: [],
+                    clipGaps: [],
+                    clipRegions: []
+                )
+                try SongProjectBridge.syncProjectFile(
+                    for: song,
+                    context: context,
+                    markers: markers,
+                    arrangement: arrangement,
+                    tempoChanges: [TempoChange(startMeasure: 1, bpm: importResult.bpm, sortOrder: 0)],
+                    timeSignatureChanges: importResult.timeSignatures
+                )
+            }
             sectionCount = importResult.sections.count
             bpm = importResult.bpm
         }

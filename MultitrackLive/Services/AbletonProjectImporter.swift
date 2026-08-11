@@ -19,7 +19,6 @@ enum AbletonProjectImporter {
         case unreadableFile
         case invalidFormat
         case missingTempo
-        case noLocators
 
         var errorDescription: String? {
             switch self {
@@ -29,8 +28,6 @@ enum AbletonProjectImporter {
                 return "This file does not appear to be a valid Ableton Live Set."
             case .missingTempo:
                 return "No tempo was found in the Ableton project."
-            case .noLocators:
-                return "No arrangement locators were found in the Ableton project."
             }
         }
     }
@@ -54,10 +51,6 @@ enum AbletonProjectImporter {
 
         guard let bpm = parsed.bpm, bpm > 0 else {
             throw ImportError.missingTempo
-        }
-
-        guard !parsed.locators.isEmpty else {
-            throw ImportError.noLocators
         }
 
         let sortedLocators = parsed.locators.sorted { $0.beats < $1.beats }
@@ -272,8 +265,12 @@ enum AbletonProjectImporter {
 
     private static func parseProject(_ data: Data) throws -> ParsedProject {
         let bpm = try parseMasterTempo(from: data)
-        let locatorsXML = try extractArrangementLocatorsXML(from: data)
-        let locators = try parseLocatorsXML(locatorsXML)
+        let locators: [ParsedLocator]
+        if let locatorsXML = extractArrangementLocatorsXML(from: data) {
+            locators = try parseLocatorsXML(locatorsXML)
+        } else {
+            locators = []
+        }
         let timeSignatures = parseArrangementTimeSignatures(from: data)
         return ParsedProject(bpm: bpm, locators: locators, timeSignatures: timeSignatures)
     }
@@ -434,20 +431,21 @@ enum AbletonProjectImporter {
         return String(text[range])
     }
 
-    private static func extractArrangementLocatorsXML(from data: Data) throws -> Data {
+    private static func extractArrangementLocatorsXML(from data: Data) -> Data? {
         guard let outerLocators = findTag("Locators", in: data) else {
-            throw ImportError.noLocators
+            return nil
         }
 
         let searchStart = outerLocators.index(after: outerLocators.startIndex)
         guard searchStart < outerLocators.endIndex,
               let innerLocators = findTag("Locators", in: outerLocators, start: searchStart) else {
-            throw ImportError.noLocators
+            return nil
         }
 
         let innerString = String(data: innerLocators, encoding: .utf8) ?? ""
-        guard innerString.contains("<Locator") else {
-            throw ImportError.noLocators
+        // Require a real Locator element — `<Locators` alone must not count.
+        guard innerString.contains("<Locator ") || innerString.contains("<Locator>") else {
+            return nil
         }
 
         return innerLocators
@@ -472,14 +470,55 @@ enum AbletonProjectImporter {
     private static func findTag(_ tag: String, in data: Data, start: Data.Index) -> Data? {
         guard start < data.endIndex else { return nil }
 
-        guard
-            let startRange = data.range(of: Data("<\(tag)".utf8), in: start ..< data.endIndex),
-            let endRange = data.range(of: Data("</\(tag)>".utf8), in: startRange.lowerBound ..< data.endIndex)
-        else {
-            return nil
+        let openPrefix = Data("<\(tag)".utf8)
+        var searchStart = start
+
+        while searchStart < data.endIndex {
+            guard let startRange = data.range(of: openPrefix, in: searchStart ..< data.endIndex) else {
+                return nil
+            }
+
+            let afterTag = startRange.lowerBound + openPrefix.count
+            guard afterTag < data.endIndex else { return nil }
+
+            // Reject longer tag names that share this prefix (e.g. Locators vs Locator).
+            let boundary = data[afterTag]
+            let isTagBoundary =
+                boundary == UInt8(ascii: ">")
+                || boundary == UInt8(ascii: "/")
+                || boundary == UInt8(ascii: " ")
+                || boundary == UInt8(ascii: "\n")
+                || boundary == UInt8(ascii: "\t")
+                || boundary == UInt8(ascii: "\r")
+            guard isTagBoundary else {
+                searchStart = startRange.lowerBound + 1
+                continue
+            }
+
+            guard let closeAngle = data.range(
+                of: Data(">".utf8),
+                in: startRange.lowerBound ..< data.endIndex
+            ) else {
+                return nil
+            }
+
+            // Self-closing tag: <Tag ... />
+            if closeAngle.lowerBound > startRange.lowerBound,
+               data[data.index(before: closeAngle.lowerBound)] == UInt8(ascii: "/") {
+                return Data(data[startRange.lowerBound ..< closeAngle.upperBound])
+            }
+
+            guard let endRange = data.range(
+                of: Data("</\(tag)>".utf8),
+                in: closeAngle.upperBound ..< data.endIndex
+            ) else {
+                return nil
+            }
+
+            return Data(data[startRange.lowerBound ..< endRange.upperBound])
         }
 
-        return Data(data[startRange.lowerBound ..< endRange.upperBound])
+        return nil
     }
 }
 

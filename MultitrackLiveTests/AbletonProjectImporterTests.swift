@@ -74,6 +74,24 @@ final class AbletonProjectImporterTests: XCTestCase {
         XCTAssertEqual(result.bpm, 96, accuracy: 0.001)
     }
 
+    func testImportsTempoAndTimeSignatureWithoutLocators() throws {
+        let xml = abletonXML(
+            tempoBody: """
+            <Manual Value="79" />
+            """,
+            locators: [],
+            timeSignatureManual: 201
+        )
+
+        let result = try AbletonProjectImporter.importFromXMLData(Data(xml.utf8))
+        XCTAssertEqual(result.bpm, 79, accuracy: 0.001)
+        XCTAssertTrue(result.sections.isEmpty)
+        XCTAssertEqual(result.timeSignatures.count, 1)
+        XCTAssertEqual(result.timeSignatures[0].numerator, 4)
+        XCTAssertEqual(result.timeSignatures[0].denominator, 4)
+        XCTAssertEqual(result.timeSignatures[0].startMeasure, 1)
+    }
+
     func testImportsRealLive8MultitracksProject() throws {
         let url = URL(
             fileURLWithPath: NSString(
@@ -92,9 +110,27 @@ final class AbletonProjectImporterTests: XCTestCase {
         XCTAssertTrue(result.sections.contains(where: { $0.name == "Verse 1" }))
     }
 
+    func testImportsRealLive11ProjectWithoutLocators() throws {
+        let url = URL(
+            fileURLWithPath: NSString(
+                string: "~/Downloads/Files for testing/Small_E_79BPM68 Project/Small_E_79BPM68.als"
+            ).expandingTildeInPath
+        )
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw XCTSkip("Sample Live 11 project without locators not present on this machine")
+        }
+
+        let result = try AbletonProjectImporter.importFrom(url: url)
+        XCTAssertEqual(result.bpm, 79, accuracy: 0.001)
+        XCTAssertTrue(result.sections.isEmpty)
+        XCTAssertEqual(result.timeSignatures.first?.numerator, 4)
+        XCTAssertEqual(result.timeSignatures.first?.denominator, 4)
+    }
+
     private func abletonXML(
         tempoBody: String,
-        locators: [(name: String, beats: Double)]
+        locators: [(name: String, beats: Double)],
+        timeSignatureManual: Int = 201
     ) -> String {
         let locatorXML = locators.map { locator in
             """
@@ -116,9 +152,10 @@ final class AbletonProjectImporterTests: XCTestCase {
                     \(tempoBody)
                   </Tempo>
                   <TimeSignature>
+                    <Manual Value="\(timeSignatureManual)" />
                     <ArrangerAutomation>
                       <Events>
-                        <EnumEvent Time="-63072000" Value="201" />
+                        <EnumEvent Time="-63072000" Value="\(timeSignatureManual)" />
                       </Events>
                     </ArrangerAutomation>
                   </TimeSignature>
