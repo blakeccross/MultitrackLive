@@ -856,7 +856,7 @@ struct LiveSetlistWaveformScrollView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: true) {
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .center, spacing: laneSpacing) {
                     ForEach(timelineItems) { item in
                         timelineItemView(item)
