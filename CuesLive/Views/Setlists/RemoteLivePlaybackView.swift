@@ -769,30 +769,12 @@ private struct RemoteHostSongLibraryPanel: View {
     }
 
     private var headerBar: some View {
-        ZStack {
-            Text("Songs")
-                .appLargeTitle()
-
-            HStack {
-                Button {
-                    onDismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(AppColors.accent)
-                        .frame(width: 32, height: 32)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .appLinkPointer()
-                .accessibilityLabel("Close songs library")
-
-                Spacer()
-            }
-        }
-        .padding(.horizontal, AppSpacing.sm)
-        .padding(.top, AppSpacing.sm)
-        .padding(.bottom, AppSpacing.xs)
+        Text("Songs")
+            .appLargeTitle()
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, AppSpacing.sm)
+            .padding(.top, AppSpacing.sm)
+            .padding(.bottom, AppSpacing.xs)
     }
 
     private var searchBar: some View {

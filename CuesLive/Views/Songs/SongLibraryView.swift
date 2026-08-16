@@ -190,15 +190,6 @@ struct SongLibraryPanel: View {
                 .appLargeTitle()
 
             HStack {
-                Button {
-                    onDismiss()
-                } label: {
-                    headerIcon("chevron.left")
-                }
-                .buttonStyle(.plain)
-                .appLinkPointer()
-                .accessibilityLabel("Close songs library")
-
                 Spacer()
 
                 Button {
