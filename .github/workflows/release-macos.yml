@@ -1,6 +1,6 @@
 name: Release macOS
 
-# Builds a Developer ID–signed, notarized MultitrackLive.app, zips it for Sparkle,
+# Builds a Developer ID–signed, notarized cues.live.app, zips it for Sparkle,
 # generates appcast.xml, and uploads everything to a GitHub Release.
 #
 # Trigger:
@@ -53,7 +53,7 @@ jobs:
           xcrun --show-sdk-version --sdk macosx
 
       - name: Resolve Swift packages
-        run: xcodebuild -resolvePackageDependencies -project MultitrackLive.xcodeproj -scheme MultitrackLive
+        run: xcodebuild -resolvePackageDependencies -project CuesLive.xcodeproj -scheme CuesLive
 
       - name: Verify rubberband submodule
         run: |
@@ -129,11 +129,11 @@ jobs:
           # arm64-only keeps CI memory under control (Release whole-module + universal often OOMs).
           # ENABLE_PREVIEWS=NO avoids the Release/-O preview warning path.
           xcodebuild \
-            -project MultitrackLive.xcodeproj \
-            -scheme MultitrackLive \
+            -project CuesLive.xcodeproj \
+            -scheme CuesLive \
             -configuration Release \
             -destination "generic/platform=macOS" \
-            -archivePath "$PWD/build/MultitrackLive.xcarchive" \
+            -archivePath "$PWD/build/CuesLive.xcarchive" \
             -resultBundlePath "$PWD/build/Archive.xcresult" \
             MARKETING_VERSION="$MARKETING" \
             CURRENT_PROJECT_VERSION="$BUILD" \
@@ -152,11 +152,11 @@ jobs:
 
           xcodebuild \
             -exportArchive \
-            -archivePath "$PWD/build/MultitrackLive.xcarchive" \
+            -archivePath "$PWD/build/CuesLive.xcarchive" \
             -exportPath "$PWD/build/export" \
             -exportOptionsPlist ExportOptions-DeveloperID.plist
 
-          test -d build/export/MultitrackLive.app
+          test -d "build/export/cues.live.app"
 
       - name: Show compile errors on failure
         if: failure()
@@ -186,8 +186,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          APP="build/export/MultitrackLive.app"
-          SUBMIT_ZIP="build/MultitrackLive-notarize.zip"
+          APP="build/export/cues.live.app"
+          SUBMIT_ZIP="build/cues.live-notarize.zip"
           KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
 
           echo -n "$APPLE_API_KEY_BASE64" | base64 --decode -o "$KEY_PATH"
@@ -213,11 +213,11 @@ jobs:
 
           MARKETING="${{ steps.versions.outputs.marketing }}"
           BUILD="${{ steps.versions.outputs.build }}"
-          APP="build/export/MultitrackLive.app"
+          APP="build/export/cues.live.app"
           DIST="build/dist"
           mkdir -p "$DIST"
 
-          ZIP_NAME="MultitrackLive-${MARKETING}-${BUILD}.zip"
+          ZIP_NAME="cues.live-${MARKETING}-${BUILD}.zip"
           ZIP_PATH="$DIST/$ZIP_NAME"
 
           ditto -c -k --keepParent "$APP" "$ZIP_PATH"
@@ -235,7 +235,7 @@ jobs:
             python3 - <<'PY'
           import json
           from pathlib import Path
-          data = json.loads(Path("MultitrackLive.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved").read_text())
+          data = json.loads(Path("CuesLive.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved").read_text())
           for pin in data.get("pins", []):
               if pin.get("identity") == "sparkle":
                   print(pin["state"]["version"])
@@ -276,7 +276,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.versions.outputs.tag }}
-          name: Multitrack Live ${{ steps.versions.outputs.marketing }} (${{ steps.versions.outputs.build }})
+          name: cues.live ${{ steps.versions.outputs.marketing }} (${{ steps.versions.outputs.build }})
           generate_release_notes: true
           files: |
             ${{ env.ZIP_PATH }}

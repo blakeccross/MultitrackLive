@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<key>SUFeedURL</key>
+	<string>https://github.com/blakecross/CuesLiveApp/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>2X2PbZqvkrxWF7/kqTrVF5zXunQu0Ogf71qFggSUM4o=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>cues.live uses the local network so another device can discover and control a remote session on the same Wi‑Fi.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_cueslive._tcp</string>
+	</array>
+</dict>
+</plist>

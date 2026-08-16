@@ -1,6 +1,6 @@
-# Multitrack Live
+# cues.live
 
-Universal SwiftUI proof-of-concept for live multitrack stem playback on macOS and iPadOS.
+Universal SwiftUI for live multitrack stem playback on macOS and iPadOS.
 
 ## Features
 
@@ -12,7 +12,7 @@ Universal SwiftUI proof-of-concept for live multitrack stem playback on macOS an
 ## Open in Xcode
 
 ```bash
-open MultitrackLive.xcodeproj
+open CuesLive.xcodeproj
 ```
 
 Select the **My Mac** or **iPad** simulator destination and run.
@@ -27,7 +27,7 @@ Select the **My Mac** or **iPad** simulator destination and run.
 ## Architecture
 
 - SwiftData for song/setlist library index and app settings
-- `.mtlive` project files for song data (arrangement, tempo, media references)
-- `.mtliveshow` files for setlist references
+- `.cueslive` project files for song data (arrangement, tempo, media references)
+- `.cueshow` files for setlist references
 - `AVAudioEngine` + `AVAudioPlayerNode` for synced multitrack playback
 - Audio files referenced on disk, not copied into the app bundle
