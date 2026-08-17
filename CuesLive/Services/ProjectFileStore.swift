@@ -167,4 +167,10 @@ enum ShowFileStore {
         }
         try FileManager.default.moveItem(at: temporaryURL, to: url)
     }
+
+    static func displayName(fromShowURL url: URL) -> String {
+        let name = url.deletingPathExtension().lastPathComponent
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "Untitled" : name
+    }
 }

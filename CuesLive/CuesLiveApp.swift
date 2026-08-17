@@ -70,12 +70,13 @@ struct CuesLiveApp: App {
 struct LiveSetlistActions {
     var canSave = false
     var save: () -> Void = {}
+    var saveAs: () -> Void = {}
     var canNew = false
     var newSetlist: () -> Void = {}
+    var canOpen = false
+    var open: () -> Void = {}
     var canExportPackage = false
     var exportPackage: () -> Void = {}
-    var canOpenPackage = false
-    var openPackage: () -> Void = {}
 }
 
 struct SongEditorActions {
@@ -156,10 +157,24 @@ struct FileMenuCommands: Commands {
         }
 
         CommandGroup(replacing: .saveItem) {
+            Button("Open…") {
+                actions?.open()
+            }
+            .keyboardShortcut("o", modifiers: .command)
+            .disabled(actions?.canOpen != true)
+
+            Divider()
+
             Button("Save") {
                 actions?.save()
             }
             .keyboardShortcut("s", modifiers: .command)
+            .disabled(actions?.canSave != true)
+
+            Button("Save As…") {
+                actions?.saveAs()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
             .disabled(actions?.canSave != true)
 
             Button("Export Setlist Folder…") {
@@ -167,14 +182,6 @@ struct FileMenuCommands: Commands {
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
             .disabled(actions?.canExportPackage != true)
-
-            Divider()
-
-            Button("Open Setlist Folder…") {
-                actions?.openPackage()
-            }
-            .keyboardShortcut("o", modifiers: [.command, .shift])
-            .disabled(actions?.canOpenPackage != true)
         }
     }
 }

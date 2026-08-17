@@ -368,6 +368,7 @@ enum SongProjectBridge {
 
         if let existing = try findSetlist(id: document.id, in: context) {
             existing.showFilePath = url.path
+            existing.showFileBookmark = MediaReferenceResolver.makeBookmark(for: url)
             if existing.entries.isEmpty {
                 try importShowEntries(from: document, showFileURL: url, into: existing, context: context)
                 try context.save()
@@ -381,6 +382,7 @@ enum SongProjectBridge {
         setlist.createdAt = document.createdAt
         setlist.lastOpenedAt = document.lastOpenedAt
         setlist.showFilePath = url.path
+        setlist.showFileBookmark = MediaReferenceResolver.makeBookmark(for: url)
         context.insert(setlist)
 
         try importShowEntries(from: document, showFileURL: url, into: setlist, context: context)
@@ -442,14 +444,16 @@ enum SongProjectBridge {
 
     static func persistShow(
         for setlist: Setlist,
+        to url: URL? = nil,
         context: ModelContext
     ) throws {
-        let showURL: URL
-        if let path = setlist.showFilePath {
-            showURL = URL(fileURLWithPath: path)
-        } else {
-            showURL = ShowFileStore.defaultShowURL(for: setlist.name)
-            setlist.showFilePath = showURL.path
+        let previousPath = setlist.showFilePath
+        let showURL = resolvedShowWriteURL(for: setlist, preferred: url)
+        let didAccess = showURL.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                showURL.stopAccessingSecurityScopedResource()
+            }
         }
 
         for entry in setlist.sortedEntries {
@@ -459,7 +463,59 @@ enum SongProjectBridge {
 
         let document = try buildShowDocument(from: setlist, showFileURL: showURL)
         try ShowFileStore.save(document, to: showURL)
+        setlist.showFilePath = showURL.path
+        setlist.showFileBookmark = MediaReferenceResolver.makeBookmark(for: showURL)
         try context.save()
+        removeReplacedDefaultShow(previousPath: previousPath, newURL: showURL)
+    }
+
+    static func encodedShowData(for setlist: Setlist, context: ModelContext) throws -> Data {
+        let showURL = resolvedShowWriteURL(for: setlist, preferred: nil)
+        for entry in setlist.sortedEntries {
+            guard let song = entry.song else { continue }
+            try ensureProjectFile(for: song, context: context)
+        }
+        let document = try buildShowDocument(from: setlist, showFileURL: showURL)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(document)
+    }
+
+    private static func resolvedShowWriteURL(for setlist: Setlist, preferred: URL?) -> URL {
+        if let preferred {
+            return preferred
+        }
+        if let bookmark = setlist.showFileBookmark {
+            var isStale = false
+            #if os(macOS)
+            let options: URL.BookmarkResolutionOptions = MediaReferenceResolver.usesSecurityScopedBookmarks
+                ? [.withSecurityScope]
+                : []
+            #else
+            let options: URL.BookmarkResolutionOptions = []
+            #endif
+            if let url = try? URL(
+                resolvingBookmarkData: bookmark,
+                options: options,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) {
+                return url
+            }
+        }
+        if let path = setlist.showFilePath {
+            return URL(fileURLWithPath: path)
+        }
+        return ShowFileStore.defaultShowURL(for: setlist.name)
+    }
+
+    private static func removeReplacedDefaultShow(previousPath: String?, newURL: URL) {
+        guard let previousPath, previousPath != newURL.path else { return }
+        let previousURL = URL(fileURLWithPath: previousPath).standardizedFileURL
+        let showsDirectory = ShowFileStore.showsDirectory.standardizedFileURL
+        guard previousURL.deletingLastPathComponent() == showsDirectory else { return }
+        try? FileManager.default.removeItem(at: previousURL)
     }
 
     private static func displayFileName(for media: MediaReference) -> String {

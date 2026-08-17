@@ -60,11 +60,11 @@ struct LivePlaybackView: View {
     @State private var showingSongLibrary = false
     @State private var songToEditID: UUID?
     @State private var showingManageOutputs = false
-    @State private var showingSaveSetlistAlert = false
-    @State private var saveSetlistName = ""
-    @State private var showingSetlistPackageImporter = false
+    @State private var showingShowFileImporter = false
     @State private var showingSetlistPackageExporter = false
     @State private var setlistPackageDocument: SetlistPackageFileDocument?
+    @State private var showingShowFileExporter = false
+    @State private var showFileDocument: ShowFileDocument?
     @State private var songImportFeedback: SongImportFeedback?
     @State private var infoPanelHeight: CGFloat = 0
     @State private var mixerDetent: LiveGroupMixerDetent = .hidden
@@ -119,22 +119,14 @@ struct LivePlaybackView: View {
         .focusedValue(\.liveSetlistActions, LiveSetlistActions(
             canSave: activeSetlist != nil,
             save: presentSave,
+            saveAs: presentSaveAs,
             canNew: activeSetlist != nil,
             newSetlist: createUntitledSetlist,
+            canOpen: true,
+            open: presentOpen,
             canExportPackage: activeSetlist != nil,
-            exportPackage: presentExportSetlistPackage,
-            canOpenPackage: true,
-            openPackage: { showingSetlistPackageImporter = true }
+            exportPackage: presentExportSetlistPackage
         ))
-        .alert("Save Setlist", isPresented: $showingSaveSetlistAlert) {
-            TextField("Setlist name", text: $saveSetlistName)
-            Button("Save") {
-                saveSetlist()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Enter a name for this setlist.")
-        }
         .alert("Missing Audio Files", isPresented: $showingMissingMediaAlert) {
             Button("Relink…") {
                 presentMissingMediaRelink(for: nil)
@@ -263,11 +255,11 @@ struct LivePlaybackView: View {
                 sync: { syncRemoteHostSession(for: setlist) }
             ))
             .fileImporter(
-                isPresented: $showingSetlistPackageImporter,
-                allowedContentTypes: [.folder],
+                isPresented: $showingShowFileImporter,
+                allowedContentTypes: [ProjectUTType.showProjectType],
                 allowsMultipleSelection: false
             ) { result in
-                handleSetlistPackageImport(result)
+                handleShowFileImport(result)
             }
             .fileExporter(
                 isPresented: $showingSetlistPackageExporter,
@@ -276,6 +268,14 @@ struct LivePlaybackView: View {
                 defaultFilename: setlistPackageExportFileName
             ) { result in
                 handleSetlistPackageExportResult(result)
+            }
+            .fileExporter(
+                isPresented: $showingShowFileExporter,
+                document: showFileDocument,
+                contentType: ProjectUTType.showProjectType,
+                defaultFilename: setlistSaveFileName
+            ) { result in
+                handleShowFileExportResult(result)
             }
             .sheet(item: $overlapEditorContext) { context in
                 SetlistOverlapEditorView(
@@ -530,6 +530,18 @@ struct LivePlaybackView: View {
         }
     }
 
+    private var setlistSaveFileName: String {
+        let raw = (activeSetlist?.name ?? "Setlist")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>")
+        let cleaned = (raw.isEmpty || raw.caseInsensitiveCompare(Setlist.untitledName) == .orderedSame
+            ? "Setlist"
+            : raw)
+            .components(separatedBy: invalid)
+            .joined(separator: "-")
+        return cleaned
+    }
+
     private var setlistPackageExportFileName: String {
         let raw = (activeSetlist?.name ?? "Setlist")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -604,34 +616,71 @@ struct LivePlaybackView: View {
         }
     }
 
-    private func handleSetlistPackageImport(_ result: Result<[URL], Error>) {
+    private func handleShowFileImport(_ result: Result<[URL], Error>) {
         switch result {
         case .failure(let error):
             songImportFeedback = .failure(error.localizedDescription)
         case .success(let urls):
-            guard let packageURL = urls.first else { return }
-            do {
-                let setlist = try SetlistPackageStore.importPackage(
-                    from: packageURL,
-                    into: modelContext
-                )
-                if setlist.id == activeSetlistID {
-                    clearMarkerCue()
-                    sectionLoop.reset()
-                    groupMixFade.cancel()
-                    coordinator.stop()
-                    markSetlistOpened(setlist)
-                    coordinator.configure(setlist: setlist)
-                    ignoredMissingMediaPromptForSetlistID = nil
-                    promptForMissingMediaIfNeeded(in: setlist)
-                } else {
-                    ignoredMissingMediaPromptForSetlistID = nil
-                    switchToSetlist(setlist)
-                }
-                songImportFeedback = .success("Opened setlist folder “\(setlist.name)”.")
-            } catch {
-                songImportFeedback = .failure(error.localizedDescription)
+            guard let url = urls.first else { return }
+            openShowFile(at: url)
+        }
+    }
+
+    private func presentOpen() {
+        #if os(macOS)
+        DispatchQueue.main.async {
+            presentOpenSetlistPanel()
+        }
+        #else
+        showingShowFileImporter = true
+        #endif
+    }
+
+    #if os(macOS)
+    private func presentOpenSetlistPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.title = "Open Setlist"
+        panel.message = "Choose a cues.live setlist file (.cueshow)."
+        panel.prompt = "Open"
+        panel.allowedContentTypes = [ProjectUTType.showProjectType]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        openShowFile(at: url)
+    }
+    #endif
+
+    private func openShowFile(at url: URL) {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                url.stopAccessingSecurityScopedResource()
             }
+        }
+
+        do {
+            let setlist = try SongProjectBridge.importShow(from: url, into: modelContext)
+            activateOpenedSetlist(setlist)
+        } catch {
+            songImportFeedback = .failure(error.localizedDescription)
+        }
+    }
+
+    private func activateOpenedSetlist(_ setlist: Setlist) {
+        if setlist.id == activeSetlistID {
+            clearMarkerCue()
+            sectionLoop.reset()
+            groupMixFade.cancel()
+            coordinator.stop()
+            markSetlistOpened(setlist)
+            coordinator.configure(setlist: setlist)
+            ignoredMissingMediaPromptForSetlistID = nil
+            promptForMissingMediaIfNeeded(in: setlist)
+        } else {
+            ignoredMissingMediaPromptForSetlistID = nil
+            switchToSetlist(setlist)
         }
     }
 
@@ -743,15 +792,27 @@ struct LivePlaybackView: View {
         }
 
         Button {
-            presentExportSetlistPackage()
+            presentOpen()
         } label: {
-            Label("Export Setlist Folder…", systemImage: "square.and.arrow.up")
+            Label("Open…", systemImage: "folder")
         }
 
         Button {
-            showingSetlistPackageImporter = true
+            presentSave()
         } label: {
-            Label("Open Setlist Folder…", systemImage: "square.and.arrow.down")
+            Label("Save", systemImage: "tray.and.arrow.down")
+        }
+
+        Button {
+            presentSaveAs()
+        } label: {
+            Label("Save As…", systemImage: "square.and.arrow.down.on.square")
+        }
+
+        Button {
+            presentExportSetlistPackage()
+        } label: {
+            Label("Export Setlist Folder…", systemImage: "square.and.arrow.up")
         }
     }
 
@@ -830,24 +891,92 @@ struct LivePlaybackView: View {
 
     private func presentSave() {
         guard let setlist = activeSetlist else { return }
-        if setlist.isDraft {
-            saveSetlistName = ""
-            showingSaveSetlistAlert = true
+        if setlist.isDraft || setlist.showFilePath == nil {
+            presentSaveLocationPicker(isSaveAs: false)
         } else {
-            try? modelContext.save()
-            try? SongProjectBridge.persistShow(for: setlist, context: modelContext)
+            saveSetlistInPlace()
         }
     }
 
-    private func saveSetlist() {
-        guard let setlist = activeSetlist else { return }
-        let trimmed = saveSetlistName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+    private func presentSaveAs() {
+        guard activeSetlist != nil else { return }
+        presentSaveLocationPicker(isSaveAs: true)
+    }
 
-        setlist.name = trimmed
+    private func presentSaveLocationPicker(isSaveAs: Bool) {
+        #if os(macOS)
+        DispatchQueue.main.async {
+            presentSaveSetlistPanel(isSaveAs: isSaveAs)
+        }
+        #else
+        presentSaveSetlistExporter()
+        #endif
+    }
+
+    #if os(macOS)
+    private func presentSaveSetlistPanel(isSaveAs: Bool) {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.title = isSaveAs ? "Save Setlist As" : "Save Setlist"
+        panel.message = "Choose a name and location for this setlist."
+        panel.nameFieldLabel = "Name:"
+        panel.nameFieldStringValue = setlistSaveFileName
+        panel.allowedContentTypes = [ProjectUTType.showProjectType]
+        panel.allowsOtherFileTypes = false
+        panel.isExtensionHidden = false
+        panel.prompt = "Save"
+        if !isSaveAs {
+            panel.directoryURL = ShowFileStore.showsDirectory
+        } else if let path = activeSetlist?.showFilePath {
+            panel.directoryURL = URL(fileURLWithPath: path).deletingLastPathComponent()
+        }
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        commitSave(to: url)
+    }
+    #endif
+
+    private func presentSaveSetlistExporter() {
+        guard let setlist = activeSetlist else { return }
+        do {
+            let data = try SongProjectBridge.encodedShowData(for: setlist, context: modelContext)
+            showFileDocument = ShowFileDocument(data: data)
+            showingShowFileExporter = true
+        } catch {
+            songImportFeedback = .failure(error.localizedDescription)
+        }
+    }
+
+    private func handleShowFileExportResult(_ result: Result<URL, Error>) {
+        showFileDocument = nil
+        switch result {
+        case .success(let url):
+            commitSave(to: url)
+        case .failure(let error):
+            songImportFeedback = .failure(error.localizedDescription)
+        }
+    }
+
+    private func commitSave(to url: URL) {
+        guard let setlist = activeSetlist else { return }
+        setlist.name = ShowFileStore.displayName(fromShowURL: url)
         setlist.isDraft = false
-        try? modelContext.save()
-        try? SongProjectBridge.persistShow(for: setlist, context: modelContext)
+        do {
+            try modelContext.save()
+            try SongProjectBridge.persistShow(for: setlist, to: url, context: modelContext)
+        } catch {
+            songImportFeedback = .failure(error.localizedDescription)
+        }
+    }
+
+    private func saveSetlistInPlace() {
+        guard let setlist = activeSetlist else { return }
+        do {
+            try modelContext.save()
+            try SongProjectBridge.persistShow(for: setlist, context: modelContext)
+        } catch {
+            songImportFeedback = .failure(error.localizedDescription)
+        }
     }
 
     private func createUntitledSetlist() {
