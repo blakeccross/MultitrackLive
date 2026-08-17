@@ -49,6 +49,9 @@ enum TrackGroupStore {
                     existingGroup.paletteKey = paletteKey
                     didChange = true
                 }
+                if mergeMissingDefaultKeywords(keywords, into: existingGroup) {
+                    didChange = true
+                }
             } else {
                 let group = TrackGroup(
                     name: name,
@@ -91,6 +94,17 @@ enum TrackGroupStore {
         if didChange {
             try? context.save()
         }
+    }
+
+    @discardableResult
+    private static func mergeMissingDefaultKeywords(_ keywords: [String], into group: TrackGroup) -> Bool {
+        guard !keywords.isEmpty else { return false }
+        let existing = group.keywordList
+        let existingLowercased = Set(existing.map { $0.lowercased() })
+        let missing = keywords.filter { !existingLowercased.contains($0.lowercased()) }
+        guard !missing.isEmpty else { return false }
+        group.setKeywordList(existing + missing)
+        return true
     }
 
     static func sortedGroups(from context: ModelContext) -> [TrackGroup] {
@@ -280,17 +294,25 @@ enum TrackGroupStore {
             return [
                 "cymbals", "cymbal", "crash", "ride", "shaker", "tambourine",
                 "conga", "bongo", "maraca", "perc", "percussion", "cowbell",
-                "clap", "hi-hat", "hihat",
+                "clap", "hi-hat", "hihat", "loop", "fx"
             ]
         case "keys":
-            return ["piano", "organ", "rhodes", "wurli", "keyboard", "glockenspiel", "glock"]
+            return ["piano", "organ", "org", "rhodes", "wurli", "keyboard", "glockenspiel", "glock"]
         case "bgv":
             return [
                 "vocoder", "backing", "harmony", "choir",
-                "soprano", "alto", "tenor", "baritone", "mezzo",
+                "soprano", "alto", "tenor", "baritone", "mezzo", "bgv", "gangs"
+            ]
+        case "eg":
+            return [
+                "electric guitar", "electric gtr", "electric guitars",
+                "lead guitar", 
+                "rhythm guitar",
+                "clean guitar", "clean gtr",
+                "guitar", "guitars", "gtr",
             ]
         case "ag":
-            return ["acoustic"]
+            return ["acoustic guitar", "acoustic gtr", "ac guitar", "ac gtr", "acoustic"]
         case "strings":
             return ["strings", "violin", "viola", "cello", "cellos", "orchestra"]
         case "click":
