@@ -190,6 +190,7 @@
 		AA0000010000000000000327 /* InputMappingSessionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000327 /* InputMappingSessionViews.swift */; };
 		AA0000010000000000000328 /* InputMappingSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000328 /* InputMappingSettingsView.swift */; };
 		AA0000010000000000000329 /* InputMappingStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000329 /* InputMappingStoreTests.swift */; };
+		AA000001000000000000032A /* InputMappingControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000002000000000000032A /* InputMappingControllerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -390,6 +391,7 @@
 		AA0000020000000000000327 /* InputMappingSessionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMappingSessionViews.swift; sourceTree = "<group>"; };
 		AA0000020000000000000328 /* InputMappingSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMappingSettingsView.swift; sourceTree = "<group>"; };
 		AA0000020000000000000329 /* InputMappingStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMappingStoreTests.swift; sourceTree = "<group>"; };
+		AA000002000000000000032A /* InputMappingControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMappingControllerTests.swift; sourceTree = "<group>"; };
 		AA0000030000000000000001 /* cues.live.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "cues.live.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000030000000000000002 /* CuesLiveTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CuesLiveTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -691,6 +693,7 @@
 				AA00000200000000000000FC /* CueTrackGeneratorTests.swift */,
 				AA0000020000000000000102 /* SpeechSampleRendererTests.swift */,
 				AA0000020000000000000329 /* InputMappingStoreTests.swift */,
+				AA000002000000000000032A /* InputMappingControllerTests.swift */,
 			);
 			path = CuesLiveTests;
 			sourceTree = "<group>";
@@ -1061,6 +1064,7 @@
 				AA00000100000000000000FC /* CueTrackGeneratorTests.swift in Sources */,
 				AA0000010000000000000102 /* SpeechSampleRendererTests.swift in Sources */,
 				AA0000010000000000000329 /* InputMappingStoreTests.swift in Sources */,
+				AA000001000000000000032A /* InputMappingControllerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
