@@ -28,6 +28,11 @@ struct AppSettingsView: View {
                     Label("Remote", systemImage: "antenna.radiowaves.left.and.right")
                 }
 
+            mappingPane
+                .tabItem {
+                    Label("Mapping", systemImage: "keyboard")
+                }
+
             GeneralSettingsPane(updater: updater)
                 .tabItem {
                     Label("General", systemImage: "gearshape")
@@ -55,6 +60,10 @@ struct AppSettingsView: View {
 
     private var remoteSessionPane: some View {
         RemoteSessionSettingsView()
+    }
+
+    private var mappingPane: some View {
+        InputMappingSettingsView()
     }
 }
 

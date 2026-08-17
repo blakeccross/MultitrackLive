@@ -38,6 +38,7 @@ struct CuesLiveApp: App {
                 )
                 #endif
                 .preferredColorScheme(.dark)
+                .environment(InputMappingController.shared)
         }
         .modelContainer(modelContainer)
         #if os(macOS)
@@ -55,6 +56,7 @@ struct CuesLiveApp: App {
             SongMenuCommands()
             SongUndoCommands()
             ClipEditorCommands()
+            LiveMappingCommands()
         }
         #endif
 
@@ -62,6 +64,7 @@ struct CuesLiveApp: App {
         Settings {
             AppSettingsView(updater: sparkleUpdater.updater)
                 .modelContainer(modelContainer)
+                .environment(InputMappingController.shared)
         }
         #endif
     }
@@ -242,6 +245,22 @@ struct ClipEditorCommands: Commands {
             }
             .keyboardShortcut("j", modifiers: .command)
             .disabled(actions?.canJoin != true)
+        }
+    }
+}
+
+struct LiveMappingCommands: Commands {
+    @Bindable private var mapping = InputMappingController.shared
+
+    var body: some Commands {
+        CommandMenu("Controls") {
+            Button(mapping.session == .keyMapping ? "Done Key Mapping" : "Key Mapping") {
+                mapping.toggleKeyMapping()
+            }
+
+            Button(mapping.session == .midiMapping ? "Done MIDI Mapping" : "MIDI Mapping") {
+                mapping.toggleMIDIMapping()
+            }
         }
     }
 }

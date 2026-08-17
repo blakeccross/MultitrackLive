@@ -34,6 +34,7 @@ struct SharedTransportControlButtons: View {
     let onPause: () -> Void
     let onToggleLoop: () -> Void
     var onToggleFade: (() -> Void)? = nil
+    var enablesInputMapping: Bool = false
 
     private var transportActiveGreen: Color { Color(red: 0.49, green: 0.75, blue: 0.48) }
     private var transportFadeRed: Color { Color(red: 0.86, green: 0.28, blue: 0.28) }
@@ -49,6 +50,7 @@ struct SharedTransportControlButtons: View {
             ) {
                 onStop()
             }
+            .mappingControl(.stop, enabled: enablesInputMapping, cornerRadius: mappingCornerRadius)
 
             AppIconButton(
                 systemImage: isPlaying ? "pause.fill" : "play.fill",
@@ -65,6 +67,7 @@ struct SharedTransportControlButtons: View {
                     onPlay()
                 }
             }
+            .mappingControl(.playPause, enabled: enablesInputMapping, cornerRadius: mappingCornerRadius)
 
             fadeButton
 
@@ -79,6 +82,7 @@ struct SharedTransportControlButtons: View {
             ) {
                 onToggleLoop()
             }
+            .mappingControl(.loop, enabled: enablesInputMapping, cornerRadius: mappingCornerRadius)
         }
         .frame(height: buttonSize)
         .background {
@@ -91,16 +95,21 @@ struct SharedTransportControlButtons: View {
         }
     }
 
+    private var mappingCornerRadius: CGFloat { buttonSize * 0.14 }
+
     @ViewBuilder
     private var fadeButton: some View {
-        if isFading {
-            TimelineView(.animation(minimumInterval: 0.35)) { context in
-                let blinkDim = Int(context.date.timeIntervalSinceReferenceDate / 0.35) % 2 == 0
-                fadeButtonContent(opacity: blinkDim ? 0.28 : 1)
+        Group {
+            if isFading {
+                TimelineView(.animation(minimumInterval: 0.35)) { context in
+                    let blinkDim = Int(context.date.timeIntervalSinceReferenceDate / 0.35) % 2 == 0
+                    fadeButtonContent(opacity: blinkDim ? 0.28 : 1)
+                }
+            } else {
+                fadeButtonContent(opacity: 1)
             }
-        } else {
-            fadeButtonContent(opacity: 1)
         }
+        .mappingControl(.fade, enabled: enablesInputMapping, cornerRadius: mappingCornerRadius)
     }
 
     private func fadeButtonContent(opacity: Double) -> some View {
@@ -122,6 +131,21 @@ struct SharedTransportControlButtons: View {
     }
 }
 
+private extension View {
+    @ViewBuilder
+    func mappingControl(
+        _ action: MappableLiveAction,
+        enabled: Bool,
+        cornerRadius: CGFloat
+    ) -> some View {
+        if enabled {
+            mappableLiveControl(action, cornerRadius: cornerRadius)
+        } else {
+            self
+        }
+    }
+}
+
 struct SharedTransportStrip<BPMPopover: View, MeterPopover: View, KeyPopover: View>: View {
     let snapshot: TransportStatusSnapshot
     let buttonSize: CGFloat
@@ -138,6 +162,7 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View, KeyPopover: Vi
     var onToggleFade: (() -> Void)? = nil
     var onReadoutHeightChange: ((CGFloat) -> Void)? = nil
     var chrome: SharedTransportStripChrome = .full
+    var enablesInputMapping: Bool = false
 
     @Binding private var showingBPMPopover: Bool
     @Binding private var showingMeterPopover: Bool
@@ -165,6 +190,7 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View, KeyPopover: Vi
         onToggleFade: (() -> Void)? = nil,
         onReadoutHeightChange: ((CGFloat) -> Void)? = nil,
         chrome: SharedTransportStripChrome = .full,
+        enablesInputMapping: Bool = false,
         showingBPMPopover: Binding<Bool> = .constant(false),
         showingMeterPopover: Binding<Bool> = .constant(false),
         showingKeyPopover: Binding<Bool> = .constant(false),
@@ -187,6 +213,7 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View, KeyPopover: Vi
         self.onToggleFade = onToggleFade
         self.onReadoutHeightChange = onReadoutHeightChange
         self.chrome = chrome
+        self.enablesInputMapping = enablesInputMapping
         _showingBPMPopover = showingBPMPopover
         _showingMeterPopover = showingMeterPopover
         _showingKeyPopover = showingKeyPopover
@@ -256,7 +283,8 @@ struct SharedTransportStrip<BPMPopover: View, MeterPopover: View, KeyPopover: Vi
             onPlay: onPlay,
             onPause: onPause,
             onToggleLoop: onToggleLoop,
-            onToggleFade: onToggleFade
+            onToggleFade: onToggleFade,
+            enablesInputMapping: enablesInputMapping
         )
     }
 
@@ -352,7 +380,8 @@ extension SharedTransportStrip where BPMPopover == EmptyView, MeterPopover == Em
         isFading: Bool = false,
         onToggleFade: (() -> Void)? = nil,
         onReadoutHeightChange: ((CGFloat) -> Void)? = nil,
-        chrome: SharedTransportStripChrome = .full
+        chrome: SharedTransportStripChrome = .full,
+        enablesInputMapping: Bool = false
     ) {
         self.init(
             snapshot: snapshot,
@@ -370,6 +399,7 @@ extension SharedTransportStrip where BPMPopover == EmptyView, MeterPopover == Em
             onToggleFade: onToggleFade,
             onReadoutHeightChange: onReadoutHeightChange,
             chrome: chrome,
+            enablesInputMapping: enablesInputMapping,
             showingBPMPopover: .constant(false),
             showingMeterPopover: .constant(false),
             showingKeyPopover: .constant(false),

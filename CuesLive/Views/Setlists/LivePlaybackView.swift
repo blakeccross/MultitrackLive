@@ -375,6 +375,9 @@ struct LivePlaybackView: View {
                 }
                 handleSongEditorDismissed(newValue)
             }
+            .liveInputMappingSession(arePlaybackActionsEnabled: songToEditID == nil) { action in
+                handleMappedLiveAction(action)
+            }
             #if os(macOS)
             .navigationDestination(isPresented: songEditorDestination) {
                 songEditorDestinationContent(for: setlist)
@@ -714,6 +717,25 @@ struct LivePlaybackView: View {
         guard let section = loopSections.section(atTimeline: coordinator.currentTime) else { return }
         clearMarkerCue()
         sectionLoop.beginManualLoop(sectionID: section.id)
+    }
+
+    private func handleMappedLiveAction(_ action: MappableLiveAction) {
+        switch action {
+        case .stop:
+            stopPlayback()
+        case .playPause:
+            if coordinator.isPlaying {
+                coordinator.pause()
+            } else {
+                coordinator.play()
+            }
+        case .fade:
+            toggleGroupMixFade()
+        case .loop:
+            toggleSectionLoop()
+        case .goToSong(let index):
+            coordinator.goToSong(at: index, autoPlay: coordinator.isAudiblePlaying)
+        }
     }
 
     private func syncRemoteHostSession(for setlist: Setlist) {
@@ -1262,6 +1284,7 @@ struct LivePlaybackView: View {
             isDragging: isBeingDragged(entry),
             isCurrent: playbackIndex == coordinator.currentIndex
         )
+        .mappableLiveControl(.goToSong(playbackIndex), cornerRadius: AppRadius.sm)
         #if os(macOS)
         .onDrop(of: [.text], delegate: setlistDropDelegate(targetID: entry.id))
         #endif
@@ -1587,6 +1610,11 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
         .cuesHideSharedBackground()
 
         ToolbarItem(placement: .automatic) {
+            InputMappingToolbarMenu()
+        }
+        .cuesHideSharedBackground()
+
+        ToolbarItem(placement: .automatic) {
             mixerButton
         }
         .cuesHideSharedBackground()
@@ -1604,6 +1632,10 @@ private struct LiveSetlistToolbarContent<Switcher: View>: ToolbarContent {
             ToolbarItem(placement: .principal) {
                 transportInfoBar(chrome: transportChrome)
             }
+        }
+
+        ToolbarItem(placement: .topBarTrailing) {
+            InputMappingToolbarMenu()
         }
 
         ToolbarItem(placement: .topBarTrailing) {

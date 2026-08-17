@@ -33,6 +33,7 @@ struct RootView: View {
             // Ensure host session bindings exist before any remote client connects.
             _ = RemoteHostSessionController.shared
             RemoteHostSessionController.shared.syncAdvertising()
+            _ = InputMappingController.shared
         }
     }
 

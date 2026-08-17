@@ -27,6 +27,12 @@ struct DeviceSettingsSheet: View {
                                 .navigationTitle("Manage Outputs")
                             }
                         }
+                        ToolbarItem(placement: .topBarLeading) {
+                            NavigationLink("Mappings") {
+                                InputMappingSettingsView()
+                                    .navigationTitle("Mappings")
+                            }
+                        }
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Done") { dismiss() }
                                 .foregroundStyle(AppColors.accent)

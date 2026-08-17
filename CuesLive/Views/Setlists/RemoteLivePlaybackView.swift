@@ -94,6 +94,13 @@ struct RemoteLivePlaybackView: View {
                 #endif
             }
             ToolbarItem(placement: .primaryAction) {
+                InputMappingToolbarMenu()
+            }
+            #if os(macOS)
+            .cuesHideSharedBackground()
+            #endif
+
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     #if os(macOS)
                     mixerVisible.toggle()
@@ -129,6 +136,9 @@ struct RemoteLivePlaybackView: View {
         .appLockToolbarDisplayMode()
         #endif
         .appBackground(.primary)
+        .liveInputMappingSession { action in
+            handleMappedLiveAction(action)
+        }
         .task(id: state.cuedSectionID) {
             guard state.cuedSectionID != nil else {
                 cueFlashPhase = false
@@ -144,13 +154,22 @@ struct RemoteLivePlaybackView: View {
             DeviceSettingsSheet()
             #else
             NavigationStack {
-                RemoteSessionSettingsView()
-                    .navigationTitle("Remote Session")
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showingSettings = false }
-                        }
+                List {
+                    NavigationLink("Remote Session") {
+                        RemoteSessionSettingsView()
+                            .navigationTitle("Remote Session")
                     }
+                    NavigationLink("Mappings") {
+                        InputMappingSettingsView()
+                            .navigationTitle("Mappings")
+                    }
+                }
+                .navigationTitle("Settings")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showingSettings = false }
+                    }
+                }
             }
             .frame(minWidth: 480, minHeight: 420)
             #endif
@@ -242,6 +261,25 @@ struct RemoteLivePlaybackView: View {
         client.send(.addSetlistHeader(title: trimmed, atIndex: nil))
     }
 
+    private func handleMappedLiveAction(_ action: MappableLiveAction) {
+        switch action {
+        case .stop:
+            client.send(.stop)
+        case .playPause:
+            if state.isPlaying {
+                client.send(.pause)
+            } else {
+                client.send(.play)
+            }
+        case .fade:
+            client.send(.toggleFade)
+        case .loop:
+            client.send(.toggleSectionLoop)
+        case .goToSong(let index):
+            client.send(.goToSong(index: index, autoPlay: state.isAudiblePlaying))
+        }
+    }
+
     private func transportBar(chrome: SharedTransportStripChrome) -> some View {
         SharedTransportStrip(
             snapshot: transportStatus,
@@ -258,7 +296,8 @@ struct RemoteLivePlaybackView: View {
             isFading: state.isFading,
             onToggleFade: { client.send(.toggleFade) },
             onReadoutHeightChange: { infoPanelHeight = $0 },
-            chrome: chrome
+            chrome: chrome,
+            enablesInputMapping: true
         )
     }
 
@@ -444,6 +483,7 @@ struct RemoteLivePlaybackView: View {
                 isDragging: isBeingDragged(entry),
                 isCurrent: playbackIndex == state.currentIndex
             )
+            .mappableLiveControl(.goToSong(playbackIndex), cornerRadius: AppRadius.sm)
             #if os(macOS)
             .onDrop(of: [.text], delegate: remoteSetlistDropDelegate(targetID: entry.id))
             #endif

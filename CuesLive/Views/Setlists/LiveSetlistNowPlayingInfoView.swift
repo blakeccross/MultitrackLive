@@ -44,7 +44,8 @@ struct LiveSetlistNowPlayingInfoView: View {
             onReadoutHeightChange: { height in
                 infoPanelHeight = height
             },
-            chrome: chrome
+            chrome: chrome,
+            enablesInputMapping: true
         )
     }
 
