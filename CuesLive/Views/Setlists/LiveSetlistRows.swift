@@ -150,6 +150,11 @@ struct LiveSetlistAddMenu: View {
                     .contentShape(Rectangle())
             }
             .menuIndicator(.hidden)
+            .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
+            .fixedSize()
+            .liveSetlistAddMenuFittedSizing()
+            .appLinkPointer()
             .accessibilityLabel("Add to setlist")
             .help("Add to Setlist")
         }
@@ -157,6 +162,18 @@ struct LiveSetlistAddMenu: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, AppSpacing.md)
         .padding(.top, AppSpacing.sm)
+    }
+}
+
+private extension View {
+    /// iOS 26+ Menu defaults to flexible (full-width) button sizing.
+    @ViewBuilder
+    func liveSetlistAddMenuFittedSizing() -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            buttonSizing(.fitted)
+        } else {
+            self
+        }
     }
 }
 
