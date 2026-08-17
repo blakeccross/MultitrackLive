@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 #endif
@@ -35,6 +36,12 @@ struct EditView: View {
     @State private var showingMIDIDevicePicker = false
     @State private var showingMIDIDeviceEditor = false
     @State private var deviceBeingEdited: MIDIDevice?
+    @State private var showingAddTrackOptions = false
+    @State private var pendingAddTrackKind: AddTrackKind?
+    @State private var showingTrackImporter = false
+    @State private var showingAbletonImporter = false
+    @State private var importError: String?
+    @State private var abletonImportSummary: String?
     @State private var timelineZoom: CGFloat = 1
     @State private var timelineViewportWidth: CGFloat = 0
     @State private var hasSetInitialTimelineZoom = false
@@ -517,6 +524,143 @@ struct EditView: View {
         reconfigureMIDI()
     }
 
+    private func presentTrackImporter() {
+        #if os(macOS)
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = true
+            panel.allowedContentTypes = FileStore.supportedTypes
+            panel.prompt = "Add"
+            panel.message = "Choose audio files to add as tracks."
+            guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+            importAudioTracks(from: panel.urls)
+        }
+        #else
+        showingTrackImporter = true
+        #endif
+    }
+
+    private func presentAbletonImporter() {
+        #if os(macOS)
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = false
+            panel.allowedContentTypes = [AbletonProjectImporter.abletonLiveSetType]
+            panel.prompt = "Import"
+            panel.message = "Choose an Ableton Live Set."
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            importAbletonFile(from: url)
+        }
+        #else
+        showingAbletonImporter = true
+        #endif
+    }
+
+    private func performPendingAddTrack() {
+        guard let kind = pendingAddTrackKind else { return }
+        pendingAddTrackKind = nil
+        switch kind {
+        case .audio:
+            presentTrackImporter()
+        case .midi:
+            showingMIDIDevicePicker = true
+        case .ableton:
+            presentAbletonImporter()
+        }
+    }
+
+    private func handleTrackImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            importError = error.localizedDescription
+        case .success(let urls):
+            importAudioTracks(from: urls)
+        }
+    }
+
+    private func handleAbletonImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            importError = error.localizedDescription
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            importAbletonFile(from: url)
+        }
+    }
+
+    private func importAudioTracks(from urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        do {
+            let projectURL = try SongProjectBridge.ensureProjectFile(for: song, context: modelContext)
+            let tracks = try FileStore.linkTracks(
+                from: urls,
+                into: song,
+                projectFileURL: projectURL
+            )
+            performUndoableChange("Add Track") {
+                for track in tracks {
+                    modelContext.insert(track)
+                    song.tracks.append(track)
+                }
+                try? modelContext.save()
+                try? SongProjectBridge.syncProjectFile(for: song, context: modelContext)
+                TrackGroupStore.autoAssignGroups(for: song, in: modelContext)
+                persistProjectState()
+                refreshTimelineLayout()
+                syncPlayback()
+                viewModel.loadSong(context: modelContext)
+            }
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
+    private func importAbletonFile(from url: URL) {
+        do {
+            let importResult = try AbletonProjectImporter.importFrom(url: url)
+            let importedMarkers = AbletonProjectImporter.makeMarkers(from: importResult).sortedByTime
+            performUndoableChange("Import Ableton File") {
+                if !importedMarkers.isEmpty {
+                    arrangementMarkers = importedMarkers
+                    arrangementSlots = SongArrangementStore.defaultSlots(from: importedMarkers)
+                    clipTrims = []
+                    removedClips = []
+                    clipGaps = []
+                    clipRegions = []
+                    loopSlotIDs = []
+                }
+                try? AbletonProjectImporter.apply(
+                    importResult,
+                    markers: importedMarkers,
+                    to: song,
+                    context: modelContext
+                )
+                tempoChanges = [TempoChange(startMeasure: 1, bpm: importResult.bpm, sortOrder: 0)]
+                timeSignatureChanges = importResult.timeSignatures
+                persistProjectState()
+                refreshTimelineLayout()
+                syncPlayback()
+                viewModel.syncTempoMap(tempoChanges, timeSignatureChanges: timeSignatureChanges)
+                prepareSectionAnnouncements()
+            }
+            abletonImportSummary = abletonSummary(for: importResult)
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
+    private func abletonSummary(for result: AbletonProjectImporter.ImportResult) -> String {
+        let bpmText = String(format: "%.1f BPM", result.bpm)
+        if result.sections.isEmpty {
+            return "Imported tempo at \(bpmText)."
+        }
+        return "Imported \(result.sections.count) sections at \(bpmText)."
+    }
+
     private func editDevice(for track: MIDITrack) {
         guard let device = track.device else {
             showingMIDIDevicePicker = true
@@ -545,6 +689,31 @@ struct EditView: View {
         )
     }
 
+    private var emptyTracksPlaceholder: some View {
+        VStack(spacing: AppSpacing.md) {
+            AppEmptyState(
+                title: "No Tracks",
+                systemImage: "waveform",
+                description: "Add a track, MIDI lane, or Ableton file to get started."
+            )
+            AppPrimaryButton(title: "Add Track") {
+                showingAddTrackOptions = true
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private var addTrackFlowModifier: AddTrackFlowModifier {
+        AddTrackFlowModifier(
+            showingTrackImporter: $showingTrackImporter,
+            showingAbletonImporter: $showingAbletonImporter,
+            importError: $importError,
+            abletonImportSummary: $abletonImportSummary,
+            onImportTracks: handleTrackImport,
+            onImportAbleton: handleAbletonImport
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
 #if os(macOS)
@@ -556,12 +725,7 @@ struct EditView: View {
             if hasTimelineContent {
                 dawTimeline
             } else {
-                AppEmptyState(
-                    title: "No Tracks",
-                    systemImage: "waveform",
-                    description: "Import stems before editing, or add an Ableton file for section markers."
-                )
-                .frame(maxHeight: .infinity)
+                emptyTracksPlaceholder
             }
         }
         .background(Color.dawTimelineBackground)
@@ -677,6 +841,13 @@ struct EditView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingAddTrackOptions, onDismiss: performPendingAddTrack) {
+            AddTrackTypeSheet { kind in
+                pendingAddTrackKind = kind
+                showingAddTrackOptions = false
+            }
+        }
+        .modifier(addTrackFlowModifier)
         .sheet(item: $sectionPendingRename) { section in
             RenameSectionSheet(currentName: section.name) { newName in
                 applySectionRename(newName)
@@ -1917,15 +2088,17 @@ struct EditView: View {
 
                     Spacer(minLength: 0)
 
-                    Button { showingMIDIDevicePicker = true } label: {
+                    Button { showingAddTrackOptions = true } label: {
                         HStack(spacing: 2) {
                             Image(systemName: "plus")
-                            Text("MIDI")
+                            Text("Add Track")
                         }
                         .font(.system(size: 9, weight: .semibold))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
+                    .help("Add Track")
+                    .accessibilityLabel("Add Track")
                 }
                 .padding(.horizontal, 8)
             }
@@ -4079,6 +4252,130 @@ struct RenameSectionSheet: View {
         guard !trimmed.isEmpty else { return }
         onRename(trimmed)
         dismiss()
+    }
+}
+
+private enum AddTrackKind: CaseIterable, Identifiable {
+    case audio
+    case midi
+    case ableton
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .audio: "Track"
+        case .midi: "MIDI"
+        case .ableton: "Ableton File"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .audio: "waveform"
+        case .midi: "pianokeys"
+        case .ableton: "doc"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .audio: "Import audio stems"
+        case .midi: "Add a MIDI lane"
+        case .ableton: "Import sections and tempo"
+        }
+    }
+}
+
+private struct AddTrackTypeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onChoose: (AddTrackKind) -> Void
+
+    var body: some View {
+        AppSheetContainer {
+            NavigationStack {
+                List {
+                    Section {
+                        ForEach(AddTrackKind.allCases) { kind in
+                            Button {
+                                onChoose(kind)
+                            } label: {
+                                Label {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(kind.title)
+                                            .foregroundStyle(AppColors.textPrimary)
+                                        Text(kind.subtitle)
+                                            .font(.caption)
+                                            .foregroundStyle(AppColors.textTertiary)
+                                    }
+                                } icon: {
+                                    Image(systemName: kind.systemImage)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .scrollContentBackground(.hidden)
+                .navigationTitle("Add Track")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            dismiss()
+                        }
+                        .foregroundStyle(AppColors.textSecondary)
+                    }
+                }
+            }
+        }
+        .frame(minWidth: 360, minHeight: 280)
+    }
+}
+
+private struct AddTrackFlowModifier: ViewModifier {
+    @Binding var showingTrackImporter: Bool
+    @Binding var showingAbletonImporter: Bool
+    @Binding var importError: String?
+    @Binding var abletonImportSummary: String?
+    let onImportTracks: (Result<[URL], Error>) -> Void
+    let onImportAbleton: (Result<[URL], Error>) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .fileImporter(
+                isPresented: $showingTrackImporter,
+                allowedContentTypes: FileStore.supportedTypes,
+                allowsMultipleSelection: true
+            ) { result in
+                onImportTracks(result)
+            }
+            .fileImporter(
+                isPresented: $showingAbletonImporter,
+                allowedContentTypes: [AbletonProjectImporter.abletonLiveSetType],
+                allowsMultipleSelection: false
+            ) { result in
+                onImportAbleton(result)
+            }
+            .alert("Import Failed", isPresented: Binding(
+                get: { importError != nil },
+                set: { if !$0 { importError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(importError ?? "")
+            }
+            .alert("Ableton Import Complete", isPresented: Binding(
+                get: { abletonImportSummary != nil },
+                set: { if !$0 { abletonImportSummary = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(abletonImportSummary ?? "")
+            }
     }
 }
 
