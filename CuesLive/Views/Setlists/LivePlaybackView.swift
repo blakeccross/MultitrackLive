@@ -113,7 +113,7 @@ struct LivePlaybackView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .task {
+        .onAppear {
             bootstrapSetlistIfNeeded()
         }
         .focusedValue(\.liveSetlistActions, LiveSetlistActions(

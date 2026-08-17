@@ -38,9 +38,7 @@ struct SongDetailView: View {
     @State private var showingAbletonImporter = false
     @State private var abletonImportError: String?
     @State private var abletonImportSummary: String?
-    @State private var showingBakePrompt = false
     @State private var showingBakeSheet = false
-    @State private var shouldDismissAfterBake = false
     @State private var arrangementMarkers: [ArrangementMarker] = []
     @State private var arrangementSlots: [ArrangementSlot] = []
     @State private var clipTrims: [ArrangementClipTrim] = []
@@ -123,27 +121,8 @@ struct SongDetailView: View {
                 }
                 #endif
             }
-            .confirmationDialog(
-                "Bake for performance?",
-                isPresented: $showingBakePrompt,
-                titleVisibility: .visible
-            ) {
-                Button("Bake Now") {
-                    shouldDismissAfterBake = true
-                    showingBakeSheet = true
-                }
-                Button("Bake Later", role: .cancel) {
-                    dismiss()
-                }
-            } message: {
-                Text(bakePromptMessage)
-            }
             .sheet(isPresented: $showingBakeSheet) {
-                BakeSongSheet(song: activeSong) {
-                    if shouldDismissAfterBake {
-                        dismiss()
-                    }
-                }
+                BakeSongSheet(song: activeSong)
             }
             #if os(iOS)
             .sheet(isPresented: $showingSongLibrary) {
@@ -182,22 +161,13 @@ struct SongDetailView: View {
         .help("Back")
     }
 
-    private var bakePromptMessage: String {
-        let trackCount = activeSong.sortedTracks.count
-        return "This song has \(trackCount) tracks. Baking creates one stem per group for smoother live playback. You can still edit the original multitracks anytime."
-    }
-
     private var activeSong: Song {
         songs.first(where: { $0.id == selectedSongID }) ?? song
     }
 
     private func attemptDismiss() {
         persistSongState()
-        if SongBakeStore.needsBake(for: activeSong) {
-            showingBakePrompt = true
-        } else {
-            dismiss()
-        }
+        dismiss()
     }
 
     private var songDetailContent: some View {

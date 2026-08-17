@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct RootView: View {
-    @Environment(\.modelContext) private var modelContext
     @Bindable private var remoteClient = RemoteSessionClientService.shared
     @State private var showingDisconnectConfirm = false
 
@@ -33,10 +32,6 @@ struct RootView: View {
         .onAppear {
             // Ensure host session bindings exist before any remote client connects.
             _ = RemoteHostSessionController.shared
-            TrackGroupStore.ensureDefaults(in: modelContext)
-            OutputRoutingStore.ensureConfig(in: modelContext)
-            TimecodeSettingsStore.ensureConfig(in: modelContext)
-            SongProjectBridge.restoreShowsFromDisk(in: modelContext)
             RemoteHostSessionController.shared.syncAdvertising()
         }
     }

@@ -546,16 +546,15 @@ final class PlaybackCoordinator {
         audioEngine.stop()
         clockEngine.stop()
 
-        let preparationResult: Result<[AudioEngineManager.PreparedTrackPayload], Error> =
-            await Task.detached(priority: .userInitiated) {
-                do {
-                    return .success(
-                        try SongTrackLoader.playbackPayloads(for: song)
-                    )
-                } catch {
-                    return .failure(error)
-                }
-            }.value
+        // `Song` is a SwiftData model; never hop off this context's actor with it.
+        // Streaming payloads only open files / read headers, so this is cheap on-actor.
+        let preparationResult: Result<[AudioEngineManager.PreparedTrackPayload], Error> = {
+            do {
+                return .success(try SongTrackLoader.playbackPayloads(for: song))
+            } catch {
+                return .failure(error)
+            }
+        }()
 
         guard generation == loadGeneration, !Task.isCancelled else { return }
 
@@ -800,14 +799,13 @@ final class PlaybackCoordinator {
         prefetchedIncomingLayout = layout
 
         incomingPrefetchTask = Task { @MainActor in
-            let result: Result<[AudioEngineManager.PreparedTrackPayload], Error> =
-                await Task.detached(priority: .utility) {
-                    do {
-                        return .success(try SongTrackLoader.playbackPayloads(for: incoming))
-                    } catch {
-                        return .failure(error)
-                    }
-                }.value
+            let result: Result<[AudioEngineManager.PreparedTrackPayload], Error> = {
+                do {
+                    return .success(try SongTrackLoader.playbackPayloads(for: incoming))
+                } catch {
+                    return .failure(error)
+                }
+            }()
 
             guard !Task.isCancelled, prefetchedIncomingSongID == incoming.id else { return }
             if case .success(let payloads) = result {

@@ -23,6 +23,7 @@ enum PersistenceController {
         SetlistEntry.self,
     ]
 
+    @MainActor
     static func makeContainer() throws -> ModelContainer {
         let schema = Schema(modelTypes)
         let storeURL = try resolvedStoreURL()
@@ -31,12 +32,34 @@ enum PersistenceController {
         migrateStoreIfNeeded(at: storeURL)
 
         do {
-            return try ModelContainer(for: schema, configurations: [configuration])
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            seedLaunchData(in: container)
+            return container
         } catch {
             logger.error("SwiftData store open failed; removing store and retrying: \(error.localizedDescription, privacy: .public)")
             resetStore(at: storeURL, reason: "ModelContainer open failed")
             UserDefaults.standard.set(storeVersion, forKey: storeVersionKey)
-            return try ModelContainer(for: schema, configurations: [configuration])
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            seedLaunchData(in: container)
+            return container
+        }
+    }
+
+    /// Inserts first-run records before any SwiftUI `@Query` attaches.
+    /// Writing these from `onAppear` / `.task` races SwiftData's fetch executor
+    /// on a cold store and can SIGSEGV (null deref in SwiftData).
+    @MainActor
+    private static func seedLaunchData(in container: ModelContainer) {
+        let context = container.mainContext
+        TrackGroupStore.ensureDefaults(in: context)
+        OutputRoutingStore.ensureConfig(in: context)
+        TimecodeSettingsStore.ensureConfig(in: context)
+        SongProjectBridge.restoreShowsFromDisk(in: context)
+
+        let setlists = (try? context.fetch(FetchDescriptor<Setlist>())) ?? []
+        if setlists.isEmpty {
+            context.insert(Setlist.untitledDraft())
+            try? context.save()
         }
     }
 

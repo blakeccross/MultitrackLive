@@ -6,7 +6,7 @@ struct BakeSongSheet: View {
     @Environment(\.modelContext) private var modelContext
 
     let song: Song
-    let onFinished: () -> Void
+    var onFinished: () -> Void = {}
 
     @State private var phase = "Preparing…"
     @State private var completedGroups = 0
