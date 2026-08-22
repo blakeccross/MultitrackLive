@@ -1,48 +1,5 @@
 import SwiftUI
 
-struct InputMappingStatusBanner: View {
-    @Environment(InputMappingController.self) private var mapping
-
-    var body: some View {
-        if mapping.showsLiveHighlights {
-            HStack(spacing: AppSpacing.sm) {
-                Image(systemName: mapping.session == .midiMapping ? "pianokeys" : "keyboard")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(AppColors.accent)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(mapping.sessionTitle)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppColors.textPrimary)
-                    Text(mapping.promptText)
-                        .font(.caption)
-                        .foregroundStyle(AppColors.textSecondary)
-                        .lineLimit(2)
-                }
-
-                Spacer(minLength: AppSpacing.sm)
-
-                Button("Done") {
-                    mapping.endMapping()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(AppColors.accent)
-                .controlSize(.small)
-            }
-            .padding(.horizontal, AppSpacing.md)
-            .padding(.vertical, AppSpacing.sm)
-            .frame(maxWidth: .infinity)
-            .background(AppColors.surfaceElevated)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(AppColors.accent)
-                    .frame(height: 2)
-            }
-            .transition(.move(edge: .top).combined(with: .opacity))
-        }
-    }
-}
-
 struct InputMappingToolbarMenu: View {
     @Environment(InputMappingController.self) private var mapping
 
@@ -126,10 +83,6 @@ struct LiveInputMappingSessionModifier: ViewModifier {
                 }
             }
             #endif
-            .safeAreaInset(edge: .top, spacing: 0) {
-                InputMappingStatusBanner()
-                    .animation(AppAnimation.fadeQuick, value: mapping.showsLiveHighlights)
-            }
     }
 }
 

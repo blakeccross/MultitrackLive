@@ -40,6 +40,7 @@ private struct MissingMediaSheetContext: Identifiable {
 
 struct LivePlaybackView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(InputMappingController.self) private var mapping
     #if os(iOS)
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -187,10 +188,14 @@ struct LivePlaybackView: View {
     private func playbackBodyChrome(for setlist: Setlist) -> some View {
         Group {
             #if os(macOS)
-            LivePlaybackSidebarLayout(isVisible: $showingSongLibrary) {
-                songLibraryPanel()
+            LivePlaybackTrailingSidebarLayout(isVisible: mapping.isMapping) {
+                InputMappingPanel()
             } mainContent: {
-                playbackMainLayout
+                LivePlaybackSidebarLayout(isVisible: $showingSongLibrary) {
+                    songLibraryPanel()
+                } mainContent: {
+                    playbackMainLayout
+                }
             }
             #else
             playbackMainLayout

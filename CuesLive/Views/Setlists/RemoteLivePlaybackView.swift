@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct RemoteLivePlaybackView: View {
     @Bindable private var client = RemoteSessionClientService.shared
+    @Environment(InputMappingController.self) private var mapping
     #if os(iOS)
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -60,10 +61,14 @@ struct RemoteLivePlaybackView: View {
     var body: some View {
         Group {
             #if os(macOS)
-            LivePlaybackSidebarLayout(isVisible: $showingSongLibrary) {
-                remoteSongLibraryPanel
+            LivePlaybackTrailingSidebarLayout(isVisible: mapping.isMapping) {
+                InputMappingPanel()
             } mainContent: {
-                remotePlaybackMain
+                LivePlaybackSidebarLayout(isVisible: $showingSongLibrary) {
+                    remoteSongLibraryPanel
+                } mainContent: {
+                    remotePlaybackMain
+                }
             }
             #else
             remotePlaybackMain

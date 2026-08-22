@@ -13,8 +13,14 @@ enum LiveGroupMixerDetent: Equatable {
     static let minimumMainHeight: CGFloat = 200
 }
 
+enum LivePlaybackSidebarEdge {
+    case leading
+    case trailing
+}
+
 enum LivePlaybackSidebarMetrics {
     static let appStorageKey = "livePlaybackSidebarWidth"
+    static let trailingAppStorageKey = "livePlaybackTrailingSidebarWidth"
     static let defaultSidebarWidth: CGFloat = 300
     static let defaultSidebarWidthStorageValue = Double(defaultSidebarWidth)
     static let minimumSidebarWidth: CGFloat = 240
@@ -54,6 +60,8 @@ enum LivePlaybackSidebarMetrics {
 private struct LivePlaybackSidebarResizeHandle: View {
     @Binding var width: CGFloat
     let totalWidth: CGFloat
+    let edge: LivePlaybackSidebarEdge
+    let accessibilityLabel: String
     let onResizeEnded: () -> Void
 
     @State private var dragStartWidth: CGFloat?
@@ -69,7 +77,14 @@ private struct LivePlaybackSidebarResizeHandle: View {
                     if dragStartWidth == nil {
                         dragStartWidth = width
                     }
-                    let proposed = (dragStartWidth ?? width) + value.translation.width
+                    let translation = value.translation.width
+                    let proposed: CGFloat
+                    switch edge {
+                    case .leading:
+                        proposed = (dragStartWidth ?? width) + translation
+                    case .trailing:
+                        proposed = (dragStartWidth ?? width) - translation
+                    }
                     var transaction = Transaction()
                     transaction.disablesAnimations = true
                     withTransaction(transaction) {
@@ -82,7 +97,7 @@ private struct LivePlaybackSidebarResizeHandle: View {
                 }
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Song library width")
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityValue("\(Int(LivePlaybackSidebarMetrics.clampedSidebarWidth(width, totalWidth: totalWidth))) points")
         .accessibilityAdjustableAction { direction in
             width = LivePlaybackSidebarMetrics.adjustedSidebarWidth(width, direction: direction, totalWidth: totalWidth)
@@ -140,6 +155,8 @@ struct LivePlaybackSidebarLayout<Sidebar: View, MainContent: View>: View {
                     LivePlaybackSidebarResizeHandle(
                         width: $sidebarWidth,
                         totalWidth: geometry.size.width,
+                        edge: .leading,
+                        accessibilityLabel: "Song library width",
                         onResizeEnded: {
                             persistSidebarWidth(totalWidth: geometry.size.width)
                         }
@@ -150,6 +167,79 @@ struct LivePlaybackSidebarLayout<Sidebar: View, MainContent: View>: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .onChange(of: geometry.size.width) { _, newWidth in
+                let clamped = LivePlaybackSidebarMetrics.clampedSidebarWidth(sidebarWidth, totalWidth: newWidth)
+                guard clamped != sidebarWidth else { return }
+                sidebarWidth = clamped
+                persistSidebarWidth(totalWidth: newWidth)
+            }
+        }
+        .animation(AppAnimation.springSmooth, value: isVisible)
+        .animation(.none, value: sidebarWidth)
+        .onAppear {
+            sidebarWidth = LivePlaybackSidebarMetrics.sidebarWidth(fromStorage: storedSidebarWidth)
+        }
+    }
+
+    private func persistSidebarWidth(totalWidth: CGFloat) {
+        storedSidebarWidth = LivePlaybackSidebarMetrics.storageValue(
+            forWidth: sidebarWidth,
+            totalWidth: totalWidth
+        )
+    }
+}
+
+struct LivePlaybackTrailingSidebarLayout<Sidebar: View, MainContent: View>: View {
+    var isVisible: Bool
+    @ViewBuilder let sidebar: () -> Sidebar
+    @ViewBuilder let mainContent: () -> MainContent
+
+    @AppStorage(LivePlaybackSidebarMetrics.trailingAppStorageKey)
+    private var storedSidebarWidth = LivePlaybackSidebarMetrics.defaultSidebarWidthStorageValue
+
+    @State private var sidebarWidth = LivePlaybackSidebarMetrics.defaultSidebarWidth
+
+    var body: some View {
+        GeometryReader { geometry in
+            let clampedWidth = LivePlaybackSidebarMetrics.clampedSidebarWidth(
+                sidebarWidth,
+                totalWidth: geometry.size.width
+            )
+
+            HStack(spacing: 0) {
+                mainContent()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if isVisible {
+                    Rectangle()
+                        .fill(AppColors.separator)
+                        .frame(width: 0.5)
+
+                    sidebar()
+                        .frame(width: clampedWidth)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        ))
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if isVisible {
+                    LivePlaybackSidebarResizeHandle(
+                        width: $sidebarWidth,
+                        totalWidth: geometry.size.width,
+                        edge: .trailing,
+                        accessibilityLabel: "Mapping panel width",
+                        onResizeEnded: {
+                            persistSidebarWidth(totalWidth: geometry.size.width)
+                        }
+                    )
+                    .offset(
+                        x: -(clampedWidth + 0.25 - (LivePlaybackSidebarMetrics.resizeHitAreaWidth / 2))
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             .onChange(of: geometry.size.width) { _, newWidth in
                 let clamped = LivePlaybackSidebarMetrics.clampedSidebarWidth(sidebarWidth, totalWidth: newWidth)
                 guard clamped != sidebarWidth else { return }
